@@ -1,0 +1,602 @@
+/* The playground page (playground/README.md). Part of the prototype-playground
+   kit: the same in every project. The look and motion are the skill's ("The
+   playground look" in SKILL.md): change them in the kit, not in one project. */
+
+:root {
+  --page: #141518;
+  --page-text: #c9ccd2;
+  --page-muted: #7c818b;
+  --page-line: #2a2c31;
+  --accent: #25c3ff;
+  --accent-ink: #0b0b0d;
+  --amber: #f0b44c;
+
+  /* The materials of the page around the screen (not the design), after React
+     Bits' Stepper, in this page's colours: a frosted frame with a fine rim and
+     a highlight along its top; raised tiles; recessed wells. */
+  --frame: rgba(30, 31, 36, 0.72);
+  --frame-edge: rgba(255, 255, 255, 0.08);
+  --frame-highlight: rgba(255, 255, 255, 0.06);
+  --frame-shadow: 0 22px 44px -20px rgba(0, 0, 0, 0.8), 0 6px 16px -8px rgba(0, 0, 0, 0.5);
+  --tile: linear-gradient(180deg, #2d2f35 0%, #212328 100%);
+  --tile-edge: rgba(255, 255, 255, 0.07);
+  --tile-highlight: rgba(255, 255, 255, 0.11);
+  --tile-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.7);
+  --tile-rim: inset 0 0 0 1px var(--tile-edge), inset 0 1px 0 var(--tile-highlight), var(--tile-shadow);
+  --well: rgba(255, 255, 255, 0.04);
+  --hover-fill: rgba(255, 255, 255, 0.045);
+  --panel-radius: 20px;
+  --well-radius: 12px;
+  --tile-radius: 8px;
+
+  /* Motion: a spring that overshoots a little and settles, and a plain settle. */
+  --spring: linear(0, 0.0603, 0.2033, 0.3821, 0.5633, 0.7258, 0.8584, 0.9574, 1.0242, 1.0634, 1.0809, 1.0828, 1.0747, 1.0613, 1.046, 1.0313, 1.0186, 1.0085, 1.0012, 0.9965, 0.994, 0.9931, 0.9933, 0.9941, 0.9953, 0.9966, 0.9978, 0.9988, 1);
+  --settle: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@supports not (transition-timing-function: linear(0, 1)) {
+  :root { --spring: cubic-bezier(0.34, 1.4, 0.64, 1); }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--page);
+  color: var(--page-text);
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+/* ---- Around the screen: header, bar and panels. Not part of the design. ---- */
+
+/* Shared: a raised tile button, which brightens on hover and presses in. */
+.tile-btn, .toolbar button, .toolbar select, .subbar button, .pg-panel button, .pg-popover button {
+  font: inherit; font-size: 13px; color: var(--page-text);
+  background: var(--tile); border: 0; border-radius: var(--tile-radius);
+  box-shadow: var(--tile-rim);
+  padding: 0 12px; min-height: 32px; cursor: pointer;
+  transition: filter 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .toolbar button:not(:disabled):hover, .toolbar select:hover,
+  .subbar button:not(:disabled):hover, .pg-panel button:not(:disabled):hover { filter: brightness(1.12); }
+}
+.toolbar button:not(:disabled):active, .subbar button:not(:disabled):active, .pg-panel button:not(:disabled):active {
+  filter: brightness(0.85); transform: scale(0.96); transition-duration: 0s;
+}
+.toolbar :focus-visible, .subbar :focus-visible, .pg-panel :focus-visible, .pg-popover :focus-visible, .pg-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The primary action: solid blue. */
+.pg-panel .pg-use, .pg-popover .pg-use { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.5); }
+@media (hover: hover) { .pg-panel .pg-use:not(:disabled):hover { filter: brightness(0.92); } }
+.pg-panel button:disabled { opacity: 0.4; cursor: default; }
+
+/* The header: what every prototype run by this player has. One line; its
+   height never changes, so the screen under it never moves. The title always
+   shows; the screen's name after it is cut short with … when there isn't room,
+   then the screen picker narrows, and then the header scrolls sideways. */
+.toolbar {
+  width: 100%;
+  flex: none;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 10px 20px;
+  overflow-x: auto;
+}
+.toolbar > * { flex-shrink: 0; white-space: nowrap; }
+.toolbar h1 { font-size: 14px; font-weight: 600; margin: 0 8px 0 0; flex: 1 1 0; display: flex; align-items: baseline; letter-spacing: 0.01em; }
+.toolbar h1 span { color: var(--page-muted); font-weight: 400; margin-left: 8px; flex: 1 1 0; width: 0; overflow: hidden; text-overflow: ellipsis; }
+.toolbar select {
+  flex-shrink: 1; min-width: 160px; padding-right: 32px;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237c818b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), var(--tile);
+  background-repeat: no-repeat; background-position: right 12px center, 0 0;
+}
+
+/* The bar under the header: this prototype's own controls, quieter, in a well. */
+.subbar {
+  flex: none;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 6px;
+  margin: 0 8px; padding: 4px 6px;
+  background: var(--well); border-radius: var(--well-radius);
+  overflow-x: auto;
+  font-size: 13px;
+}
+.subbar > * { flex-shrink: 0; white-space: nowrap; }
+.subbar button { min-height: 28px; padding: 0 10px; font-size: 12.5px; }
+/* Switches in the bar: a label with a switch whose knob springs across. */
+.subbar .sim { display: flex; align-items: center; gap: 8px; padding: 0 8px; min-height: 28px; border-radius: var(--tile-radius); color: var(--page-muted); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
+@media (hover: hover) { .subbar .sim:hover { background: var(--hover-fill); color: var(--page-text); } }
+.subbar .sim:has(input:checked) { color: var(--page-text); }
+.subbar .sim input {
+  appearance: none; -webkit-appearance: none; margin: 0; flex: none; cursor: pointer;
+  position: relative; width: 28px; height: 16px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12); transition: background-color 0.25s ease;
+}
+.subbar .sim input::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 6px;
+  background: #f4f4f5; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: transform 480ms var(--spring);
+}
+.subbar .sim input:checked { background: var(--accent); }
+.subbar .sim input:checked::after { transform: translateX(12px); }
+.subbar .sim input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Under the bars: the canvas, with the panels floating over it, 8px from
+   everything. They never cover the header or the bar. */
+/* The centre is a canvas under everything, and the panels float over it (see
+   "The canvas" below). */
+.workspace { flex: 1; min-height: 0; position: relative; width: 100%; }
+.center { position: absolute; inset: 0; }
+.workspace > .pg-panel { position: absolute; top: 8px; bottom: 8px; z-index: 5; }
+.workspace > .pg-files { left: 8px; }
+.workspace > .pg-claude { right: 8px; }
+
+/* ---- The playground's panels (playground.js) ---- */
+/* Each is a frosted card. Minimised, it springs down to a 44px strip with its
+   name, and back; its body keeps its width while it moves, and fades. */
+.pg-panel {
+  position: relative; flex: none;
+  display: flex; overflow: hidden;
+  border-radius: var(--panel-radius);
+  background: var(--frame);
+  box-shadow: var(--frame-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  transition: width 560ms var(--spring);
+}
+.pg-panel::after {
+  content: ''; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+}
+.pg-files { width: 320px; }
+.pg-claude { width: 380px; }
+.pg-panel.min { width: 44px; }
+.pg-body { flex: none; display: flex; flex-direction: column; min-height: 0; transition: opacity 240ms ease 80ms; }
+.pg-files .pg-body { width: 320px; }
+.pg-claude .pg-body { width: 380px; }
+.pg-panel.min .pg-body { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.pg-panel .pg-rail {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 16px 0; min-height: 0; border-radius: inherit;
+  background: none; box-shadow: none; color: var(--page-muted);
+  opacity: 0; pointer-events: none; transition: opacity 160ms ease, color 0.2s ease, background-color 0.2s ease;
+}
+.pg-panel.min .pg-rail { opacity: 1; pointer-events: auto; transition-delay: 160ms, 0s, 0s; }
+@media (hover: hover) { .pg-panel .pg-rail:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-panel .pg-rail:active { transform: none; }
+.pg-rail-arrow { font-size: 18px; line-height: 1; }
+.pg-rail-label { writing-mode: vertical-rl; font-size: 13px; font-weight: 500; letter-spacing: 0.04em; }
+.pg-files .pg-rail-label { transform: rotate(180deg); }
+.pg-rail-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--amber); box-shadow: 0 0 0 4px rgba(240, 180, 76, 0.15); }
+.pg-claude .pg-rail-dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(37, 195, 255, 0.15); animation: pg-breathe 1.6s ease-in-out infinite; }
+.pg-rail-dot[hidden] { display: none; }
+@keyframes pg-breathe { 50% { box-shadow: 0 0 0 7px rgba(37, 195, 255, 0.05); } }
+
+.pg-files.busy { cursor: progress; }
+.pg-files.busy .pg-list, .pg-files.busy .pg-actions { opacity: 0.6; pointer-events: none; transition: opacity 0.2s ease; }
+.pg-panel code { font-size: 12px; color: var(--page-text); }
+.pg-head { display: flex; align-items: center; gap: 8px; padding: 16px 12px 10px 18px; flex: none; }
+.pg-head h2 { font-size: 15px; font-weight: 600; margin: 0 auto 0 0; letter-spacing: 0.01em; }
+.pg-head button:not(.pg-min) { min-height: 28px; padding: 0 10px; font-size: 12px; }
+.pg-panel .pg-min { width: 28px; min-height: 28px; padding: 0; font-size: 16px; line-height: 1; color: var(--page-muted); }
+
+/* While a version is tried, its actions sit at the foot of Explorations, as the
+   chat box does in Claude: Back on the left, Use on the right. */
+.pg-local { margin: 0 10px 10px; padding: 12px; border-radius: var(--well-radius); flex: none; background: var(--well); }
+.pg-local p { margin: 0 0 10px; font-size: 13px; }
+.pg-actions { display: flex; gap: 8px; margin: 0 10px 10px; padding: 8px; flex: none; background: var(--well); border-radius: var(--well-radius); }
+.pg-actions [data-back] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-actions button { padding-inline: 11px; }
+.pg-actions [data-use] { flex: none; margin-left: auto; }
+.pg-actions.enter { animation: pg-rise 560ms var(--spring) both; }
+@keyframes pg-pop { from { opacity: 0; transform: translateY(-8px) scale(0.97); } }
+
+.pg-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 0 12px; }
+.pg-pane.enter-forward { animation: pg-in-forward 560ms var(--spring) both; }
+.pg-pane.enter-back { animation: pg-in-back 560ms var(--spring) both; }
+@keyframes pg-in-forward { from { opacity: 0; transform: translateX(36px); } 25% { opacity: 0; } }
+@keyframes pg-in-back { from { opacity: 0; transform: translateX(-36px); } 25% { opacity: 0; } }
+.pg-list h4 { margin: 0; padding: 14px 18px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--page-muted); }
+
+/* Folders, one per screen, in a well; the row under the pointer lifts. */
+.pg-folders { list-style: none; margin: 0 10px; padding: 4px; display: grid; gap: 2px; background: var(--well); border-radius: var(--well-radius); }
+.pg-panel .pg-folder {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+  background: none; box-shadow: none; border-radius: var(--tile-radius); padding: 8px 10px; min-height: 0;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+@media (hover: hover) { .pg-panel .pg-folder:hover { filter: none; background: var(--hover-fill); } }
+.pg-folder-icon { width: 18px; height: 15px; flex: none; fill: var(--accent); opacity: 0.85; transition: transform 0.45s var(--spring); }
+@media (hover: hover) { .pg-folder:hover .pg-folder-icon { transform: scale(1.12); } }
+.pg-folder.empty .pg-folder-icon { fill: none; stroke: var(--page-muted); stroke-width: 1.2; opacity: 1; }
+.pg-fname { flex: 1; min-width: 0; }
+.pg-fname b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-fname small { color: var(--page-muted); font-size: 12px; }
+.pg-folder.empty .pg-fname b { color: var(--page-muted); }
+.pg-chevron { color: var(--page-muted); font-size: 18px; line-height: 1; transition: transform 0.45s var(--spring); }
+@media (hover: hover) { .pg-folder:hover .pg-chevron { transform: translateX(3px); } }
+
+.pg-crumbs { display: flex; align-items: center; gap: 8px; padding: 10px 18px 4px; font-weight: 600; }
+.pg-panel .pg-up { background: none; box-shadow: none; padding: 0 8px 0 4px; min-height: 26px; color: var(--accent); font-weight: 500; }
+@media (hover: hover) { .pg-panel .pg-up:hover { filter: none; background: var(--hover-fill); } }
+.pg-crumbs span::before { content: '/ '; color: var(--page-muted); font-weight: 400; }
+.pg-path { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 0 12px 10px 18px; color: var(--page-muted); }
+.pg-path button { min-height: 26px; padding: 0 10px; font-size: 12px; }
+
+/* An exploration and its versions: the versions sit in a well, and the one
+   running rides on a raised tile (the glider) that springs from version to
+   version. */
+.pg-group { padding: 10px 10px 8px; }
+.pg-group + .pg-group { border-top: 1px solid var(--frame-edge); }
+.pg-group h3 { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; margin: 2px 8px 2px; }
+.pg-branch-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--page-muted); stroke-width: 1.4; stroke-linecap: round; }
+.pg-branch-icon circle { fill: var(--page-muted); stroke: none; }
+.pg-about { margin: 0 8px 8px; color: var(--page-muted); font-size: 12px; }
+.pg-versions { position: relative; list-style: none; margin: 0; padding: 4px; display: grid; gap: 2px; background: var(--well); border-radius: var(--well-radius); }
+.pg-glider {
+  position: absolute; top: 0; left: 4px; right: 4px; height: 0;
+  border-radius: var(--tile-radius); background: var(--tile); box-shadow: var(--tile-rim);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+}
+.pg-version { position: relative; z-index: 1; }
+.pg-panel .pg-try {
+  width: 100%; text-align: left; padding: 9px 10px 10px var(--gutter, 14px);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  background: none; box-shadow: none; transition: background-color 0.2s ease, transform 0.2s ease;
+}
+@media (hover: hover) { .pg-version:not(.running) .pg-try:hover { filter: none; background: var(--hover-fill); } }
+.pg-vname { margin-right: auto; }
+.pg-vname b { font-weight: 600; }
+.pg-version:not(.running) .pg-vname b { font-weight: 500; }
+.pg-vname small { margin-left: 6px; color: var(--page-muted); font-size: 12px; }
+.pg-chip { font-size: 11px; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+.pg-chip.pick { color: var(--accent); background: rgba(37, 195, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
+.pg-chip.try { color: var(--amber); background: rgba(240, 180, 76, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 180, 76, 0.35); }
+.pg-chip.here { color: var(--page-text); background: var(--well); }
+.pg-note { width: 100%; color: var(--page-muted); font-size: 12px; }
+.pg-note:empty { display: none; }
+.pg-from { color: var(--page-text); opacity: 0.75; }
+.pg-version.main .pg-vname b { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+
+/* The graph beside the versions, drawn like a git graph: main's lane on the
+   left, a lane per branch, the pick's line to main in blue and a trial's in
+   amber. The dashed node at the top of main is what a commit would bring in. */
+.pg-graph-holder { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.pg-graph { position: absolute; left: 0; top: 0; overflow: visible; }
+.pg-graph path, .pg-ready-graph path { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; stroke-linecap: round; }
+.pg-graph path.main, .pg-ready-graph path.main { stroke: rgba(201, 204, 210, 0.5); }
+.pg-graph path.pick, .pg-ready-graph path.pick { stroke: var(--accent); }
+.pg-graph path.try { stroke: var(--amber); }
+.pg-graph path.merge, .pg-ready-graph path.pick { stroke-dasharray: 2 4; }
+.pg-graph circle, .pg-ready-graph circle { fill: var(--page-muted); stroke: #1d1e23; stroke-width: 3; paint-order: stroke; }
+.pg-graph circle.main { fill: var(--page-text); }
+.pg-graph circle.pick, .pg-ready-graph circle.pick { fill: var(--accent); }
+.pg-graph circle.try { fill: var(--amber); }
+.pg-graph circle.head { filter: drop-shadow(0 0 4px rgba(37, 195, 255, 0.55)); }
+.pg-graph circle.try.head { filter: drop-shadow(0 0 4px rgba(240, 180, 76, 0.55)); }
+.pg-graph circle.incoming, .pg-ready-graph circle.incoming { fill: #1d1e23; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 2.5 2.5; paint-order: normal; }
+.pg-graph circle.incoming.try { stroke: var(--amber); }
+.pg-merge { position: relative; z-index: 1; padding: 9px 10px 10px var(--gutter, 14px); display: grid; gap: 2px; font-size: 13px; }
+.pg-merge b { font-weight: 600; color: var(--accent); }
+.pg-merge.trying b { color: var(--amber); }
+.pg-merge small { color: var(--page-muted); font-size: 12px; }
+.pg-merge .pg-changes { color: var(--page-text); opacity: 0.8; }
+.pg-merge + .pg-version { margin-top: 2px; }
+.pg-panel .pg-ready { overflow: hidden; width: 100%; text-align: left; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0; min-height: 46px; background: none; box-shadow: none; }
+@media (hover: hover) { .pg-panel .pg-ready:hover { filter: none; background: var(--hover-fill); } }
+.pg-ready-graph { width: 30px; height: 46px; flex: none; overflow: visible; }
+.pg-readies { gap: 0; grid-template-columns: minmax(0, 1fr); }
+.pg-readies .pg-fname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-ready-head { display: flex; align-items: center; gap: 6px; padding-right: 10px; font-size: 13px; }
+.pg-ready-head .pg-ready-graph { height: 40px; }
+.pg-ready-head span { display: grid; min-width: 0; padding: 6px 0; }
+.pg-ready-head b { color: var(--accent); font-weight: 600; }
+.pg-ready-head small { color: var(--page-muted); font-size: 12px; }
+.pg-readies .pg-fname small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-empty { padding: 12px 18px 0; color: var(--page-muted); margin: 0; }
+.pg-foot { padding: 12px 18px 16px; flex: none; box-shadow: inset 0 1px 0 var(--frame-edge); }
+.pg-foot p { margin: 0; color: var(--page-muted); font-size: 12px; }
+
+/* Claude: the chat, the panel's full height. New messages rise in. */
+/* Chats, after the Stepper's header: the open chats as equal segments in a
+   well, a raised tile (the glider) under the one on show, and a 22 px number
+   badge on each: outlined on show, solid once it has a conversation, breathing
+   blue while it works, amber with a new version waiting. A + at the end opens
+   the next chat, which springs in. */
+.pg-tabs { position: relative; display: flex; gap: 2px; margin: 0 10px 6px; padding: 3px; flex: none; background: var(--well); border-radius: var(--well-radius); }
+.pg-tabs[hidden] { display: none; }
+.pg-tab-glider { position: absolute; top: 0; left: 0; border-radius: var(--tile-radius); background: var(--tile); box-shadow: var(--tile-rim); opacity: 0; pointer-events: none; }
+/* Each chat is a quarter of the row, as if all four were open, so the + sits right after the last one. */
+.pg-tab { position: relative; z-index: 1; flex: 0 0 calc((100% - 6px) / 4); min-width: 0; display: flex; align-items: center; border-radius: var(--tile-radius); color: var(--page-muted); transition: background-color 0.2s ease, color 0.2s ease; }
+@media (hover: hover) { .pg-tab:not([data-status="active"]):hover { background: var(--hover-fill); } }
+.pg-tab.enter { animation: pg-tab-in 560ms var(--spring) both; }
+@keyframes pg-tab-in { from { opacity: 0; transform: scale(0.9); } }
+.pg-panel .pg-tab-btn {
+  flex: 1; min-width: 0; height: 40px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: none; box-shadow: none; color: inherit;
+}
+.pg-panel .pg-tab-btn:not(:disabled):active, .pg-panel .pg-tab-add:not(:disabled):active { transform: none; }
+/* Pointing at a chat's number turns it into a × that closes the chat. */
+.pg-badge-x { display: none; }
+.pg-tab.closable .pg-badge { cursor: pointer; }
+@media (hover: hover) {
+  .pg-tab.closable .pg-badge:hover { background: var(--hover-fill); box-shadow: inset 0 0 0 1.5px var(--page-text); color: var(--page-text); animation: none; }
+  .pg-tab.closable .pg-badge:hover .pg-badge-n { display: none; }
+  .pg-tab.closable .pg-badge:hover .pg-badge-x { display: block; }
+}
+.pg-panel .pg-tab-add { position: relative; z-index: 1; flex: none; align-self: center; width: 40px; height: 40px; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center; background: none; box-shadow: none; color: var(--page-muted); border-radius: var(--tile-radius); }
+@media (hover: hover) { .pg-panel .pg-tab-add:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-tab-add .pg-badge { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+.pg-tab-add .pg-badge svg { display: block; }
+.pg-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 1.2; transition: color 0.2s ease; }
+.pg-tab:not([data-status="empty"]) .pg-tab-name { color: var(--page-text); }
+.pg-badge {
+  display: grid; flex: none; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); color: var(--page-muted);
+  font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+.pg-tab[data-status="active"] .pg-badge { box-shadow: inset 0 0 0 1.5px var(--page-text); color: var(--page-text); }
+.pg-tab[data-status="used"] .pg-badge { background: var(--page-text); box-shadow: none; color: var(--accent-ink); }
+.pg-tab.ready .pg-badge { background: var(--amber); box-shadow: 0 0 0 3px rgba(240, 180, 76, 0.15); color: var(--accent-ink); }
+.pg-tab.running .pg-badge { background: var(--accent); box-shadow: 0 0 0 3px rgba(37, 195, 255, 0.15); color: var(--accent-ink); animation: pg-badge-breathe 1.6s ease-in-out infinite; }
+@keyframes pg-badge-breathe { 50% { box-shadow: 0 0 0 6px rgba(37, 195, 255, 0.05); } }
+.pg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .pg-tab.running .pg-badge { animation: none; } }
+.pg-context { margin: 0 10px 4px; padding: 8px 10px; font-size: 12px; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); flex: none; }
+.pg-context b { color: var(--page-text); font-weight: 500; }
+.pg-log { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 12px 18px; display: flex; flex-direction: column; gap: 8px; }
+.pg-log[hidden], .pg-ask[hidden], .pg-off[hidden] { display: none; }
+.pg-msg { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pg-msg.enter { animation: pg-rise 520ms var(--spring) both; }
+@keyframes pg-rise { from { opacity: 0; transform: translateY(10px); } 30% { opacity: 1; } }
+.pg-msg.you { align-self: flex-end; max-width: 85%; padding: 7px 11px; border-radius: 14px 14px 4px 14px; background: var(--tile); box-shadow: var(--tile-rim); color: #f4f4f5; transform-origin: right bottom; }
+.pg-msg.claude { max-width: 95%; line-height: 1.45; }
+.pg-msg.step { font-size: 12px; color: var(--page-muted); font-family: ui-monospace, Menlo, monospace; }
+.pg-msg.step::before { content: '› '; color: var(--accent); }
+.pg-msg.note { font-size: 12px; color: var(--page-muted); }
+.pg-msg.error { font-size: 12px; color: var(--amber); }
+.pg-ask { margin: 0 10px 10px; padding: 8px; flex: none; background: var(--well); border-radius: var(--well-radius); }
+.pg-ask textarea {
+  display: block; width: 100%; resize: none; min-height: 76px; font: inherit; font-size: 13px; color: var(--page-text);
+  background: transparent; border: 0; border-radius: var(--tile-radius); padding: 8px; outline: none;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.pg-ask textarea:focus { background: rgba(0, 0, 0, 0.18); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.45); }
+.pg-ask-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+/* Capture and attach: small tiles at the start of the chat box's row. */
+.pg-ask-row .pg-tool { flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; display: grid; place-items: center; line-height: 0; color: var(--page-muted); }
+.pg-tool svg { display: block; }
+.pg-ask-row .pg-tool:hover { color: #f4f4f5; }
+body.pg-aiming .pg-tool[data-capture] { background: var(--accent); color: var(--accent-ink); }
+
+/* Screenshots: thumbnails waiting in the chat box, and in sent messages. */
+.pg-shots { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pg-shots[hidden] { display: none; }
+.pg-shots.new { padding: 2px 2px 8px; }
+.pg-shots li { position: relative; }
+.pg-shots img { display: block; height: 56px; max-width: 120px; object-fit: cover; border-radius: var(--tile-radius); box-shadow: var(--tile-rim), var(--tile-shadow); background: #000; }
+.pg-msg .pg-shots { justify-content: flex-end; margin-bottom: 6px; }
+.pg-msg .pg-shots img { height: 72px; max-width: 160px; }
+.pg-shots li.enter { animation: pg-pop 420ms var(--spring) both; }
+.pg-shots button { position: absolute; top: -6px; right: -6px; width: 20px; min-height: 20px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1; opacity: 0; transition: opacity 0.15s ease; }
+.pg-shots li:hover button, .pg-shots button:focus-visible { opacity: 1; }
+.pg-claude.drop::before { content: 'Drop to attach'; position: absolute; inset: 8px; z-index: 5; display: grid; place-items: center; border-radius: calc(var(--panel-radius) - 6px);
+  background: rgba(37, 195, 255, 0.08); box-shadow: inset 0 0 0 1.5px rgba(37, 195, 255, 0.6); color: #f4f4f5; font-size: 13px; pointer-events: none; }
+
+/* The capture marquee: holding ⌥ (or the capture button) turns the pointer to a
+   crosshair; the dragged area is outlined, the rest dimmed, its size shown. */
+body.pg-alt, body.pg-alt *, body.pg-aiming, body.pg-aiming * { cursor: crosshair !important; }
+.pg-marquee { position: fixed; z-index: 1000; pointer-events: none; border-radius: 4px;
+  box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 100vmax rgba(0, 0, 0, 0.35); }
+.pg-marquee::after { content: attr(data-size); position: absolute; right: 0; bottom: -24px; padding: 2px 6px; border-radius: 6px;
+  background: var(--accent); color: var(--accent-ink); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pg-marquee.flash { animation: pg-flash 260ms ease-out both; }
+@keyframes pg-flash { 0% { background: rgba(255, 255, 255, 0.35); } 100% { background: transparent; opacity: 0; } }
+/* Notes (after Agentation). Note mode: the shield takes the pointer over the
+   app, with a crosshair, and the widget under it is outlined with its type and
+   file; a drag outlines an area. */
+body.pg-noting .pg-shield { display: block; cursor: crosshair; }
+body.pg-noting .pg-tool[data-notes] { background: var(--accent); color: var(--accent-ink); }
+.pg-target { position: fixed; z-index: 900; pointer-events: none; border-radius: 3px;
+  box-shadow: 0 0 0 1.5px var(--amber), inset 0 0 0 999px rgba(240, 180, 76, 0.08); transition: left 120ms var(--settle), top 120ms var(--settle), width 120ms var(--settle), height 120ms var(--settle); }
+.pg-target[hidden] { display: none; }
+.pg-target::after { content: attr(data-label); position: absolute; left: 0; bottom: 100%; margin-bottom: 4px; padding: 2px 6px; border-radius: 6px;
+  background: var(--amber); color: var(--accent-ink); font-size: 11px; white-space: nowrap; }
+.pg-marquee.note { box-shadow: 0 0 0 1.5px var(--amber), 0 0 0 100vmax rgba(0, 0, 0, 0.25); }
+.pg-marquee.note::after { background: var(--amber); }
+
+/* Pins: a numbered dot at the top-right corner of each note's widget or area,
+   on the app's window, kept one size at any zoom (--inv, from host.js).
+   Amber while it waits to be sent, dim while Claude has it, outlined when
+   Claude asked a question back. */
+.pg-pins { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.pg-pin { position: absolute; pointer-events: auto; transform: translate(-50%, -50%) scale(var(--inv, 1)); width: 22px; height: 22px; padding: 0; border: 0; border-radius: 11px 11px 11px 3px;
+  display: grid; place-items: center; font: 600 11px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; cursor: pointer;
+  background: var(--amber); color: var(--accent-ink); box-shadow: 0 0 0 2px rgba(11, 11, 13, 0.9), 0 4px 10px -2px rgba(0, 0, 0, 0.6);
+  animation: pg-pin-in 420ms var(--spring) both; transition: transform 240ms var(--spring); }
+@keyframes pg-pin-in { from { opacity: 0; transform: translate(-50%, -50%) scale(calc(var(--inv, 1) * 0.4)); } }
+.pg-pin:hover, .pg-pin.lit, .pg-pin.editing { transform: translate(-50%, -50%) scale(calc(var(--inv, 1) * 1.18)); }
+.pg-pin.sent { background: #3a3d44; color: #f4f4f5; animation: pg-pin-in 420ms var(--spring) both, pg-breathe 1.6s ease-in-out infinite; }
+.pg-pin.question { background: #0b0b0d; color: var(--amber); box-shadow: 0 0 0 2px var(--amber), 0 4px 10px -2px rgba(0, 0, 0, 0.6); }
+.pg-pin-n { flex: none; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px 10px 10px 3px;
+  background: var(--amber); color: var(--accent-ink); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The note's popover, beside its node: a frosted card like the panels. */
+.pg-popover { position: fixed; z-index: 1001; width: 300px; padding: 10px; border-radius: 16px;
+  background: var(--frame); backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight), var(--frame-shadow); }
+.pg-popover[hidden] { display: none; }
+.pg-popover.enter { animation: pg-pop 420ms var(--spring) both; }
+.pg-pop-head { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; min-width: 0; }
+.pg-pop-head b { flex: none; max-width: 65%; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-pop-head small { min-width: 0; color: var(--page-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-popover textarea { display: block; width: 100%; resize: none; font: inherit; font-size: 13px; color: var(--page-text);
+  background: rgba(0, 0, 0, 0.18); border: 0; border-radius: var(--tile-radius); padding: 8px; outline: none; box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.45); }
+.pg-intents { display: flex; gap: 2px; margin-top: 8px; padding: 3px; background: var(--well); border-radius: var(--well-radius); }
+.pg-popover .pg-intents button { flex: 1; min-height: 26px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); }
+.pg-popover .pg-intents button[aria-checked="true"] { background: var(--tile); box-shadow: var(--tile-rim); color: #f4f4f5; }
+.pg-pop-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.pg-pop-row span { flex: 1; }
+.pg-pop-row button { min-height: 28px; padding: 0 10px; font-size: 12px; }
+.pg-answer { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--tile-radius); background: var(--well); font-size: 12px; }
+.pg-answer b { color: #f4f4f5; font-weight: 500; margin-right: 4px; }
+.pg-answer.question b { color: var(--amber); }
+
+/* Notes waiting in the chat box, and sent ones in the log with Claude's answers. */
+.pg-notes { list-style: none; margin: 0; padding: 0 0 6px; display: grid; gap: 2px; max-height: 168px; overflow-y: auto; }
+.pg-notes[hidden] { display: none; }
+.pg-notes li { position: relative; display: flex; animation: pg-pop 420ms var(--spring) both; }
+.pg-panel .pg-noted { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 5px 30px 5px 6px; min-height: 0; text-align: left; background: none; box-shadow: none; }
+.pg-noted-text { min-width: 0; }
+.pg-noted-text b, .pg-noted-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-noted-text b { font-weight: 400; font-size: 13px; }
+.pg-noted-text small { color: var(--page-muted); font-size: 11px; }
+.pg-panel .pg-unnote { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 22px; min-height: 22px; padding: 0; border-radius: 50%; opacity: 0; transition: opacity 0.15s ease; }
+.pg-notes li:hover .pg-unnote, .pg-unnote:focus-visible { opacity: 1; }
+.pg-sent { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; white-space: normal; }
+.pg-sent li { display: flex; gap: 8px; align-items: flex-start; }
+.pg-sent li.sent .pg-pin-n { background: #3a3d44; color: #f4f4f5; }
+.pg-sent li.done .pg-pin-n, .pg-sent li.skipped .pg-pin-n { background: var(--well); color: var(--page-muted); }
+.pg-sent li.question .pg-pin-n { background: #0b0b0d; color: var(--amber); box-shadow: inset 0 0 0 1.5px var(--amber); }
+.pg-sent em { display: block; margin-top: 2px; font-style: normal; font-size: 12px; color: var(--page-muted); }
+.pg-sent em b { font-weight: 500; color: var(--page-text); }
+.pg-sent li.question em b { color: var(--amber); }
+
+.pg-status { flex: 1; min-width: 0; padding-left: 4px; font-size: 12px; color: var(--page-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-status:not(:empty) {
+  background: linear-gradient(90deg, var(--page-muted) 0%, #f4f4f5 50%, var(--page-muted) 100%) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: pg-shimmer 1.8s linear infinite;
+}
+@keyframes pg-shimmer { to { background-position: -200% 0; } }
+.pg-off { padding: 8px 18px 16px; color: var(--page-muted); font-size: 13px; line-height: 1.5; animation: pg-rise 420ms var(--spring) both; }
+.pg-off h3 { margin: 0 0 6px; color: #f4f4f5; font-size: 15px; font-weight: 600; }
+.pg-off p { margin: 0 0 10px; }
+.pg-off ol { margin: 4px 0 12px; padding-left: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.pg-off li { min-width: 0; }
+.pg-off kbd { font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px; background: var(--tile); box-shadow: var(--tile-shadow); }
+.pg-cmd { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 6px 6px 12px;
+  background: var(--well); border-radius: var(--well-radius); }
+.pg-cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 12px; color: #f4f4f5; scrollbar-width: none; }
+.pg-cmd button { flex: none; min-width: 64px; }
+.pg-cmd button.done { background: var(--accent); color: var(--accent-ink); animation: pg-pop 420ms var(--spring); }
+.pg-wait { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.pg-wait::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pg-breathe 1.8s ease-in-out infinite; }
+.pg-ask.enter { animation: pg-rise 560ms var(--spring) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-panel, .pg-panel *, .subbar .sim input::after, .pg-pin, .pg-popover, .pg-target { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+.bare .pg-panel, .bare .subbar { display: none; }
+.bare .workspace { padding: 0; }
+
+/* ---- The canvas, with the app on it ---- */
+/* The canvas runs under both panels; the app's window sits on the board, which
+   host.js moves and scales. Its dots move with it, so panning reads as panning. */
+:root { --canvas: #0f1013; --canvas-dot: rgba(255, 255, 255, 0.075); }
+.stage {
+  position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: default;
+  background-color: var(--canvas);
+  background-image: radial-gradient(circle at center, var(--canvas-dot) 1px, transparent 1.6px);
+  background-size: var(--dot, 24px) var(--dot, 24px);
+  background-position: var(--dot-x, 0) var(--dot-y, 0);
+  box-shadow: inset 0 1px 0 var(--frame-edge);
+}
+body.pg-space .stage, body.pg-space .pg-shield { cursor: grab; }
+.stage.panning, .stage.panning * { cursor: grabbing !important; }
+.board { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.board.glide { transition: transform 560ms var(--spring); }
+.window {
+  position: relative; overflow: hidden;
+  border-radius: 12px; background: #000;
+  box-shadow: 0 0 0 1px #26282d, 0 30px 80px -20px rgb(0 0 0 / 0.7), 0 10px 24px -12px rgb(0 0 0 / 0.6);
+}
+.window iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
+.window iframe.waiting { visibility: hidden; }
+/* While ⌥ or Space is held, or capture is armed, a shield over the app takes
+   the drag, since a frame keeps its pointer events to itself. */
+.pg-shield { position: absolute; inset: 0; z-index: 4; display: none; }
+body.pg-alt .pg-shield, body.pg-aiming .pg-shield, body.pg-space .pg-shield { display: block; }
+
+/* The zoom pill: at the foot of the canvas, centred between the panels. */
+.zoom {
+  position: absolute; bottom: 16px; left: var(--mid, 50%); transform: translateX(-50%); z-index: 4;
+  display: flex; align-items: center; gap: 4px; padding: 4px;
+  border-radius: var(--well-radius); background: var(--frame); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+  transition: left 560ms var(--spring);
+}
+.zoom button {
+  font: inherit; font-size: 12.5px; color: var(--page-text); min-height: 28px; min-width: 28px; padding: 0 8px;
+  background: var(--tile); border: 0; border-radius: var(--tile-radius); box-shadow: var(--tile-rim); cursor: pointer;
+  transition: filter 0.2s ease, transform 0.2s ease; font-variant-numeric: tabular-nums;
+}
+.zoom [data-zoom=out], .zoom [data-zoom=in] { width: 28px; padding: 0; font-size: 16px; line-height: 1; }
+.zoom [data-zoom=actual] { min-width: 56px; }
+@media (hover: hover) { .zoom button:hover { filter: brightness(1.12); } }
+.zoom button:active { filter: brightness(0.85); transform: scale(0.96); transition-duration: 0s; }
+.zoom :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Shown in the window until the app has said hello. */
+.booting {
+  position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; justify-items: center; gap: 12px;
+  padding: 24px; text-align: center; color: var(--page-muted); background: #0b0b0d;
+}
+.booting[hidden] { display: none; }
+.booting h2 { margin: 0; color: #f4f4f5; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.booting h2::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pg-breathe 1.6s ease-in-out infinite; box-shadow: 0 0 0 4px rgba(37, 195, 255, 0.15); }
+.booting.failed h2::before { background: var(--amber); animation: none; box-shadow: 0 0 0 4px rgba(240, 180, 76, 0.15); }
+.booting p { margin: 0; max-width: 520px; font-size: 13px; }
+.booting pre {
+  margin: 4px 0 0; width: min(640px, 80vw); max-height: 180px; overflow: auto; text-align: left;
+  padding: 10px 12px; border-radius: var(--well-radius); background: var(--well);
+  font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--page-muted); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* The bar's app status: a dot and a line, and the errors of a failed reload. */
+.subbar .app-status { display: flex; align-items: center; gap: 8px; padding: 0 8px; color: var(--page-muted); font-size: 12.5px; min-width: 0; }
+.subbar .app-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--page-muted); flex: none; }
+.subbar .app-status[data-state="ready"]::before { background: #3ecf8e; }
+.subbar .app-status[data-state="busy"]::before { background: var(--accent); animation: pg-breathe 1.6s ease-in-out infinite; }
+.subbar .app-status[data-state="error"] { color: var(--amber); }
+.subbar .app-status[data-state="error"]::before { background: var(--amber); }
+.subbar a { color: var(--page-muted); font-size: 12.5px; text-decoration: none; padding: 0 8px; border-radius: var(--tile-radius); min-height: 28px; display: flex; align-items: center; }
+@media (hover: hover) { .subbar a:hover { background: var(--hover-fill); color: var(--page-text); } }
+.subbar .spacer { flex: 1 1 auto; }
+.errors {
+  flex: none; margin: 6px 8px 0; padding: 10px 12px; border-radius: var(--well-radius); background: var(--well);
+  max-height: 160px; overflow: auto; animation: pg-rise 420ms var(--spring) both;
+}
+.errors[hidden] { display: none; }
+.errors p { margin: 0 0 6px; color: var(--amber); font-size: 12.5px; }
+.errors pre { margin: 0; font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--page-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The toast: over the canvas, above the zoom pill, centred between the panels. */
+#toast {
+  position: absolute; left: var(--mid, 50%); bottom: 60px; z-index: 6; transform: translateX(-50%);
+  width: max-content; max-width: min(640px, calc(100% - 32px)); pointer-events: none; text-align: center;
+  color: var(--page-text); background: #1f2125; border: 1px solid var(--page-line); border-radius: 8px;
+  padding: 6px 12px; opacity: 0; transition: opacity 0.2s;
+}
+#toast.show { opacity: 1; }
+
+/* At phone width the panels float over the app when open, from their edges. */
+@media (max-width: 760px) {
+  .toolbar h1 span { display: none; }
+  .workspace > .pg-panel:not(.min) { max-width: calc(100% - 16px); z-index: 8; }
+  .pg-files .pg-body, .pg-claude .pg-body { max-width: calc(100vw - 16px); }
+}
+@media (prefers-reduced-motion: reduce) { .board.glide, .zoom { transition: none; } }
+
+
+/* Show the page on show: the crosshair beside Explorations' minimise button. */
+.pg-panel .pg-head .pg-locate { width: 28px; min-height: 28px; padding: 0; display: grid; place-items: center; color: var(--page-muted); }
+.pg-panel .pg-locate svg { display: block; }

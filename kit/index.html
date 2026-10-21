@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playground</title>
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <!-- The prototype-playground kit (playground/README.md). The header: what
+       every prototype with a playground has. Keep it minimal. The name and
+       the window sizes come from playground.json. -->
+  <header class="toolbar">
+    <h1><span id="name">Playground</span><span id="screen-title"></span></h1>
+    <select id="jump" aria-label="Go to page"></select>
+    <select id="size" aria-label="Window size" title="The size of the app's window on the canvas"></select>
+    <button id="btn-reset" type="button" title="The app starts again, with every value back to its start">Reset</button>
+  </header>
+
+  <!-- Under it, the app's own controls. -->
+  <div class="subbar" id="subbar">
+    <button id="btn-reload" type="button" title="Reload the app with the files on disk">Reload app</button>
+    <span class="app-status" id="app-status" data-state="busy" role="status">Starting the app…</span>
+    <button id="btn-errors" type="button" aria-expanded="false" aria-controls="errors" hidden>Show errors</button>
+    <span class="spacer"></span>
+    <a id="open-alone" target="_blank" rel="noopener" title="The app on its own, without the playground">Open the app alone ↗</a>
+  </div>
+  <div class="errors" id="errors" hidden></div>
+
+  <!-- Everything under the bars: the canvas, with the app's window on it, and
+       the playground's panels (playground.js) floating over it, Explorations
+       on the left and Claude on the right. -->
+  <div class="workspace" id="workspace">
+    <div class="center">
+      <main class="stage" id="stage" aria-label="Canvas">
+        <div class="board" id="board">
+          <div class="window" id="window">
+            <iframe id="app" title="The app" class="waiting"></iframe>
+            <div class="booting" id="booting"><h2>Starting the app</h2><p>The app is starting.</p><pre hidden></pre></div>
+            <div class="pg-shield" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div id="toast" role="status" aria-live="polite"></div>
+        <div class="zoom" id="zoom" role="group" aria-label="Zoom">
+          <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (⌘−)">−</button>
+          <button type="button" data-zoom="actual" title="Actual size (⌘0)">100%</button>
+          <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (⌘+)">+</button>
+          <button type="button" data-zoom="fit" title="Fit between the panels (⇧1)">Fit</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="src/host.js"></script>
+</body>
+</html>
