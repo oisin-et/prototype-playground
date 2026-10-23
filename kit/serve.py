@@ -19,8 +19,10 @@ It's `python3 -m http.server` over the project with three additions:
   a version changes (POST /playground/app/reload, which playground/reload.py
   calls too). A Flutter project runs `flutter run -d web-server` and
   hot-reloads; a web project runs its own dev server ("app.command"), which
-  reloads changed files itself. Before every reload the registry, the list
-  of versions the app compiles in, is written again.
+  reloads changed files itself. A server that doesn't (static files, with
+  "app": {"hot": false}) has the app's frame loaded again instead. Before
+  every reload the registry, the list of versions the app compiles in, is
+  written again.
 
 - Picks. The Explorations panel's "Use this version" posts the picks here,
   and they're written to <data>/picks.json. Only picks that name an
@@ -78,7 +80,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from pglib import ADAPTER, CONFIG, DATA, HERE, PICKS, ROOT, VERSION_FILE, known_versions, rel, write_json, write_registry
+from pglib import ADAPTER, CONFIG, DATA, HERE, PICKS, REGISTRY, ROOT, VERSION_FILE, known_versions, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
@@ -520,7 +522,9 @@ class CommandApp:
     reloads changed files itself, keeping the app's state where it can. When
     the registry changes (a new or removed version), the playground page loads
     the app's frame again so it's read: the page compares the registry with
-    the one the frame loaded, so it works whoever asked for the reload.
+    the one the frame loaded, so it works whoever asked for the reload. A
+    server that doesn't reload files itself ("hot": false, as for static
+    files) has the frame loaded again after every reload instead.
 
     state: starting (until the app answers on its port) → ready; stopped if
     the command exits (the log says why); off with no command."""
@@ -533,6 +537,7 @@ class CommandApp:
         self.host = app.get("host", "127.0.0.1")
         self.path = app.get("path", "/")
         self.cmd = app.get("command")
+        self.hot = app.get("hot", True)  # False: the server doesn't reload changed files itself
         self.proc = None
         self.state = "starting" if self.cmd else "off"
         self.log = collections.deque(maxlen=300)
@@ -598,18 +603,39 @@ class CommandApp:
                 if self.state != "ready":
                     return {"ok": False, "message": "The app is still starting: nothing to reload yet. It will start with the change in it.", "errors": []}
                 mark = self.count
-            time.sleep(settle)  # the dev server sees the files change on its own
+            time.sleep(settle if self.hot else 0)  # the dev server sees the files change on its own
             with self.cv:
                 lines = list(self.log)[-(self.count - mark):] if self.count > mark else []
-            errors = [l for l in lines if self.ERROR.search(l)][:40]
+            errors = [l for l in lines if self.ERROR.search(l)][:40] if self.hot else self.check_files()
             if errors:
-                result = {"ok": False, "message": "The dev server reported errors: the app may still run the code from before.", "errors": errors}
+                result = {"ok": False, "errors": errors, "message": "The dev server reported errors: the app may still run the code from before."
+                          if self.hot else "A version's files have errors, so it won't load:"}
             else:
                 result = {"ok": True, "message": "Reloaded: the app runs the change." if not restart else "The app started again.", "errors": []}
-            result["frame"] = "reload" if restart else None
+            result["frame"] = "reload" if restart or not self.hot else None
             result["at"] = time.strftime("%H:%M:%S")
             self.last = result
             return result
+
+    def check_files(self):
+        """For a server that only serves files ("hot": false), nothing reports a
+        broken version, so this checks the versions' files: JSON must parse,
+        and JavaScript must pass `node --check` when Node is on this computer."""
+        errors = []
+        node = shutil.which("node")
+        for f in sorted(DATA.rglob("*")):
+            if not f.is_file() or f.name == REGISTRY.name:
+                continue
+            if f.suffix == ".json":
+                try:
+                    json.loads(f.read_text())
+                except ValueError as e:
+                    errors.append(f"{rel(f)}: {e}")
+            elif f.suffix in (".js", ".mjs") and node:
+                r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+                if r.returncode:
+                    errors += [f"{rel(f)}:"] + [l for l in r.stderr.strip().splitlines() if l.strip() and not l.lstrip().startswith(("at ", "Node.js"))][:6]
+        return errors[:40]
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
@@ -628,8 +654,10 @@ def made_by(text):
     """[(exploration, version)] that a run of new.py or duplicate.py says it made:
     "Started <screen>/<exploration> in …" (its default) or "Made <screen>/<exploration>
     <version> from …"."""
-    out = [(pg, "default") for pg in re.findall(r"Started ([a-z0-9-]+/[a-z0-9-]+) in ", text)]
-    out += re.findall(r"Made ([a-z0-9-]+/[a-z0-9-]+) ([a-z0-9]+) from ", text)
+    # A screen's id is as screens.json names it (it may have capitals); an
+    # exploration's and a version's are lowercase.
+    out = [(pg, "default") for pg in re.findall(r"Started ([\w-]+/[a-z0-9-]+) in ", text)]
+    out += re.findall(r"Made ([\w-]+/[a-z0-9-]+) ([a-z0-9]+) from ", text)
     return out
 
 

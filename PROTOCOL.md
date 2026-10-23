@@ -15,7 +15,8 @@ The playground page (`kit/src/host.js`) runs the app in an iframe at `<app origi
 
 | Message | Meaning |
 |---|---|
-| `{type: 'hello', versions: {'<id>': ['<screen>', …]}}` | The versions compiled in, and the screens each changes. Sent at start and after every hot reload. The host answers with `layers`. |
+| `{type: 'hello', versions: {'<id>': ['<screen>', …]}, errors?: ['<text>', …]}` | The versions compiled in, and the screens each changes. Sent at start and after every hot reload. The host answers with `layers`. A web app's `errors` name the versions that didn't load, which the bar shows. |
+| `{type: 'errors', errors: ['<text>', …]}` | A version failed while it ran (a web builder that threw), so the screen under it is shown. The bar shows it. |
 | `{type: 'where', screen, params, title?}` | The screen on show. `params` tells its states apart, and `title` overrides the header's. |
 | `{type: 'captured', id, png, note}` or `{type: 'captured', id, error}` | A capture: base64 PNG, and a note naming what it covers. |
 | `{type: 'inspected', id, box: [x, y, w, h], widget, location, text}` | What's at the point: its name, where it was built (`lib/x.dart:12`, or what the app knows), and its text. Just `{type, id}` if nothing is there. |

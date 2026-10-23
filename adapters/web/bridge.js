@@ -13,8 +13,10 @@
 //               {type: 'show', screen}             open that screen
 //               {type: 'capture', id, rect, scale} draw part of the app
 //               {type: 'inspect', id, x, y}        the element at a point, for a note
-//   app → host  {type: 'hello', versions: {id: [screens]}}
-//               the versions in the registry, sent when the app starts
+//   app → host  {type: 'hello', versions: {id: [screens]}, errors: [text]}
+//               the versions in the registry, sent when the app starts, and
+//               any that didn't load
+//               {type: 'errors', errors: [text]}   a version's builder failed
 //               {type: 'where', screen, params, title?}   the screen on show
 //               {type: 'captured', id, png, note}  a capture's PNG (base64)
 //               {type: 'inspected', id, box, widget, location, text}
@@ -29,7 +31,9 @@
 // naming), else from its tag, id and classes; data-source="src/x.jsx:12" adds
 // where it was built.
 
-import registry from './registry.js';
+import * as built from './registry.js';
+
+const registry = built.default || {};
 
 const hostParam = new URLSearchParams(location.search).get('playground');
 let origin = null;
@@ -55,6 +59,7 @@ export function attach({ show, where }) {
   post({
     type: 'hello',
     versions: Object.fromEntries(Object.entries(registry).map(([id, v]) => [id, Object.keys(v?.pages || {})])),
+    errors: built.errors || [],
   });
   report();
 }
@@ -75,9 +80,19 @@ export function page(screen, original, ctx = {}) {
   let out = original;
   for (const id of layers) {
     const build = registry[id]?.pages?.[screen];
-    if (build) out = build({ ...ctx, below: out, app: original });
+    if (!build) continue;
+    // A builder that throws is passed over, and the playground's bar says why.
+    try { out = build({ ...ctx, below: out, app: original }); } catch (e) { fail(`${id} (${screen}): ${e?.message || e}`); }
   }
   return out;
+}
+
+const failed = new Set();
+function fail(text) {
+  console.error(`playground: ${text}`);
+  if (failed.has(text)) return;
+  failed.add(text);
+  post({ type: 'errors', errors: [text] });
 }
 
 /** Calls fn when the versions to run change; returns a function that stops it. */

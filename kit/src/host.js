@@ -147,7 +147,7 @@ const watchApp = async () => {
     setStatus('error', 'The app stopped');
     boot("The app isn't running", s.state === 'off' ? 'serve.py has nothing to start it with. Its last lines are below.' : "The app stopped. Its last lines are below; fix the cause and start playground/serve.py again.", s.log, true);
   } else {
-    if (!frame.src) await reloadFrame();
+    if (!frame.src) reloadFrame();
     if (!booted) {
       setStatus('busy', 'Loading the app…');
       boot('Loading the app', s.kind === 'flutter' ? 'The debug build loads its code in pieces, so it takes half a minute or so.' : 'Waiting for the app to say hello to the playground.', null);
@@ -174,8 +174,23 @@ const REGISTRY = CFG.adapter === 'flutter' ? null : new URL(CFG.web?.registry ||
 const registryNow = () => (REGISTRY ? fetch(REGISTRY, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : null)).catch(() => null) : Promise.resolve(null));
 let loadedRegistry = null;
 // Loads the app again. It says hello when it's back, and is sent the versions
-// and the screen again.
-const reloadFrame = async () => { loadedRegistry = await registryNow(); frame.src = appUrl(); };
+// and the screen again. The promise settles then (or after 15 s), so what comes
+// next sees the app's new registry.
+let helloWaiters = [];
+const reloadFrame = async () => {
+  loadedRegistry = await registryNow();
+  const back = new Promise((ok) => { helloWaiters.push(ok); setTimeout(ok, 15000); });
+  frame.src = appUrl();
+  return back;
+};
+// The versions the app said didn't load, at its last hello.
+let loadErrors = [];
+const showLoadErrors = () => {
+  if (!loadErrors.length) return;
+  setStatus('error', `${loadErrors.length === 1 ? 'A version' : `${loadErrors.length} versions`} didn't load`);
+  // A reload's own errors (with their files and lines) say more: keep them.
+  if (errorsBtn.hidden) showErrors({ ok: false, message: "These versions didn't load, so they don't run. The app and the other versions do.", errors: loadErrors });
+};
 
 let reloading = false;
 const appReload = async (restart = false) => {
@@ -188,6 +203,7 @@ const appReload = async (restart = false) => {
   if (result.frame === 'reload' || (REGISTRY && (await registryNow()) !== loadedRegistry)) await reloadFrame();
   setStatus(result.ok ? 'ready' : 'error', result.ok ? `App ready · ${restart ? 'restarted' : 'reloaded'} ${result.at || ''}`.trim() : result.message);
   showErrors(result);
+  if (result.ok) showLoadErrors();
   return result;
 };
 document.getElementById('btn-reload').addEventListener('click', async () => {
@@ -231,6 +247,10 @@ const refresh = async ({ reload = true } = {}) => {
   const fresh = await loadPlaygrounds();
   playgrounds.splice(0, playgrounds.length, ...fresh);
   const result = reload ? await appReload(false) : null;
+  // A chat's reload.py has reloaded the app already. An app whose server
+  // doesn't reload changed files itself ("hot": false) still needs its frame
+  // loaded again to run them.
+  if (!reload && CFG.app?.hot === false) await reloadFrame();
   sendLayers();
   panel.redraw();
   return result;
@@ -251,7 +271,9 @@ addEventListener('message', (e) => {
     booted = true;
     bootEl.hidden = true;
     frame.classList.remove('waiting');
-    if (statusEl.dataset.state !== 'error') setStatus('ready', 'App ready');
+    loadErrors = m.errors || [];
+    if (loadErrors.length) showLoadErrors();
+    else if (statusEl.dataset.state !== 'error') setStatus('ready', 'App ready');
     sendLayers();
     if (first) {
       // Open on the screen in the address (#/settings), or a linked version's start.
@@ -265,12 +287,16 @@ addEventListener('message', (e) => {
       send({ type: 'show', screen: route.screen });
     }
     panel.redraw();
+    for (const ok of helloWaiters.splice(0)) ok();
   } else if (m.type === 'where') {
     route = { screen: m.screen, params: m.params || {}, title: m.title };
     document.getElementById('screen-title').textContent = titleOf(route);
     jump.value = route.screen;
     history.replaceState(null, '', `${location.search}#/${route.screen}`);
     panel.update(route);
+  } else if (m.type === 'errors') {
+    setStatus('error', 'A version stopped with an error');
+    showErrors({ ok: false, message: 'A version stopped with an error, so the screen under it is shown instead.', errors: m.errors || [] });
   } else if (m.type === 'captured' || m.type === 'inspected') {
     pendingShots.get(m.id)?.(m);
   } else if (m.type === 'wheel') {

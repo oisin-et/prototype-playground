@@ -11,9 +11,11 @@
 | Vite | `npm run dev -- --port {port} --host {host} --strictPort` |
 | Next.js | `npx next dev -p {port} -H {host}` |
 | Create React App | `BROWSER=none PORT={port} HOST={host} npm start` |
-| Static files | `python3 -m http.server {port} --bind {host}` |
+| Static files | `python3 -m http.server {port} --bind {host}`, with `"hot": false` |
 
-The dev server reloads files itself. When the list of versions changes, the playground loads the app's frame again so the new registry is read.
+A dev server reloads changed files itself. When the list of versions changes, the playground loads the app's frame again so the new registry is read. A server that only serves files, with no reloading of its own, needs `"hot": false` in `app`: then every reload loads the app's frame again, and the app starts from the beginning on the screen it was on. Nothing compiles the versions there, so each reload checks their files itself: JSON must parse, and JavaScript must pass `node --check` when Node is installed.
+
+Each version is loaded on its own. One that doesn't load is left out, the app and the other versions still run, and the playground's bar names it. A builder that throws is passed over the same way.
 
 ## React
 

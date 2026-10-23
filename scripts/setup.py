@@ -4,6 +4,7 @@ date with this kit.
 
     python3 setup.py <project> --adapter flutter|web [--name "My App"] [--data DIR]
                      [--port 8820] [--app-port 8821] [--command "npm run dev -- --port {port} --host {host} --strictPort"]
+                     [--no-hot]
     python3 setup.py <project> --update
 
 A new setup copies the kit into <project>/playground/ and the adapter's
@@ -120,6 +121,7 @@ def main():
     ap.add_argument("--port", type=int, default=8820)
     ap.add_argument("--app-port", type=int, default=8821)
     ap.add_argument("--command", help="web: the command that starts the app's dev server, with {port} and {host}")
+    ap.add_argument("--no-hot", action="store_true", help="web: the server doesn't reload changed files itself (static files), so every reload loads the app's frame again")
     ap.add_argument("--update", action="store_true", help="copy the kit and the bridge again, keeping the project's own files")
     args = ap.parse_args()
     project = args.project.expanduser().resolve()
@@ -161,6 +163,8 @@ def main():
     else:
         config["app"].update({"command": args.command or "npm run dev -- --port {port} --host {host} --strictPort",
                               "host": "127.0.0.1", "path": "/"})
+        if args.no_hot:
+            config["app"]["hot"] = False
 
     install_kit(project)
     config_path.write_text(json.dumps(config, indent=2) + "\n")

@@ -38,6 +38,7 @@ Do it in this order, and tell the person what you're doing.
    python3 <this skill>/scripts/setup.py . --adapter flutter --name "App name"
    python3 <this skill>/scripts/setup.py . --adapter web --name "App name" --command "npm run dev -- --port {port} --host {host} --strictPort"
    ```
+   - `--no-hot`, for a web app served as plain files with no reloading of its own: every reload then loads the app's frame again.
    - `--data` puts the explorations elsewhere. They must be inside the app's source so it compiles them; the defaults are `lib/playground` and `src/playground`.
    - `--port` and `--app-port` change the ports (8820 and 8821 by default). Pick free ones if another playground runs on this computer.
    - Setup writes `playground/` (the kit, `playground.json`, `RULES.md`, `templates/`), the data folder (an empty `index.json`, `picks.json` and `screens.json`, the registry, and the bridge), and the `.gitignore` lines. It never touches the app's own code.

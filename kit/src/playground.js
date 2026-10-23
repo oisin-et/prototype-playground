@@ -522,7 +522,7 @@ export const mountPlayground = (hooks) => {
     const { log } = tab();
     logEl.innerHTML = log.length
       ? log.map(message).join('')
-      : `<li class="pg-msg note">Describe an idea for the screen on show. Claude makes it a new version, in that screen's folder, and the app reloads to try it as it's written. Follow-ups change that version. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in lib/playground/.</li>`;
+      : `<li class="pg-msg note">Describe an idea for the screen on show. Claude makes it a new version, in that screen's folder, and the app reloads to try it as it's written. Follow-ups change that version. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
     logEl.scrollTop = logEl.scrollHeight;
   };
   // A new message is added on its own and rises in; the log scrolls to it. It
