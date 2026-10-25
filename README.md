@@ -10,10 +10,12 @@ The skill comes with no project. Open your project, ask for a playground, and th
 ## Install
 
 ```sh
-git clone https://github.com/oisin-et/prototype-playground.git ~/.claude/skills/prototype-playground
+git clone https://github.com/oisinomuiridesign-hub/prototype-playground.git ~/.claude/skills/prototype-playground
 ```
 
 To update it later: `git -C ~/.claude/skills/prototype-playground pull`.
+
+Install it as a git clone, as above. The playground checks the skill's commit to know when a project's copy is out of date, so an install without git history can't offer updates.
 
 ## Use it
 
