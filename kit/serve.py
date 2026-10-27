@@ -12,7 +12,7 @@ Part of the prototype-playground kit: the same in every project. Everything
 about this project is in playground/playground.json (and its rules for
 Claude in playground/RULES.md); don't change this file for one project.
 
-It's `python3 -m http.server` over the project with three additions:
+It's `python3 -m http.server` over the project with five additions:
 
 - The app. It runs the app on --app-port ("app.port" in playground.json) and
   keeps it, so the playground page can show it in a frame and reload it when
@@ -40,6 +40,18 @@ It's `python3 -m http.server` over the project with three additions:
   chat tabs can have one run going, up to MAX_RUNS at once, and each is stopped
   on its own. PLAYGROUND_CLAUDE names another `claude` to run (for testing).
 
+- Commit (the header's button, GET and POST /playground/commit). It shows the
+  picks and the branch, then has Claude Code move each picked version into the
+  app's own files (it can write anywhere but playground/, the explorations and
+  .git), reloads and checks the app, sets each pick back to "default", and
+  commits the files the move changed on this computer. Nothing is pushed. See
+  the Commit class.
+
+- Stars and deletes (POST /playground/explorations), from the star and bin
+  buttons in Explorations. A star is kept in the exploration's versions.json.
+  A delete moves the exploration's or version's folder to playground/trash/
+  (git ignores it; cleared after 14 days), and the toast's Undo puts it back.
+
 Screenshots sent with a prompt are saved to playground/attachments/ (git
 ignores it; files older than 14 days are cleared when the server starts), and
 Claude is told to read them. Only PNG, JPEG, WebP and GIF, up to 6 a message
@@ -61,7 +73,9 @@ import argparse
 import base64
 import binascii
 import collections
+import contextlib
 import errno
+import hashlib
 import json
 import os
 import re
@@ -80,10 +94,11 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from pglib import ADAPTER, CONFIG, DATA, HERE, PICKS, REGISTRY, ROOT, VERSION_FILE, known_versions, rel, write_json, write_registry
+from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, known_versions, playground_lock, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
+TRASH = HERE / "trash"  # what was deleted from Explorations, for 14 days
 IMAGES = {  # type → (extension, how the file starts)
     "image/png": ("png", (b"\x89PNG\r\n\x1a\n",)),
     "image/jpeg": ("jpg", (b"\xff\xd8\xff",)),
@@ -156,7 +171,8 @@ Rules:
   in this conversation, in place. Never change a version you didn't make in this
   conversation unless the person asks for exactly that.
 - Write what the version changes in its "note" in versions.json, in one or two
-  plain sentences. Keep the JSON style: short arrays and objects on one line.
+  plain sentences. Leave "starred" as it is: the person stars versions and
+  explorations, and deletes them, in the Explorations panel. Never delete one yourself. Keep the JSON style: short arrays and objects on one line.
 - Other chats may be working in {DATA_REL}/ at the same time as you, in their own
   versions. Change versions.json and index.json only with the Edit tool (never Write
   them whole), so you don't wipe out a version another chat has just added, and
@@ -621,21 +637,7 @@ class CommandApp:
         """For a server that only serves files ("hot": false), nothing reports a
         broken version, so this checks the versions' files: JSON must parse,
         and JavaScript must pass `node --check` when Node is on this computer."""
-        errors = []
-        node = shutil.which("node")
-        for f in sorted(DATA.rglob("*")):
-            if not f.is_file() or f.name == REGISTRY.name:
-                continue
-            if f.suffix == ".json":
-                try:
-                    json.loads(f.read_text())
-                except ValueError as e:
-                    errors.append(f"{rel(f)}: {e}")
-            elif f.suffix in (".js", ".mjs") and node:
-                r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
-                if r.returncode:
-                    errors += [f"{rel(f)}:"] + [l for l in r.stderr.strip().splitlines() if l.strip() and not l.lstrip().startswith(("at ", "Node.js"))][:6]
-        return errors[:40]
+        return check_paths(rel(f) for f in sorted(DATA.rglob("*")) if f.is_file() and f.name != REGISTRY.name)
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
@@ -644,6 +646,27 @@ class CommandApp:
                 self.proc.wait(5)
             except (OSError, subprocess.TimeoutExpired):
                 pass
+
+
+def check_paths(paths):
+    """Errors in these files (paths from the project's top): JSON must parse, and
+    JavaScript must pass `node --check` when Node is on this computer."""
+    errors = []
+    node = shutil.which("node")
+    for p in paths:
+        f = ROOT / p
+        if not f.is_file():
+            continue
+        if f.suffix == ".json":
+            try:
+                json.loads(f.read_text())
+            except ValueError as e:
+                errors.append(f"{p}: {e}")
+        elif f.suffix in (".js", ".mjs") and node:
+            r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+            if r.returncode:
+                errors += [f"{p}:"] + [l for l in r.stderr.strip().splitlines() if l.strip() and not l.lstrip().startswith(("at ", "Node.js"))][:6]
+    return errors[:40]
 
 
 def make_app(port):
@@ -846,8 +869,379 @@ class Chat:
                 emit({"type": "error", "message": err[-1] if err else f"Claude stopped (exit {proc.returncode})."})
 
 
+MOVE_RULES = """You are moving picked versions of the playground into the app, for good. The person
+pressed Commit in the playground; this is the "Move a picked version into the app" step of
+playground/README.md, done for them.
+
+- Read playground/README.md, playground/RULES.md and the project's CLAUDE.md (if it has one)
+  first, and follow the project's conventions: a file that a script writes is changed
+  through its script, and so on.
+- For each pick, read its version folder and move what it changes into the app's own
+  files, so the app on its own (every pick back to main) looks and works as it did with
+  the picks running. The app's own file for a screen is the one <data>/screens.json names.
+  Where two picks change the same screen, the later one is laid over the earlier one.
+- Don't change the version folders, index.json, picks.json, versions.json or anything under
+  playground/. Don't run git: the playground commits when you're done.
+- When the files are moved, run python3 playground/reload.py and fix any errors it prints.
+- Finish with one short paragraph: what moved where.""".replace("<data>", DATA_REL)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+
+def read_json_file(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def changed_files():
+    """{path: status} of what git sees changed, apart from the explorations
+    (files git doesn't know under <data>/) and the chat's attachments and notes."""
+    entries = git("status", "--porcelain=v1", "-z", "--untracked-files=all").stdout.split("\0")
+    out, i = {}, 0
+    while i < len(entries):
+        e = entries[i]
+        i += 1
+        if len(e) < 4:
+            continue
+        status, path = e[:2], e[3:]
+        if "R" in status or "C" in status:
+            i += 1  # a rename names its old path next
+        private = path.startswith(("playground/attachments/", "playground/notes/")) or \
+            (status == "??" and path.startswith(DATA_REL + "/"))
+        if not private:
+            out[path] = "A" if status == "??" or "A" in status else "D" if "D" in status else "M"
+    return out
+
+
+def fingerprint(paths):
+    """{path: a hash of its contents, or None when it's gone}, to tell which files a move changed."""
+    out = {}
+    for p in paths:
+        f = ROOT / p
+        out[p] = hashlib.sha1(f.read_bytes()).hexdigest() if f.is_file() else None
+    return out
+
+
+class Commit:
+    """The header's Commit button. Each picked version is moved into the app's own
+    files (Claude Code does it, as playground/README.md describes), its pick goes
+    back to main, and the change is committed on this computer, on the branch the
+    project is on. Nothing is pushed. One commit at a time.
+
+    Claude can write anywhere in the project for this, apart from playground/ (the
+    kit, and its rules), the explorations and .git, and it runs only reload.py and
+    what playground.json's "commit": {"allow": [...]} adds (a project whose files
+    are written by scripts lets it run them). Only the files the move changed are
+    committed, unless the person ticks "Also commit the other changes"."""
+
+    def __init__(self, chat):
+        self.chat = chat
+        self.lock = threading.Lock()
+        self.proc = None
+
+    def picks(self):
+        order = (read_json_file(INDEX) or {}).get("playgrounds", [])
+        out = []
+        for pg, version in (read_json_file(PICKS) or {}).items():
+            if version == "default" or pg not in order:
+                continue
+            info = read_json_file(DATA / pg / "versions.json") or {}
+            v = next((x for x in info.get("versions", []) if x.get("id") == version), None)
+            if v:
+                out.append({"playground": pg, "version": version, "title": info.get("title") or pg,
+                            "name": v.get("name") or version, "note": v.get("note") or ""})
+        return sorted(out, key=lambda p: order.index(p["playground"]))
+
+    def plan(self):
+        inside = git("rev-parse", "--is-inside-work-tree")
+        if inside.returncode or inside.stdout.strip() != "true":
+            return {"git": False, "problems": ["The project isn't a git repository, so there's nothing to commit to."], "picks": [], "other": {}}
+        problems = []
+        branch = git("branch", "--show-current").stdout.strip()
+        if not branch:
+            problems.append("The project isn't on a branch (a detached HEAD). Check out a branch first.")
+        gitdir = Path(git("rev-parse", "--absolute-git-dir").stdout.strip())
+        if any((gitdir / f).exists() for f in ("MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD")):
+            problems.append("Git is in the middle of a merge or rebase. Finish it in a terminal first.")
+        picks = self.picks()
+        if picks and not (self.chat and self.chat.ready()):
+            problems.append("Moving a pick into the app needs Claude Code, and chat is off or not installed here.")
+        if self.chat and self.chat.runs:
+            problems.append("A chat is still working. Wait for it, or stop it, so it doesn't change files mid-commit.")
+        return {"git": True, "branch": branch, "picks": picks, "other": changed_files(), "problems": problems}
+
+    def stop(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+
+    def run(self, body, emit):
+        if not self.lock.acquire(blocking=False):
+            emit({"type": "error", "message": "A commit is already running."})
+            return
+        try:
+            self._run(body, emit)
+        finally:
+            self.proc = None
+            self.lock.release()
+
+    def _run(self, body, emit):
+        plan = self.plan()
+        if plan["problems"]:
+            emit({"type": "error", "message": plan["problems"][0]})
+            return
+        picks, other = plan["picks"], bool(body.get("other"))
+        if not picks and not (other and plan["other"]):
+            emit({"type": "error", "message": "Nothing to commit: no version is picked, and no other changes are ticked."})
+            return
+        before = fingerprint(plan["other"])
+
+        if picks:
+            emit({"type": "step", "text": f"Claude is moving {len(picks)} pick{'' if len(picks) == 1 else 's'} into the app."})
+            if not self.move(picks, emit):
+                return
+            result = Handler.app.reload()
+            moved = [p for p, h in fingerprint(changed_files()).items() if before.get(p, "new") != h]
+            errors = list(result.get("errors") or []) + check_paths(moved)
+            if errors:
+                emit({"type": "error", "message": "After the move the app has errors, so nothing was committed. The moved files are left as they are. "
+                      + " ".join(errors[:4])})
+                return
+            emit({"type": "step", "text": "The app reloads without errors."})
+            # Each pick goes back to main, which now shows it, and its version is
+            # marked as merged. These are the playground's files: never committed.
+            picked = read_json_file(PICKS) or {}
+            for p in picks:
+                picked[p["playground"]] = "default"
+                vfile = DATA / p["playground"] / "versions.json"
+                info = read_json_file(vfile) or {}
+                for v in info.get("versions", []):
+                    if v.get("id") == p["version"]:
+                        v["merged"] = time.strftime("%Y-%m-%d")
+                write_json(vfile, info)
+            write_json(PICKS, dict(sorted(picked.items())))
+            write_registry()
+
+        after = fingerprint(changed_files())
+        files = sorted(after) if other else sorted(p for p, h in after.items() if before.get(p, "new") != h)
+        if not files:
+            emit({"type": "error", "message": "The move didn't change any of the app's files, so there's nothing to commit."})
+            return
+        whole = [p for p in files if p in before and not other]
+        if whole:
+            emit({"type": "step", "text": f"{len(whole)} file{'' if len(whole) == 1 else 's'} had changes nobody committed, and they go in whole: " + ", ".join(whole[:4])})
+        message = ("Playground: " + ", ".join(f"{p['title']} › {p['name']}" for p in picks)) if picks else "Playground: other changes"
+        note = str(body.get("note") or "").strip()
+        if note:
+            message += "\n\n" + note
+        if picks:
+            message += "\n\n" + "\n".join(f"- {p['playground']} {p['version']}" + (f": {p['note']}" if p["note"] else "") for p in picks)
+        emit({"type": "step", "text": f"Committing {len(files)} file{'' if len(files) == 1 else 's'} to {plan['branch']}."})
+        for step in (("add", "-A", "--", *files), ("commit", "-m", message, "--", *files)):
+            r = git(*step)
+            if r.returncode:
+                out = (r.stderr or r.stdout).strip().splitlines()
+                emit({"type": "error", "message": out[-1] if out else f"git {step[0]} failed."})
+                return
+        sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+        emit({"type": "done", "branch": plan["branch"], "commits": [{"sha": sha, "message": message.splitlines()[0]}], "files": files})
+
+    def move(self, picks, emit):
+        prompt = "Move these picks into the app, in this order:\n" + "\n".join(
+            f"{n}. {p['title']} › {p['name']}: version {p['version']} of {p['playground']} "
+            f"(its folder is {DATA_REL}/{p['playground']}/{p['version']}/)" + (f". Its note: {p['note']}" if p["note"] else "")
+            for n, p in enumerate(picks, 1))
+        own = HERE / "RULES.md"
+        rules = MOVE_RULES + ("\n\nThis project's own rules for versions (playground/RULES.md):\n\n" + own.read_text().strip() if own.exists() else "")
+        cmd = [
+            self.chat.claude, "-p", prompt,
+            "--output-format", "stream-json", "--verbose",
+            "--setting-sources", "project",
+            "--strict-mcp-config",
+            "--permission-mode", "dontAsk",
+            "--permission-prompts", "none",
+            "--tools", "Read,Glob,Grep,Edit,Write,Bash",
+            "--allowedTools", "Read(./**)", "Edit(./**)", "Write(./**)", "Bash(python3 playground/reload.py:*)",
+            *[str(a) for a in CONFIG.get("commit", {}).get("allow", [])],
+            "--disallowedTools", "Edit(playground/**)", "Write(playground/**)", "Edit(.git/**)", "Write(.git/**)",
+            f"Edit({DATA_REL}/**)", f"Write({DATA_REL}/**)",
+            "--append-system-prompt", rules,
+        ]
+        if self.chat.model:
+            cmd += ["--model", self.chat.model]
+        env = dict(os.environ, PLAYGROUND_PORT=str(Handler.port))  # for reload.py
+        flutter = find_flutter() if ADAPTER == "flutter" else None
+        if flutter:
+            env["PATH"] = f"{Path(flutter).parent}:{env.get('PATH', '')}"
+        errors = tempfile.TemporaryFile("w+")
+        try:
+            self.proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=errors,
+                                         stdin=subprocess.DEVNULL, text=True, bufsize=1)
+        except OSError as e:
+            emit({"type": "error", "message": f"Couldn't start Claude Code ({e})."})
+            return False
+        ok, summary = False, ""
+        for line in self.proc.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if event.get("type") == "assistant":
+                for part in event.get("message", {}).get("content", []):
+                    if part.get("type") == "tool_use" and part.get("name") in ("Edit", "Write", "MultiEdit", "Bash"):
+                        emit({"type": "step", "text": label(part.get("name"), part.get("input") or {})})
+            elif event.get("type") == "result":
+                ok, summary = not event.get("is_error"), event.get("result") or ""
+        self.proc.wait()
+        errors.seek(0)
+        err = errors.read().strip().splitlines()
+        errors.close()
+        if not ok:
+            emit({"type": "error", "message": "Claude couldn't finish the move, so nothing was committed. Any files it changed are left as they are"
+                  + (f": {err[-1]}" if err else ".")})
+            return False
+        if summary.strip():
+            emit({"type": "step", "text": summary.strip()})
+        return True
+
+
+def clear_old_trash(days=14):
+    """Deletes for good what was deleted from Explorations more than `days` ago."""
+    cutoff = time.time() - days * 86400
+    for d in TRASH.glob("*") if TRASH.is_dir() else []:
+        try:
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d)
+        except OSError:
+            pass
+
+
+def tidy(pg, change):
+    """Explorations' stars and deletes (POST /playground/explorations). A star is
+    kept in the exploration's versions.json: "starred": true at the top for the
+    exploration, on a version's entry for the version. A delete moves the
+    exploration's folder, or the version's, to playground/trash/<stamp>/ with a
+    deleted.json saying where it was, so "restore" can put it back. Returns
+    (status, reply)."""
+    with playground_lock():
+        order = (read_json_file(INDEX) or {}).get("playgrounds", [])
+        if pg not in order:
+            return 404, {"error": f"There's no exploration {pg} in {DATA_REL}/index.json."}
+        meta_path = DATA / pg / "versions.json"
+        meta = read_json_file(meta_path)
+        if not isinstance(meta, dict):
+            return 404, {"error": f"{DATA_REL}/{pg}/versions.json can't be read."}
+        return change(order, meta_path, meta)
+
+
+def star(pg, version, on):
+    def do(order, meta_path, meta):
+        if version is None:
+            target = meta
+        else:
+            target = next((v for v in meta.get("versions", []) if v.get("id") == version and version != "default"), None)
+            if target is None:
+                return 404, {"error": f"{pg} has no version {version!r} to star."}
+        if on:
+            target["starred"] = True
+        else:
+            target.pop("starred", None)
+        write_json(meta_path, meta)
+        return 200, {"starred": on}
+    return tidy(pg, do)
+
+
+def delete(pg, version):
+    def do(order, meta_path, meta):
+        picks = read_json_file(PICKS) or {}
+        stamp = unique_stamp()
+        record = {"kind": "version" if version else "exploration", "playground": pg, "pick": picks.get(pg)}
+        if version is None:
+            src = DATA / pg
+            record["position"] = order.index(pg)
+            write_json(INDEX, {**(read_json_file(INDEX) or {}), "playgrounds": [x for x in order if x != pg]})
+            picks.pop(pg, None)
+        else:
+            versions = meta.get("versions", [])
+            i = next((n for n, v in enumerate(versions) if v.get("id") == version), None)
+            if i is None or version == "default":
+                return 404, {"error": f"{pg} has no version {version!r} to delete."}
+            entry = versions.pop(i)
+            # Versions copied from it now come from what it came from.
+            record.update(version=version, position=i, entry=entry, children=[])
+            for v in versions:
+                if v.get("from") == version:
+                    record["children"].append(v["id"])
+                    if entry.get("from"):
+                        v["from"] = entry["from"]
+                    else:
+                        v.pop("from", None)
+            write_json(meta_path, meta)
+            if picks.get(pg) == version:
+                picks.pop(pg)
+            src = DATA / pg / version
+        write_json(PICKS, dict(sorted(picks.items())))
+        write_registry()  # before the files go, so the app never imports a missing one
+        dest = TRASH / stamp / ("folder" if src.is_dir() else "empty")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.move(str(src), str(dest))
+            with contextlib.suppress(OSError):
+                src.parent.rmdir()  # the screen's folder, when it was its last exploration
+        write_json(TRASH / stamp / "deleted.json", record)
+        return 200, {"picks": picks, "trash": stamp}
+    return tidy(pg, do) if version is None or version != "default" else (400, {"error": "main is the app itself: it can't be deleted."})
+
+
+def restore(stamp):
+    """Puts back what a delete moved to the trash, where it was."""
+    if not re.fullmatch(r"[\w-]+", str(stamp)):
+        return 400, {"error": "That isn't something in the trash."}
+    where = TRASH / stamp
+    record = read_json_file(where / "deleted.json")
+    if not isinstance(record, dict):
+        return 404, {"error": "It isn't in the trash any more."}
+    pg, version = record["playground"], record.get("version")
+    with playground_lock():
+        index = read_json_file(INDEX) or {"playgrounds": []}
+        order = index.get("playgrounds", [])
+        picks = read_json_file(PICKS) or {}
+        dest = DATA / pg / version if version else DATA / pg
+        if record["kind"] == "exploration" and (dest.exists() or pg in order):
+            return 409, {"error": f"{DATA_REL}/{pg}/ is there again, so it can't be put back."}
+        if record["kind"] == "version":
+            meta_path = DATA / pg / "versions.json"
+            meta = read_json_file(meta_path)
+            if pg not in order or not isinstance(meta, dict):
+                return 409, {"error": f"Its exploration, {pg}, isn't there any more."}
+            versions = meta.setdefault("versions", [])
+            if dest.exists() or any(v.get("id") == version for v in versions):
+                return 409, {"error": f"{pg} has a {version} again, so it can't be put back."}
+            versions.insert(min(record["position"], len(versions)), record["entry"])
+            for v in versions:
+                if v.get("id") in record.get("children", []):
+                    v["from"] = version
+            write_json(meta_path, meta)
+        else:
+            order.insert(min(record["position"], len(order)), pg)
+            write_json(INDEX, {**index, "playgrounds": order})
+        if (where / "folder").is_dir():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(where / "folder"), str(dest))
+        if record.get("pick") and picks.get(pg, "default") == "default":
+            picks[pg] = record["pick"]
+            write_json(PICKS, dict(sorted(picks.items())))
+        write_registry()
+        shutil.rmtree(where, ignore_errors=True)
+        return 200, {"picks": picks}
+
+
 class Handler(SimpleHTTPRequestHandler):
     chat = None  # a Chat, or None with --no-chat
+    commit = None  # the Commit button's Commit
     app = None   # the FlutterApp or CommandApp
     port = 8820
 
@@ -885,6 +1279,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/playground/app":
             self.json(200, self.app.status())
             return
+        if path == "/playground/commit":
+            self.json(200, self.commit.plan())
+            return
         super().do_GET()
 
     def read_json(self, limit=64 * 1024 * 1024):
@@ -921,6 +1318,16 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 body = {}
             self.json(200, self.app.reload(restart=bool(isinstance(body, dict) and body.get("restart"))))
+        elif path == "/playground/explorations":
+            if not self.from_panel(("explorations",)):
+                self.send_error(403)
+            else:
+                self.tidy_explorations()
+        elif path == "/playground/commit":
+            if not self.from_panel(("commit",)):
+                self.send_error(403)
+            else:
+                self.run_commit()
         elif path in ("/playground/chat", "/playground/chat/stop"):
             if self.chat is None:
                 self.send_error(404, "Chat is off: start the server without --no-chat")
@@ -954,6 +1361,49 @@ class Handler(SimpleHTTPRequestHandler):
         self.log_message("Saved playground picks: %s", ", ".join(f"{pg} {v}" for pg, v in sorted(picks.items())) or "none")
         self.send_response(204)
         self.end_headers()
+
+    def tidy_explorations(self):
+        """Explorations' star and delete buttons, and the toast's Undo:
+        {"action": "star", "playground", "version"?, "starred"},
+        {"action": "delete", "playground", "version"?} or {"action": "restore", "trash"}."""
+        try:
+            body = self.read_json()
+            assert isinstance(body, dict)
+            action, pg, version = body.get("action"), body.get("playground"), body.get("version")
+            assert action in ("star", "delete", "restore")
+            assert action == "restore" or (isinstance(pg, str) and (version is None or isinstance(version, str)))
+        except (ValueError, AssertionError):
+            self.send_error(400)
+            return
+        if action != "star" and self.commit.lock.locked():
+            self.json(409, {"error": "A commit is running. Wait for it to finish."})
+            return
+        status, reply = (star(pg, version, bool(body.get("starred"))) if action == "star"
+                         else delete(pg, version) if action == "delete" else restore(body.get("trash")))
+        if status == 200 and action != "star":
+            self.log_message("%s %s", "Deleted" if action == "delete" else "Restored", f"{pg} {version or ''}".strip() if pg else body.get("trash"))
+        self.json(status, reply)
+
+    def run_commit(self):
+        try:
+            body = self.read_json()
+            assert isinstance(body, dict)
+        except (ValueError, AssertionError):
+            self.send_error(400)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.end_headers()
+        self.log_message("Commit: %s", ", ".join(f"{p['playground']} {p['version']}" for p in self.commit.picks()) or "other changes")
+
+        def emit(event):
+            try:
+                self.wfile.write((json.dumps(event) + "\n").encode())
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page went away: the commit carries on and finishes
+
+        self.commit.run(body, emit)
 
     def run_chat(self):
         try:
@@ -997,7 +1447,9 @@ def main():
     url = f"http://localhost:{args.port}"
     Handler.port = args.port
     Handler.chat = None if args.no_chat else Chat(args.model)
+    Handler.commit = Commit(Handler.chat)
     clear_old_attachments()
+    clear_old_trash()
     try:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), partial(Handler, directory=str(ROOT)))
     except OSError as e:
@@ -1032,6 +1484,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        Handler.commit.stop()
         Handler.app.stop()
 
 

@@ -15,8 +15,9 @@ version) and, in <data>/, an empty index.json, picks.json and screens.json.
 It never touches the app's own code: hooking the app up (HOOK.md in the
 adapter's folder) and listing its screens are left to do.
 
---update copies the kit and the bridge again and leaves everything
-particular to the project as it is.
+--update copies the kit and the bridge again, adds any of the kit's
+.gitignore lines the project lacks, and leaves everything particular to the
+project as it is.
 
 Standard library only.
 """
@@ -47,7 +48,7 @@ what a version's builder returns, what not to touch. Keep it short.
 
 -
 """
-GITIGNORE = ["/playground/attachments/", "/playground/notes/", "/playground/__pycache__/"]
+GITIGNORE = ["/playground/attachments/", "/playground/notes/", "/playground/trash/", "/playground/__pycache__/"]
 
 
 def kit_version():
@@ -102,6 +103,17 @@ def install_templates(project, adapter):
         write_new(project / "playground" / "templates" / t.name, t.read_text())
 
 
+def ignore_kit_files(project, data_rel):
+    """Adds the playground's screenshots, notes, trash and lock to the project's
+    .gitignore, where they aren't there already."""
+    ignore = project / ".gitignore"
+    have = ignore.read_text().splitlines() if ignore.is_file() else []
+    add = [l for l in GITIGNORE + [f"/{data_rel}/.lock"] if l not in have]
+    if add:
+        with ignore.open("a") as f:
+            f.write(("\n" if have and have[-1].strip() else "") + "# The playground's screenshots, notes, trash and lock (prototype-playground kit)\n" + "\n".join(add) + "\n")
+
+
 def flutter_package(project):
     try:
         m = re.search(r"^name:\s*([\w]+)", (project / "pubspec.yaml").read_text(), re.M)
@@ -135,6 +147,7 @@ def main():
         install_kit(project)
         install_bridge(project, adapter, data)
         install_templates(project, adapter)
+        ignore_kit_files(project, config["data"])
         subprocess.run([sys.executable, "-c", "import pglib; pglib.write_registry()"], cwd=project / "playground", check=True)
         print(f"Updated the playground in {project} to kit {kit_version()}. Its config, rules, templates and explorations are as they were.")
         return
@@ -183,12 +196,7 @@ def main():
     install_bridge(project, adapter, data)
     subprocess.run([sys.executable, "-c", "import pglib; pglib.write_registry()"], cwd=project / "playground", check=True)
 
-    ignore = project / ".gitignore"
-    have = ignore.read_text().splitlines() if ignore.is_file() else []
-    add = [l for l in GITIGNORE + [f"/{data_rel}/.lock"] if l not in have]
-    if add:
-        with ignore.open("a") as f:
-            f.write(("\n" if have and have[-1].strip() else "") + "# The playground's screenshots, notes and lock (prototype-playground kit)\n" + "\n".join(add) + "\n")
+    ignore_kit_files(project, data_rel)
 
     print(f"Set up the playground in {project} (kit {kit_version()}, {adapter} adapter, explorations in {data_rel}/).")
     print("Still to do: list the app's screens in", f"{data_rel}/screens.json,", "hook the app up (adapters/" + adapter + "/HOOK.md),")

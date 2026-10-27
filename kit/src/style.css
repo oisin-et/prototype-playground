@@ -52,7 +52,7 @@ body {
 /* ---- Around the screen: header, bar and panels. Not part of the design. ---- */
 
 /* Shared: a raised tile button, which brightens on hover and presses in. */
-.tile-btn, .toolbar button, .toolbar select, .subbar button, .pg-panel button, .pg-popover button {
+.tile-btn, .toolbar button, .toolbar select, .subbar button, .pg-panel button, .pg-popover button, .pg-modal button, #toast button {
   font: inherit; font-size: 13px; color: var(--page-text);
   background: var(--tile); border: 0; border-radius: var(--tile-radius);
   box-shadow: var(--tile-rim);
@@ -62,16 +62,16 @@ body {
 }
 @media (hover: hover) {
   .toolbar button:not(:disabled):hover, .toolbar select:hover,
-  .subbar button:not(:disabled):hover, .pg-panel button:not(:disabled):hover { filter: brightness(1.12); }
+  .subbar button:not(:disabled):hover, .pg-panel button:not(:disabled):hover, .pg-modal button:not(:disabled):hover { filter: brightness(1.12); }
 }
-.toolbar button:not(:disabled):active, .subbar button:not(:disabled):active, .pg-panel button:not(:disabled):active {
+.toolbar button:not(:disabled):active, .subbar button:not(:disabled):active, .pg-panel button:not(:disabled):active, .pg-modal button:not(:disabled):active {
   filter: brightness(0.85); transform: scale(0.96); transition-duration: 0s;
 }
-.toolbar :focus-visible, .subbar :focus-visible, .pg-panel :focus-visible, .pg-popover :focus-visible, .pg-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toolbar :focus-visible, .subbar :focus-visible, .pg-panel :focus-visible, .pg-popover :focus-visible, .pg-modal :focus-visible, .pg-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The primary action: solid blue. */
-.pg-panel .pg-use, .pg-popover .pg-use { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.5); }
-@media (hover: hover) { .pg-panel .pg-use:not(:disabled):hover { filter: brightness(0.92); } }
-.pg-panel button:disabled { opacity: 0.4; cursor: default; }
+.pg-panel .pg-use, .pg-popover .pg-use, .pg-modal .pg-use { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.5); }
+@media (hover: hover) { .pg-panel .pg-use:not(:disabled):hover, .pg-modal .pg-use:not(:disabled):hover { filter: brightness(0.92); } }
+.pg-panel button:disabled, .pg-modal button:disabled { opacity: 0.4; cursor: default; }
 
 /* The header: what every prototype run by this player has. One line; its
    height never changes, so the screen under it never moves. The title always
@@ -600,3 +600,95 @@ body.pg-alt .pg-shield, body.pg-aiming .pg-shield, body.pg-space .pg-shield { di
 /* Show the page on show: the crosshair beside Explorations' minimise button. */
 .pg-panel .pg-head .pg-locate { width: 28px; min-height: 28px; padding: 0; display: grid; place-items: center; color: var(--page-muted); }
 .pg-panel .pg-locate svg { display: block; }
+
+/* ---- Commit to main: the header's Commit button and its dialog (playground.js) ---- */
+/* The button sits at the top right of the header. Blue once a pick is ready for main, with how many. */
+.toolbar .pg-commit-btn { display: inline-flex; align-items: center; gap: 8px; margin-left: 4px; }
+.toolbar .pg-commit-btn.ready { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.5); }
+@media (hover: hover) { .toolbar .pg-commit-btn.ready:hover { filter: brightness(0.92); } }
+.pg-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; background: var(--accent-ink); color: var(--accent); }
+.pg-count[hidden] { display: none; }
+
+/* The dialog: a frosted card over the dimmed page, rising in on the spring. */
+.pg-modal { padding: 0; border: 0; background: none; color: var(--page-text); width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: visible; }
+.pg-modal::backdrop { background: rgba(8, 9, 11, 0.55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.pg-modal[open] { animation: pg-rise 560ms var(--spring) both; }
+.pg-modal-card {
+  position: relative; display: flex; flex-direction: column; max-height: calc(100vh - 48px);
+  border-radius: var(--panel-radius); background: var(--frame); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+}
+.pg-modal .pg-min { width: 28px; min-height: 28px; padding: 0; font-size: 18px; line-height: 1; color: var(--page-muted); }
+.pg-modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 18px 4px; font-size: 13px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+.pg-modal-body p { margin: 0 0 10px; }
+.pg-modal-body h4 { margin: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--page-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.pg-modal-body code { font-size: 12px; }
+.pg-modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; flex: none; }
+.pg-cbranch { color: var(--page-muted); }
+.pg-cbranch b { color: var(--page-text); }
+.pg-cabout, .pg-cprivate { color: var(--page-muted); }
+.pg-cnotice { padding: 8px 12px; border-radius: var(--well-radius); background: rgba(240, 180, 76, 0.08); }
+.pg-cproblem { padding: 8px 12px; border-radius: var(--well-radius); background: rgba(255, 92, 92, 0.1); color: #ff9b9b; }
+.pg-cok { color: var(--accent); }
+.pg-cempty, .pg-cwait { padding: 14px; border-radius: var(--well-radius); background: var(--well); color: var(--page-muted); }
+.pg-ccards { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.pg-ccard { min-width: 0; padding: 12px; border-radius: var(--well-radius); background: var(--well); }
+.pg-ctitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pg-ctitle b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pg-cnum { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; background: var(--accent); color: var(--accent-ink); }
+.pg-ctrail { margin: 4px 0 0 28px !important; font-size: 12px; color: var(--page-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-cnote { margin: 6px 0 0 28px !important; }
+.pg-cfiles { list-style: none; margin: 8px 0 0 26px; padding: 0; display: grid; gap: 3px; max-height: 160px; overflow-y: auto; }
+.pg-cfiles li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pg-cfiles code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--page-text); }
+.pg-st { flex: none; width: 16px; text-align: center; font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pg-st.add { color: #5fd48a; }
+.pg-st.mod { color: var(--amber); }
+.pg-st.del { color: #ff9b9b; }
+.pg-cother { margin: 0 0 12px; }
+.pg-check { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; cursor: pointer; }
+.pg-check input { accent-color: var(--accent); margin: 0; }
+.pg-cother .pg-check { display: inline-flex; margin: 0 8px 0 0; }
+.pg-modal .pg-link { min-height: 24px; padding: 0 8px; font-size: 12px; background: none; box-shadow: none; color: var(--accent); }
+.pg-cnote-label { display: block; margin: 0 0 10px; }
+.pg-cnote-label small { color: var(--page-muted); }
+.pg-cnote-label textarea { display: block; width: 100%; margin-top: 6px; padding: 8px 10px; resize: vertical; font: inherit; color: var(--page-text); background: var(--well); border: 0; border-radius: var(--well-radius); box-shadow: inset 0 0 0 1px var(--frame-edge); }
+.pg-csteps { margin: 0 0 10px; padding-left: 20px; color: var(--page-muted); }
+.pg-csteps li { animation: pg-rise 420ms var(--spring) both; overflow-wrap: anywhere; }
+.pg-cdone { list-style: none; margin: 0 0 10px; padding: 0; }
+.pg-cdone li { padding: 3px 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-cdone code { color: var(--accent); margin-right: 6px; }
+@media (prefers-reduced-motion: reduce) { .pg-modal[open], .pg-csteps li { animation: none; } }
+
+/* ---- Stars and deletes in Explorations (playground.js) ---- */
+/* A star and a bin beside each exploration's title and each version. They show
+   on hover or focus; a star that's on stays, filled. */
+.pg-star-icon { flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.pg-panel .pg-icon { width: 26px; min-height: 26px; padding: 0; display: grid; place-items: center; background: none; box-shadow: none; color: var(--page-muted); border-radius: var(--tile-radius); }
+@media (hover: hover) { .pg-panel .pg-icon:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-panel .pg-icon svg { display: block; }
+.pg-panel .pg-star.on { color: var(--page-text); }
+.pg-star.on .pg-star-icon { fill: currentColor; }
+@media (hover: hover) { .pg-panel .pg-bin:hover { color: #ff9b9b; } }
+.pg-tools { display: flex; gap: 2px; opacity: 0; transition: opacity 0.2s ease; }
+.pg-group h3:hover .pg-tools, .pg-group h3:focus-within .pg-tools, .pg-version:hover .pg-tools, .pg-version:focus-within .pg-tools { opacity: 1; }
+.pg-tools.starred { opacity: 1; }
+.pg-tools.starred .pg-bin { opacity: 0; transition: opacity 0.2s ease; }
+.pg-group h3:hover .pg-tools .pg-bin, .pg-group h3:focus-within .pg-tools .pg-bin, .pg-version:hover .pg-tools .pg-bin, .pg-version:focus-within .pg-tools .pg-bin { opacity: 1; }
+@media (hover: none) { .pg-tools, .pg-tools.starred .pg-bin { opacity: 1; } }
+.pg-group h3 .pg-gtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-group h3 .pg-tools { margin: -4px -6px -4px auto; }
+.pg-version .pg-tools { position: absolute; top: 5px; right: 5px; z-index: 3; }
+.pg-version:not(.main) .pg-try { padding-right: 62px; }
+/* Starred only: the star by the crosshair, lit while it's on. */
+.pg-panel .pg-head .pg-filter.on { color: var(--accent); background: rgba(37, 195, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
+.pg-filter.on .pg-star-icon { fill: currentColor; }
+.pg-starred .pg-star-icon { width: 18px; height: 15px; fill: var(--page-text); stroke: none; }
+.pg-hidden { margin: 8px 8px 0; color: var(--page-muted); font-size: 12px; }
+.pg-list > .pg-pane > .pg-hidden, .pg-pane > .pg-hidden { margin: 12px 18px 0; }
+.pg-panel .pg-link { min-height: 22px; padding: 0 6px; font-size: 12px; background: none; box-shadow: none; color: var(--accent); }
+/* The question before a delete, and the toast's Undo. */
+.pg-ask-modal { width: min(440px, calc(100vw - 32px)); }
+.pg-modal .pg-danger { background: #d94a4a; color: #fff; font-weight: 600; }
+@media (hover: hover) { .pg-modal .pg-danger:hover { filter: brightness(1.08); } }
+#toast button { pointer-events: auto; min-height: 24px; margin-left: 8px; padding: 0 10px; font-size: 12px; color: var(--accent); }

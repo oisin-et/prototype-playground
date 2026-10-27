@@ -9,7 +9,10 @@
 // screen (<data>/<screen>/<exploration>/), each with its versions. The
 // screen on show is pinned at the top. Clicking a version runs it at once, on
 // the same screen and with the same state; "Use this version" makes it the
-// prototype's pick, saved to <data>/picks.json.
+// prototype's pick, saved to <data>/picks.json. A star marks an exploration
+// or a version worth keeping, and "Starred only" hides the rest; the bin
+// deletes one, to playground/trash/, with Undo in the toast (serve.py's
+// /playground/explorations).
 //
 // Claude, on the right, is a chat that asks Claude Code for versions (serve.py
 // runs it). Each prompt goes to serve.py with what's on show (the screen, its
@@ -57,6 +60,8 @@ const store = {
 };
 const BRANCH_ICON = '<svg class="pg-branch-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.8"/><circle cx="4.5" cy="12.5" r="1.8"/><circle cx="11.5" cy="5.5" r="1.8"/><path d="M4.5 5.3v5.4M11.5 7.3c0 3-7 2-7 3.4"/></svg>';
 const LOCATE_ICON = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="10" r="1.8" fill="currentColor"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const STAR_ICON = '<svg class="pg-star-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="m10 2.6 2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.9l5-.7z" stroke-linejoin="round"/></svg>';
+const BIN_ICON = '<svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 5.5l.8 10.6a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4L15 5.5M8.3 8.5v6M11.7 8.5v6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FOLDER_ICON = '<svg class="pg-folder-icon" viewBox="0 0 20 16" aria-hidden="true"><path d="M1 3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z"/></svg>';
 
 // "Orders · Order {order} · Tab {tab}" → "Orders · Order": a screen's
@@ -92,7 +97,9 @@ export const mountPlayground = (hooks) => {
   const chatBody = chatPanel.querySelector('.pg-body');
 
   let route = null, busy = false, lastSig = '';
-  const nav = { folder: store.get(`${hooks.key}.playground.folder`, null) };
+  // starred: only starred explorations and versions are shown (the star by the
+  // crosshair), kept in this browser.
+  const nav = { folder: store.get(`${hooks.key}.playground.folder`, null), starred: store.get(`${hooks.key}.playground.starred`, false) };
   const byId = (id) => playgrounds.find((x) => x.id === id);
   // The default version is main: the app as it is.
   const versionName = (pg, id) => (id === 'default' ? 'main' : pg.versions.find((v) => v.id === id)?.name ?? id);
@@ -108,6 +115,34 @@ export const mountPlayground = (hooks) => {
     return list.map((f) => ({ ...f, explorations: playgrounds.filter((pg) => pg.screen === f.id) }));
   };
   const folderOf = (id) => folders().find((f) => f.id === id);
+
+  // ---- Stars ---------------------------------------------------------------------
+  // A star marks an exploration, or a version, worth keeping ("starred" in its
+  // versions.json, through serve.py). Starred explorations come first in their
+  // folder and are listed under Starred at the top. With Starred only on, an
+  // exploration without a star is hidden unless one of its versions has one, and
+  // then only those versions show, with the ones they were copied from (so the
+  // graph still joins up), main, the pick and the trial.
+  const hasStar = (pg) => !!pg.starred || pg.versions.some((v) => v.starred);
+  const shownExplorations = (f) => [...f.explorations].sort((a, b) => !!b.starred - !!a.starred).filter((pg) => !nav.starred || hasStar(pg));
+  const shownVersions = (pg) => {
+    if (!nav.starred || pg.starred) return pg.versions;
+    const keep = new Set(['default']);
+    for (const v of pg.versions) if (v.starred || v.id === picked(pg) || v.id === trying(pg)) for (const x of lineage(pg, v.id)) keep.add(x.id);
+    return pg.versions.filter((v) => keep.has(v.id));
+  };
+  const setStarredOnly = (on) => {
+    nav.starred = on;
+    store.set(`${hooks.key}.playground.starred`, on);
+    draw(true);
+  };
+  const starBtn = (pg, v) => {
+    const on = !!(v ? v.starred : pg.starred), what = v ? esc(v.name) : esc(pg.title);
+    return `<button type="button" class="pg-icon pg-star${on ? ' on' : ''}" data-star data-pg="${esc(pg.id)}"${v ? ` data-ver="${esc(v.id)}"` : ''}
+      aria-pressed="${on}" aria-label="${on ? 'Unstar' : 'Star'} ${what}" title="${on ? 'Unstar' : 'Star'}">${STAR_ICON}</button>`;
+  };
+  const binBtn = (pg, v) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}"${v ? ` data-ver="${esc(v.id)}"` : ''}
+      aria-label="Delete ${v ? esc(v.name) : esc(pg.title)}" title="Delete${v ? ' this version' : ' this exploration'} (⇧-click: no question)">${BIN_ICON}</button>`;
 
   // ---- Minimising and expanding -----------------------------------------------
   const isOpen = (el) => !el.classList.contains('min');
@@ -224,7 +259,7 @@ export const mountPlayground = (hooks) => {
       ? `<b>Trying ${esc(versionName(pg, t))}</b><small>${t === 'default' ? `Use this version to take ${esc(pg.title)} out of the prototype, so main's pages run again.`
         : `Use this version, and a commit to main brings in ${trail(pg, t)}${pick !== 'default' ? `, in place of ${esc(versionName(pg, pick))}` : ''}.`}</small>`
       : `<b>Ready for main</b><small>A commit to main brings in ${trail(pg, pick)}.</small>`;
-    return `<li class="pg-merge${t ? ' trying' : ''}" title="Committing to main moves these pages into the app for good. Commits aren't in the playground yet.">
+    return `<li class="pg-merge${t ? ' trying' : ''}" title="Committing to main moves these pages into the app for good: Commit, at the top right.">
       ${head}${what && t !== 'default' ? `<small class="pg-changes">It ${esc(what)}.</small>` : ''}</li>`;
   };
   const versionRow = (pg, v) => {
@@ -238,15 +273,20 @@ export const mountPlayground = (hooks) => {
         ${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}
         <span class="pg-note">${main ? '' : `<span class="pg-from">from ${esc(parentOf(pg, v) === 'default' ? 'main' : versionName(pg, parentOf(pg, v)))} · </span>`}${esc(v.note)}</span>
       </button>
+      ${main ? '' : `<span class="pg-tools${v.starred ? ' starred' : ''}">${starBtn(pg, v)}${binBtn(pg, v)}</span>`}
     </li>`;
   };
-  const exploration = (pg) => `<section class="pg-group">
-      <h3>${BRANCH_ICON}${esc(pg.title)}</h3>
+  const exploration = (pg) => {
+    const shown = shownVersions(pg), hidden = pg.versions.length - shown.length;
+    return `<section class="pg-group${pg.starred ? ' starred' : ''}">
+      <h3>${BRANCH_ICON}<span class="pg-gtitle">${esc(pg.title)}</span><span class="pg-tools${pg.starred ? ' starred' : ''}">${starBtn(pg)}${binBtn(pg)}</span></h3>
       <p class="pg-about">${esc(pg.about)}</p>
       <ol class="pg-versions" data-pg="${esc(pg.id)}" style="--gutter:${MAIN_X + (lanesOf(pg).count - 1) * LANE + 13}px">
         <li class="pg-glider" aria-hidden="true"></li><li class="pg-graph-holder" aria-hidden="true"><svg class="pg-graph"></svg></li>
-        ${mergeRow(pg)}${[...pg.versions].reverse().map((v) => versionRow(pg, v)).join('')}</ol>
+        ${mergeRow(pg)}${[...shown].reverse().map((v) => versionRow(pg, v)).join('')}</ol>
+      ${hidden ? `<p class="pg-hidden">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}
     </section>`;
+  };
   // Lines and nodes are drawn after layout, from where the rows landed.
   const drawGraph = (list) => {
     const pg = byId(list.dataset.pg), svg = list.querySelector('.pg-graph');
@@ -299,7 +339,7 @@ export const mountPlayground = (hooks) => {
   const readyRows = () => {
     const ready = playgrounds.filter((pg) => picked(pg) !== 'default');
     return ready.length ? `<li class="pg-ready-head"><svg class="pg-ready-graph" viewBox="0 0 30 40" aria-hidden="true"><path class="main" d="M13 20V40"/><circle class="incoming" cx="13" cy="20" r="6"/></svg>
-      <span><b>Into main</b><small>A commit brings in ${ready.length === 1 ? 'this pick' : `these ${ready.length} picks`}. Commits aren't in the playground yet.</small></span></li>${ready.map(readyRow).join('')}` : '';
+      <span><b>Into main</b><small>Commit, at the top right, brings in ${ready.length === 1 ? 'this pick' : `these ${ready.length} picks`}.</small></span></li>${ready.map(readyRow).join('')}` : '';
   };
   const readyRow = (pg) => {
     const v = versionById(pg, picked(pg)), what = v ? changesOf(pg, v) : '';
@@ -308,10 +348,21 @@ export const mountPlayground = (hooks) => {
       <span class="pg-fname"><b>${esc(pg.title)} › ${esc(versionName(pg, picked(pg)))}</b><small title="${esc(what)}">${esc(what || folderTitle(folderOf(pg.screen)?.title, pg.screen))}</small></span>
       <span class="pg-chevron" aria-hidden="true">›</span></button></li>`;
   };
+  // Starred, at the top: each starred exploration opens its folder, and each
+  // starred version is tried at once.
+  const starredRows = () => playgrounds.flatMap((pg) => [
+    ...(pg.starred ? [`<li><button type="button" class="pg-folder" data-folder="${esc(pg.screen)}">${STAR_ICON}
+      <span class="pg-fname"><b>${esc(pg.title)}</b><small>${esc(folderTitle(folderOf(pg.screen)?.title, pg.screen))} · ${pg.versions.filter((v) => v.id !== 'default').length} versions</small></span>
+      <span class="pg-chevron" aria-hidden="true">›</span></button></li>`] : []),
+    ...pg.versions.filter((v) => v.starred).map((v) => `<li><button type="button" class="pg-folder" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}">${STAR_ICON}
+      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(v.name)}</b><small>${esc(v.id)} · ${esc(v.date)} · try it</small></span>
+      ${trying(pg) === v.id ? '<span class="pg-chip try">Trying</span>' : picked(pg) === v.id ? '<span class="pg-chip pick">Picked</span>' : ''}</button></li>`),
+  ]).join('');
   const folderRow = (f) => {
     const versions = f.explorations.reduce((n, pg) => n + pg.versions.filter((v) => v.id !== 'default').length, 0);
+    const stars = f.explorations.filter(hasStar).length;
     const meta = f.explorations.length
-      ? `${f.explorations.length} exploration${f.explorations.length === 1 ? '' : 's'} · ${versions} version${versions === 1 ? '' : 's'}`
+      ? `${f.explorations.length} exploration${f.explorations.length === 1 ? '' : 's'} · ${versions} version${versions === 1 ? '' : 's'}${stars ? ` · ${stars} starred` : ''}`
       : 'Empty';
     const tryingHere = f.explorations.some((pg) => trying(pg));
     return `<li><button type="button" class="pg-folder${f.explorations.length ? '' : ' empty'}" data-folder="${esc(f.id)}">
@@ -351,13 +402,17 @@ export const mountPlayground = (hooks) => {
     }
   };
   let lastLevel = null, hadTrial = false;
+  const hiddenNote = (f) => {
+    const n = f.explorations.length - shownExplorations(f).length;
+    return n ? `<p class="pg-hidden">${n} exploration${n === 1 ? '' : 's'} without a star ${n === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : '';
+  };
 
   const draw = (force = false) => {
     drawRails();
     drawContext();
     if (!isOpen(filesPanel)) return;
     const p = hooks.preview();
-    const sig = JSON.stringify([route?.screen, nav.folder, hooks.picks(), p, hooks.local(), playgrounds.map((x) => [x.id, x.versions.length])]);
+    const sig = JSON.stringify([route?.screen, nav.folder, hooks.picks(), p, hooks.local(), nav.starred, playgrounds.map((x) => [x.id, x.versions.length, !!x.starred, x.versions.filter((v) => v.starred).map((v) => v.id).join()])]);
     if (!force && sig === lastSig) return;
     lastSig = sig;
     const pg = p && byId(p.playground) && trying(byId(p.playground)) ? byId(p.playground) : null;
@@ -370,20 +425,25 @@ export const mountPlayground = (hooks) => {
       const current = route && all.find((f) => f.id === route.screen);
       // The screen on show is pinned at the top, so it isn't listed again below.
       const rest = all.filter((f) => f !== current);
-      const used = rest.filter((f) => f.explorations.length), empty = rest.filter((f) => !f.explorations.length);
-      const ready = readyRows();
+      // With Starred only on, folders with nothing starred are left out.
+      const used = rest.filter((f) => shownExplorations(f).length), empty = nav.starred ? [] : rest.filter((f) => !f.explorations.length);
+      const unstarred = nav.starred ? rest.filter((f) => f.explorations.length && !shownExplorations(f).length).length : 0;
+      const ready = readyRows(), starred = starredRows();
       body = `
         ${ready ? `<h4>Ready for main</h4><ul class="pg-folders pg-readies">${ready}</ul>` : ''}
+        ${starred ? `<h4>Starred</h4><ul class="pg-folders pg-starred">${starred}</ul>` : ''}
         ${current ? `<h4>On screen now</h4><ul class="pg-folders">${folderRow(current)}</ul>` : ''}
         ${used.length ? `<h4>Explorations</h4><ul class="pg-folders">${used.map(folderRow).join('')}</ul>` : ''}
-        ${empty.length ? `<h4>No explorations yet</h4><ul class="pg-folders">${empty.map(folderRow).join('')}</ul>` : ''}`;
+        ${empty.length ? `<h4>No explorations yet</h4><ul class="pg-folders">${empty.map(folderRow).join('')}</ul>` : ''}
+        ${nav.starred ? `<p class="pg-hidden">${starred ? 'Only what has a star shows' : 'Nothing has a star yet: star an exploration or a version to keep it here'}${unstarred
+          ? `, so ${unstarred} screen${unstarred === 1 ? '' : 's'} with explorations ${unstarred === 1 ? 'is' : 'are'} hidden` : ''}. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}`;
     } else {
       const onIt = route?.screen === folder.id;
       body = `
         <div class="pg-crumbs"><button type="button" class="pg-up" data-up>‹ All screens</button><span>${esc(folder.title)}</span></div>
         <p class="pg-path"><code>${esc(hooks.data)}/${esc(folder.id)}/</code>
           ${onIt ? '<span class="pg-chip here">On screen</span>' : `<button type="button" data-show="${esc(folder.id)}">Show this screen</button>`}</p>
-        ${folder.explorations.length ? folder.explorations.map(exploration).join('')
+        ${folder.explorations.length ? shownExplorations(folder).map(exploration).join('') + hiddenNote(folder)
           : `<p class="pg-empty">No explorations of ${esc(folder.title)} yet. ${chat.enabled
             ? 'Ask Claude on the right to start one.'
             : `Set up Claude on the right to start one, or run <code>python3 playground/new.py ${esc(folder.id)} &lt;name&gt; "Title"</code>.`}</p>`}`;
@@ -395,7 +455,7 @@ export const mountPlayground = (hooks) => {
     const trialEnters = !!pg && !hadTrial && !still();
     hadTrial = !!pg;
     files.innerHTML = `
-      <div class="pg-head"><h2>Explorations</h2><button type="button" class="pg-locate" data-locate aria-label="Show the page on show" title="Go to the page on show">${LOCATE_ICON}</button><button type="button" class="pg-min" data-close aria-label="Minimise Explorations" title="Minimise (P)">‹</button></div>
+      <div class="pg-head"><h2>Explorations</h2><button type="button" class="pg-locate pg-filter${nav.starred ? ' on' : ''}" data-starred-only aria-pressed="${nav.starred}" aria-label="Starred only" title="${nav.starred ? 'Show everything' : 'Show only what has a star'}">${STAR_ICON}</button><button type="button" class="pg-locate" data-locate aria-label="Show the page on show" title="Go to the page on show">${LOCATE_ICON}</button><button type="button" class="pg-min" data-close aria-label="Minimise Explorations" title="Minimise (P)">‹</button></div>
       ${hooks.local() ? `<div class="pg-local"><p>Your picks are saved in this browser only, because the server can't write
         <code>${esc(hooks.data)}/picks.json</code>. Run <code>python3 playground/serve.py</code> to save them there.</p>
         <button type="button" data-team>Use the saved picks</button></div>` : ''}
@@ -408,12 +468,17 @@ export const mountPlayground = (hooks) => {
         Click a version to try it, then <b>Use this version</b> to get it ready for main.</p></div>`}`;
     placeGliders();
     drawGraphs();
+    drawCommitBtn();
   };
 
   files.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
     if ('close' in t.dataset) return setOpen('files', false);
+    if ('starredOnly' in t.dataset) return setStarredOnly(!nav.starred);
+    if ('all' in t.dataset) return setStarredOnly(false);
+    if ('star' in t.dataset) return starIt(byId(t.dataset.pg), t.dataset.ver);
+    if ('delete' in t.dataset) return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey);
     if ('locate' in t.dataset) return locate();
     if (t.dataset.folder) return openFolder(t.dataset.folder);
     if ('up' in t.dataset) return openFolder(null);
@@ -431,6 +496,211 @@ export const mountPlayground = (hooks) => {
       });
     }
   });
+
+  // ---- Star and delete ---------------------------------------------------------
+  // The star and the bin beside each exploration and version (they show on
+  // hover, and a star stays). A delete asks first (⇧-click doesn't), moves the
+  // folder to playground/trash/, and the toast's Undo puts it back.
+  const starIt = (pg, vid) => {
+    if (!pg) return;
+    const v = vid && versionById(pg, vid), on = !(v ? v.starred : pg.starred);
+    return run(async () => {
+      try { await hooks.star(pg, vid || null, on); } catch (err) { toast(`Couldn't ${on ? 'star' : 'unstar'} it: ${err.message}`); }
+    });
+  };
+  const askDialog = document.createElement('dialog');
+  askDialog.className = 'pg-modal pg-ask-modal';
+  askDialog.setAttribute('aria-labelledby', 'pg-ask-title');
+  document.body.append(askDialog);
+  const ask = (title, lines, ok) => new Promise((done) => {
+    askDialog.innerHTML = `<div class="pg-modal-card">
+      <div class="pg-head"><h2 id="pg-ask-title">${esc(title)}</h2><button type="button" class="pg-min" data-no aria-label="Close">×</button></div>
+      <div class="pg-modal-body">${lines.map((l) => `<p>${l}</p>`).join('')}</div>
+      <div class="pg-modal-foot"><button type="button" data-no>Cancel</button><button type="button" class="pg-danger" data-yes>${esc(ok)}</button></div>
+    </div>`;
+    const end = (yes) => { askDialog.onclose = null; if (askDialog.open) askDialog.close(); done(yes); };
+    askDialog.onclick = (e) => {
+      if (e.target === askDialog) return end(false); // the backdrop
+      const b = e.target.closest('button');
+      if (b) end('yes' in b.dataset);
+    };
+    askDialog.onclose = () => end(false);
+    askDialog.showModal();
+    askDialog.querySelector('[data-yes]').focus();
+  });
+  const deleteIt = async (pg, vid, quick) => {
+    if (!pg || busy) return;
+    const v = vid && versionById(pg, vid);
+    if (vid && !v) return;
+    const count = pg.versions.filter((x) => x.id !== 'default').length;
+    const pick = picked(pg), what = v ? `${pg.title} › ${v.name}` : pg.title;
+    const lines = v
+      ? [`<b>${esc(v.name)}</b> (${esc(v.id)}) and its files go to <code>playground/trash/</code>.`,
+        ...(pick === v.id ? [`It's in the prototype, so ${esc(pg.title)} goes back to main.`] : []),
+        ...(pg.versions.some((x) => x.from === v.id) ? ['The versions copied from it stay, joined to the one it came from.'] : [])]
+      : [`<b>${esc(pg.title)}</b> and its ${count} version${count === 1 ? '' : 's'} go to <code>playground/trash/</code>.`,
+        ...(pick !== 'default' ? [`Its pick, ${esc(versionName(pg, pick))}, is in the prototype, so its pages go back to main.`] : [])];
+    lines.push('You can undo it straight after, and the trash keeps it for 14 days.');
+    if (!quick && !(await ask(`Delete ${what}?`, lines, 'Delete'))) return;
+    let trash = null;
+    await run(async () => {
+      try { trash = await hooks.remove(pg, vid || null); } catch (err) { toast(`Couldn't delete ${what}: ${err.message}`); }
+    });
+    if (trash) toast(`Deleted ${what}.`, { label: 'Undo', run: () => run(async () => {
+      try { await hooks.restore(trash); toast(`${what} is back.`); } catch (err) { toast(`Couldn't put it back: ${err.message}`); }
+    }) });
+  };
+
+  // ---- Commit to main ----------------------------------------------------------
+  // The Commit button, at the top right of the header, opens a dialog that says
+  // what a commit would do (GET /playground/commit): the picks, the branch, and
+  // the other changes nobody committed. Committing has Claude Code move each
+  // picked version into the app's own files, puts its pick back to main, and
+  // commits the files the move changed on this computer (serve.py's Commit,
+  // which streams the steps). Nothing is pushed. Explorations stay on this
+  // computer. When it's done the page reloads, with main as it is now.
+  // (A function, and it looks the button up itself, because draw() calls it
+  // before this part has run.)
+  function drawCommitBtn() {
+    const btn = document.getElementById('btn-commit');
+    if (!btn) return;
+    const n = playgrounds.filter((pg) => picked(pg) !== 'default').length;
+    const count = btn.querySelector('.pg-count');
+    count.hidden = !n;
+    count.textContent = n;
+    btn.classList.toggle('ready', n > 0);
+  }
+  const commitBtn = document.getElementById('btn-commit');
+
+  const dialog = document.createElement('dialog');
+  dialog.className = 'pg-modal';
+  dialog.setAttribute('aria-labelledby', 'pg-modal-title');
+  document.body.append(dialog);
+  const commit = { info: null, state: 'idle', steps: [], result: null, error: '', other: false, note: '', showOther: false };
+  const ST = { A: ['add', 'New file'], M: ['mod', 'Changed'], D: ['del', 'Deleted'] };
+  const fileRow = (path, status) => `<li>${status ? `<span class="pg-st ${ST[status][0]}" title="${ST[status][1]}">${status}</span>` : ''}<code title="${esc(path)}">${esc(path)}</code></li>`;
+  const commitCard = (p, n) => `<li class="pg-ccard">
+      <div class="pg-ctitle"><span class="pg-cnum">${n}</span><b>${esc(p.title)} › ${esc(p.name)}</b></div>
+      <p class="pg-ctrail">${esc(p.playground)} · ${esc(p.version)}</p>
+      ${p.note ? `<p class="pg-cnote">${esc(p.note)}</p>` : ''}
+    </li>`;
+  const drawCommit = () => {
+    const i = commit.info, picks = i?.picks || [];
+    const other = Object.entries(i?.other || {}).sort(([a], [b]) => a.localeCompare(b));
+    const ready = picks.length || (commit.other && other.length);
+    const p = hooks.preview(), tried = p && byId(p.playground) && trying(byId(p.playground)) ? byId(p.playground) : null;
+    let body, foot;
+    if (commit.state === 'loading') {
+      body = '<p class="pg-cwait">Working out what a commit would do…</p>';
+      foot = '<button type="button" data-cancel>Cancel</button>';
+    } else if (commit.state === 'unavailable') {
+      body = '<p>Commits need the playground\'s own server. Run <code>python3 playground/serve.py --open</code> at the top of the project, then open the playground again.</p>';
+      foot = '<button type="button" data-cancel>Close</button>';
+    } else if (commit.state === 'running' || commit.state === 'done' || commit.state === 'failed') {
+      const r = commit.result;
+      body = `<ol class="pg-csteps">${commit.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
+        ${r?.commits?.length ? `<h4>Committed to ${esc(r.branch)}</h4><ul class="pg-cdone">${r.commits.map((c) => `<li><code>${esc(c.sha)}</code> ${esc(c.message)}</li>`).join('')}</ul>
+          <p class="pg-cok">Committed on this computer. Nothing was pushed: <code>git push</code> shares it.</p>` : ''}
+        ${commit.error ? `<p class="pg-cproblem">${esc(commit.error)}</p>` : ''}
+        ${commit.state === 'running' ? '<p class="pg-cwait">Working… This can take a few minutes while Claude moves the picks.</p>' : ''}`;
+      foot = commit.state === 'running' ? ''
+        : `<button type="button" class="pg-use" data-finish>${r?.commits?.length ? 'Reload the playground' : 'Close'}</button>`;
+    } else {
+      const problems = i.problems || [];
+      body = `
+        ${i.git ? `<p class="pg-cbranch">Commits to <b>${esc(i.branch || '?')}</b> on this computer. Nothing is pushed.</p>` : ''}
+        <p class="pg-cabout">A commit makes your picks part of the app. Claude moves each picked version into the app's own files, its pick goes back to main in Explorations, and the files the move changed are committed together.</p>
+        ${tried ? `<p class="pg-cnotice">You're trying ${esc(versionName(tried, p.version))}. It isn't picked, so it's not in this commit: press <b>Use this version</b> first to include it.</p>` : ''}
+        ${hooks.local() ? `<p class="pg-cnotice">Your picks are saved in this browser only. A commit uses the picks in <code>${esc(hooks.data)}/picks.json</code>.</p>` : ''}
+        ${picks.length ? `<h4>Picks</h4><ol class="pg-ccards">${picks.map((x, n) => commitCard(x, n + 1)).join('')}</ol>`
+          : '<p class="pg-cempty">No version is picked yet. Try a version in Explorations and press <b>Use this version</b> to get it ready for main.</p>'}
+        ${other.length ? `<div class="pg-cother">
+          <label class="pg-check"><input type="checkbox" data-other ${commit.other ? 'checked' : ''}> Also commit the ${other.length} other change${other.length === 1 ? '' : 's'} nobody committed</label>
+          <button type="button" class="pg-link" data-show-other aria-expanded="${commit.showOther}">${commit.showOther ? 'Hide' : 'Show'} them</button>
+          ${commit.showOther ? `<ul class="pg-cfiles">${other.map(([f, st]) => fileRow(f, st)).join('')}</ul>` : ''}
+        </div>` : ''}
+        <p class="pg-cprivate">Explorations stay on this computer: the versions, their notes and your picks are never committed.</p>
+        <label class="pg-cnote-label">A note for the commit <small>(optional)</small>
+          <textarea data-note rows="2" placeholder="What this is and why">${esc(commit.note)}</textarea></label>
+        ${problems.length ? `<p class="pg-cproblem">Can't commit yet: ${esc(problems[0])}</p>` : ''}`;
+      foot = `<button type="button" data-cancel>Cancel</button>
+        <button type="button" class="pg-use" data-commit ${!ready || problems.length ? 'disabled' : ''}>${ready ? 'Commit' : 'Nothing to commit'}</button>`;
+    }
+    dialog.innerHTML = `<div class="pg-modal-card">
+      <div class="pg-head"><h2 id="pg-modal-title">Commit to main</h2>${commit.state === 'running' ? '' : '<button type="button" class="pg-min" data-cancel aria-label="Close">×</button>'}</div>
+      <div class="pg-modal-body">${body}</div>
+      ${foot ? `<div class="pg-modal-foot">${foot}</div>` : ''}
+    </div>`;
+  };
+  const loadCommit = async () => {
+    commit.state = 'loading';
+    drawCommit();
+    try {
+      const r = await fetch('/playground/commit', { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      commit.info = await r.json();
+      commit.state = 'plan';
+    } catch {
+      commit.state = 'unavailable';
+    }
+    if (dialog.open) drawCommit();
+  };
+  const runCommit = async () => {
+    Object.assign(commit, { state: 'running', steps: [], result: null, error: '' });
+    drawCommit();
+    try {
+      const r = await fetch('/playground/commit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'commit' },
+        body: JSON.stringify({ other: commit.other, note: commit.note }),
+      });
+      if (!r.ok) throw new Error(`The server said ${r.status}.`);
+      const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          let e;
+          try { e = JSON.parse(line); } catch { continue; }
+          if (e.type === 'step') commit.steps.push(e.text);
+          if (e.type === 'done') commit.result = e;
+          if (e.type === 'error') commit.error = e.message;
+          drawCommit();
+        }
+      }
+      commit.state = commit.error || !commit.result ? 'failed' : 'done';
+      if (!commit.error && !commit.result) commit.error = 'The commit stopped before it finished.';
+    } catch (err) {
+      commit.error = err.message === 'Failed to fetch' ? 'Lost the connection to serve.py.' : err.message;
+      commit.state = 'failed';
+    }
+    drawCommit();
+  };
+  commitBtn?.addEventListener('click', () => {
+    Object.assign(commit, { steps: [], result: null, error: '', showOther: false });
+    if (!dialog.open) dialog.showModal();
+    loadCommit();
+  });
+  dialog.addEventListener('cancel', (e) => { if (commit.state === 'running') e.preventDefault(); });
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog && commit.state !== 'running') return dialog.close(); // the backdrop
+    const t = e.target.closest('button');
+    if (!t) return;
+    if ('cancel' in t.dataset) dialog.close();
+    if ('showOther' in t.dataset) { commit.showOther = !commit.showOther; drawCommit(); }
+    if ('commit' in t.dataset) runCommit();
+    if ('finish' in t.dataset) { if (commit.result) location.reload(); else dialog.close(); }
+  });
+  dialog.addEventListener('change', (e) => {
+    if (!('other' in e.target.dataset)) return;
+    commit.other = e.target.checked;
+    drawCommit();
+    dialog.querySelector('[data-other]')?.focus(); // the redraw replaced it
+  });
+  dialog.addEventListener('input', (e) => { if ('note' in e.target.dataset) commit.note = e.target.value; });
 
   // ---- Claude panel ------------------------------------------------------------
   // Each chat is { id, session, log, running, status, ready, tried }: its Claude

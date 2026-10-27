@@ -7,7 +7,7 @@ description: Put a playground around the project you have open, or run one that'
 
 A playground wraps the user's own app. `serve.py` starts the app on its own port and shows it in a frame on a canvas, with two floating panels:
 
-- **Explorations**, on the left, has a folder per screen. Each folder holds explorations, and each exploration holds versions.
+- **Explorations**, on the left, has a folder per screen. Each folder holds explorations, and each exploration holds versions. The person can star explorations and versions (and show only starred ones), and delete those they won't use.
 - **Claude**, on the right, is a chat that makes versions. Up to four chats can work at once.
 
 Clicking a version swaps it into the running app without a restart. **Use this version** makes it the pick.
@@ -80,11 +80,20 @@ Tell the person the URL and how to use it:
 
 - "Make it the real thing" in the panel means **Use this version**, and the person picks. Change `<data>/picks.json` by hand only when asked, and only with names from `index.json` and the exploration's `versions.json` (`serve.py` refuses anything else).
 - Explorations stay on the person's computer unless they decide otherwise. A commit makes something the team's.
-- **To move a picked version into the app** (only when the person says it's settled):
+- **Commit**, at the top right of the playground's header, moves the picks into the app and commits them locally, without pushing (`kit/README.md`, "Commit to main"). If the project's screens are written by scripts, list them in `playground.json`'s `"commit": {"allow": [...]}` so the move can run them.
+- **To move a picked version into the app** by hand (only when the person says it's settled):
   1. Copy its changes over the app's own files, following the project's conventions (tokens, no hard-coded values).
   2. Set the pick back to `default`, which now shows the moved design.
   3. Keep the version folder as the record.
   4. Commit only the app's files. If the project has its own flow for design changes (a PR skill, a PR check), use it.
+
+## Stars and deletes
+
+These are the person's, in the Explorations panel, to keep it tidy (`kit/README.md`, "Star and delete").
+
+- A star is `"starred": true` in the exploration's `versions.json`: at the top for the exploration, on a version's entry for a version. Leave stars as they are, and never set one unless the person asks.
+- A delete moves the folder to `playground/trash/<time>/`, with a `deleted.json` saying where it was. Git ignores the trash, and `serve.py` clears it after 14 days. The toast's **Undo** puts it back; to restore one later, move the folder back and re-add its `index.json` or `versions.json` entry from `deleted.json`.
+- Don't delete explorations or versions yourself unless the person asks. When they do, use the panel's route (`POST /playground/explorations`) or do what it does, so the pick, the registry and the versions copied from it stay right.
 
 ## The playground look
 
@@ -117,7 +126,9 @@ A playground isn't done until all of this works. Check by measuring and clicking
 - **Trying and picking:**
   - trying a version keeps the app's state;
   - **Back to …** and **Use this version** sit at the foot of Explorations;
-  - picks save to `picks.json` (or to the browser, with a warning, when the server can't write them).
+  - picks save to `picks.json` (or to the browser, with a warning, when the server can't write them);
+  - starring an exploration or a version survives a reload, and **Starred only** hides the rest;
+  - deleting a version or an exploration (the picked one too) asks first, takes it out of the app and the picks, and **Undo** puts it back.
 - **The app's bridge:**
   - the screen picker opens every screen;
   - the header follows navigation inside the app;

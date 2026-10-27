@@ -85,11 +85,20 @@ document.getElementById('name').textContent = `${NAME} · Playground`;
 // ---- The toast ------------------------------------------------------------------
 const toastEl = document.getElementById('toast');
 let toastTimer;
-const toast = (text) => {
+// action, if given, is { label, run }: a button in the toast (Undo), and the
+// toast stays a little longer.
+const toast = (text, action) => {
   toastEl.textContent = text;
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = action.label;
+    b.addEventListener('click', () => { toastEl.classList.remove('show'); action.run(); }, { once: true });
+    toastEl.append(' ', b);
+  }
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 4200);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), action ? 8000 : 4200);
 };
 
 // ---- The app's frame --------------------------------------------------------------
@@ -331,7 +340,9 @@ const win = document.getElementById('window');
 const sizeSel = document.getElementById('size');
 const zoomLabel = document.querySelector('[data-zoom=actual]');
 const VIEW_KEY = `${KEY}.playground.view`;
-const view = { z: 1, x: 0, y: 0, auto: true, ...store.get(VIEW_KEY, {}) };
+// `fit`: while it's centred, the window is zoomed to fit between the panels
+// (playground.json's "zoom": "fit" opens it that way; the zoom pill's Fit too).
+const view = { z: 1, x: 0, y: 0, auto: true, fit: CFG.zoom === 'fit', ...store.get(VIEW_KEY, {}) };
 sizeSel.innerHTML = SIZES.map((s) => `<option value="${esc(s)}">${esc(s.replace('x', ' × '))}</option>`).join('');
 sizeSel.value = store.get(SIZE_KEY, CFG.size || SIZES[0]);
 if (!sizeSel.value) sizeSel.value = CFG.size || SIZES[0];
@@ -369,6 +380,7 @@ const draw = (glide = false) => {
   store.set(VIEW_KEY, view);
 };
 const centre = (glide = false) => {
+  if (view.fit) view.z = fitZoom();
   const [w, h] = windowSize(), b = between();
   view.x = Math.round((b.l + b.r) / 2 - (w * view.z) / 2);
   view.y = Math.round(Math.max(b.t, (b.t + b.b) / 2 - (h * view.z) / 2));
@@ -386,17 +398,18 @@ const zoomAt = (f, px, py, glide = false) => {
   view.y = py - ((py - view.y) * z) / view.z;
   view.z = z;
   view.auto = false;
+  view.fit = false;
   draw(glide);
 };
 const zoomStep = (dir) => {
   const steps = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.25, 1.5, 2, 3, 4];
   const next = dir > 0 ? steps.find((s) => s > view.z + 0.001) ?? ZMAX : [...steps].reverse().find((s) => s < view.z - 0.001) ?? ZMIN;
   const b = between();
-  if (view.auto) { view.z = next; centre(true); return; }
+  if (view.auto) { view.z = next; view.fit = false; centre(true); return; }
   zoomAt(next / view.z, (b.l + b.r) / 2, (b.t + b.b) / 2, true);
 };
-const actual = () => { view.z = 1; centre(true); };
-const fitView = () => { view.z = fitZoom(); centre(true); };
+const actual = () => { view.z = 1; view.fit = false; centre(true); };
+const fitView = () => { view.fit = true; centre(true); };
 const zoomKey = (key) => {
   if (key === 'in') zoomStep(1);
   else if (key === 'out') zoomStep(-1);
@@ -580,6 +593,27 @@ const savePicks = async (next) => {
   }
 };
 
+// Stars and deletes (serve.py's /playground/explorations). A delete takes the
+// version out of the picks and the trial too, and reloads the app, whose
+// registry no longer has it.
+const tidy = async (body) => {
+  const r = await fetch('/playground/explorations', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'explorations' }, body: JSON.stringify(body),
+  }).catch(() => null);
+  const reply = await r?.json().catch(() => null);
+  if (!r?.ok) throw new Error(reply?.error || (r ? `The server said ${r.status}.` : 'Lost the connection to serve.py.'));
+  return reply;
+};
+// The picks after a delete or a restore: the server's, and any kept in this
+// browser that still name a version that's there.
+const takePicks = (next) => {
+  for (const k of Object.keys(teamPicks)) delete teamPicks[k];
+  Object.assign(teamPicks, next);
+  const there = ([id, v]) => playgrounds.some((pg) => pg.id === id && (v === 'default' || pg.versions.some((x) => x.id === v)));
+  if (localPicks) localPicks = Object.fromEntries(Object.entries(localPicks).filter(there));
+  picks = { ...teamPicks, ...localPicks };
+};
+
 const panel = mountPlayground({
   name: NAME,
   key: KEY,
@@ -608,6 +642,27 @@ const panel = mountPlayground({
     const at = await savePicks(picks);
     switchVersions(pg);
     return at;
+  },
+  async star(pg, version, starred) {
+    await tidy({ action: 'star', playground: pg.id, version, starred });
+    const target = version ? pg.versions.find((v) => v.id === version) : pg;
+    if (target) target.starred = starred || undefined;
+  },
+  async remove(pg, version) {
+    if (preview?.playground === pg.id && (!version || preview.version === version)) preview = null;
+    const r = await tidy({ action: 'delete', playground: pg.id, version });
+    await refresh();
+    takePicks(r.picks);
+    switchVersions();
+    panel.redraw();
+    return r.trash;
+  },
+  async restore(trash) {
+    const r = await tidy({ action: 'restore', trash });
+    await refresh();
+    takePicks(r.picks);
+    switchVersions();
+    panel.redraw();
   },
   refresh,
   route: () => route,
