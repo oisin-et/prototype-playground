@@ -62,6 +62,7 @@ const BRANCH_ICON = '<svg class="pg-branch-icon" viewBox="0 0 16 16" aria-hidden
 const LOCATE_ICON = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="10" r="1.8" fill="currentColor"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 const STAR_ICON = '<svg class="pg-star-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="m10 2.6 2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.9l5-.7z" stroke-linejoin="round"/></svg>';
 const BIN_ICON = '<svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 5.5l.8 10.6a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4L15 5.5M8.3 8.5v6M11.7 8.5v6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MORE_ICON = '<svg class="pg-more-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="m6 8 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FOLDER_ICON = '<svg class="pg-folder-icon" viewBox="0 0 20 16" aria-hidden="true"><path d="M1 3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z"/></svg>';
 
 // "Orders · Order {order} · Tab {tab}" → "Orders · Order": a screen's
@@ -140,6 +141,16 @@ export const mountPlayground = (hooks) => {
     const on = !!(v ? v.starred : pg.starred), what = v ? esc(v.name) : esc(pg.title);
     return `<button type="button" class="pg-icon pg-star${on ? ' on' : ''}" data-star data-pg="${esc(pg.id)}"${v ? ` data-ver="${esc(v.id)}"` : ''}
       aria-pressed="${on}" aria-label="${on ? 'Unstar' : 'Star'} ${what}" title="${on ? 'Unstar' : 'Star'}">${STAR_ICON}</button>`;
+  };
+  // Each version, and each exploration's title, is a tile: its name, number and
+  // date, and its actions. What it says about itself (its note, what it came
+  // from) stays folded away until Show more opens it, for as long as the page
+  // is open.
+  const opened = new Set();
+  const moreBtn = (key, what) => {
+    const on = opened.has(key);
+    return `<button type="button" class="pg-icon pg-more${on ? ' on' : ''}" data-more="${esc(key)}" aria-expanded="${on}"
+      aria-label="${on ? 'Show less' : 'Show more'} about ${esc(what)}" title="${on ? 'Show less' : 'Show more'}">${MORE_ICON}</button>`;
   };
   const binBtn = (pg, v) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}"${v ? ` data-ver="${esc(v.id)}"` : ''}
       aria-label="Delete ${v ? esc(v.name) : esc(pg.title)}" title="Delete${v ? ' this version' : ' this exploration'} (⇧-click: no question)">${BIN_ICON}</button>`;
@@ -238,6 +249,10 @@ export const mountPlayground = (hooks) => {
     }
     return { lane, count };
   };
+  // Lanes close up when there are many, so the graph never takes more than
+  // about a fifth of the panel from the names.
+  const laneGap = (pg) => Math.min(LANE, 36 / Math.max(1, lanesOf(pg).count - 1));
+  const gutter = (pg) => Math.round(MAIN_X + (lanesOf(pg).count - 1) * laneGap(pg) + 13);
   // What a version does to main, in screen names: the screens it replaces and
   // the ones it adds.
   const changesOf = (pg, v) => {
@@ -265,23 +280,26 @@ export const mountPlayground = (hooks) => {
   const versionRow = (pg, v) => {
     const isPicked = picked(pg) === v.id, isTrying = trying(pg) === v.id;
     const running = isTrying || (isPicked && !trying(pg));
-    const main = v.id === 'default';
-    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}" data-v="${esc(v.id)}">
-      <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}">
-        <span class="pg-vname">${main ? '<b>main</b><small>the app as it is</small>'
-          : `<b>${esc(v.name)}</b><small>${esc(v.id)} · ${esc(v.date)}</small>`}</span>
-        ${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}
-        <span class="pg-note">${main ? '' : `<span class="pg-from">from ${esc(parentOf(pg, v) === 'default' ? 'main' : versionName(pg, parentOf(pg, v)))} · </span>`}${esc(v.note)}</span>
-      </button>
-      ${main ? '' : `<span class="pg-tools${v.starred ? ' starred' : ''}">${starBtn(pg, v)}${binBtn(pg, v)}</span>`}
+    const main = v.id === 'default', key = `${pg.id}/${v.id}`, open = opened.has(key);
+    const from = main ? '' : `from ${parentOf(pg, v) === 'default' ? 'main' : versionName(pg, parentOf(pg, v))}`;
+    const about = [from, v.note].filter(Boolean);
+    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}${open ? ' open' : ''}" data-v="${esc(v.id)}">
+      <div class="pg-tile">
+        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" title="${esc(main ? 'main' : v.name)}">
+          <b class="pg-vname">${main ? 'main' : esc(v.name)}</b>
+          <span class="pg-vmeta">${main ? 'the app as it is' : `<span class="pg-vwhen">${esc(v.id)} · ${esc(v.date)}</span>`}${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}</span>
+        </button>
+        <span class="pg-tools${v.starred ? ' starred' : ''}">${about.length ? moreBtn(key, main ? 'main' : v.name) : ''}${main ? '' : starBtn(pg, v) + binBtn(pg, v)}</span>
+      </div>
+      ${open && about.length ? `<p class="pg-note">${from ? `<span class="pg-from">${esc(from)}</span>` : ''}${from && v.note ? ' · ' : ''}${esc(v.note)}</p>` : ''}
     </li>`;
   };
   const exploration = (pg) => {
-    const shown = shownVersions(pg), hidden = pg.versions.length - shown.length;
+    const shown = shownVersions(pg), hidden = pg.versions.length - shown.length, open = opened.has(pg.id);
     return `<section class="pg-group${pg.starred ? ' starred' : ''}">
-      <h3>${BRANCH_ICON}<span class="pg-gtitle">${esc(pg.title)}</span><span class="pg-tools${pg.starred ? ' starred' : ''}">${starBtn(pg)}${binBtn(pg)}</span></h3>
-      <p class="pg-about">${esc(pg.about)}</p>
-      <ol class="pg-versions" data-pg="${esc(pg.id)}" style="--gutter:${MAIN_X + (lanesOf(pg).count - 1) * LANE + 13}px">
+      <h3>${BRANCH_ICON}<span class="pg-gtitle" title="${esc(pg.title)}">${esc(pg.title)}</span><span class="pg-tools${pg.starred ? ' starred' : ''}">${pg.about ? moreBtn(pg.id, pg.title) : ''}${starBtn(pg)}${binBtn(pg)}</span></h3>
+      ${open && pg.about ? `<p class="pg-about">${esc(pg.about)}</p>` : ''}
+      <ol class="pg-versions" data-pg="${esc(pg.id)}" style="--gutter:${gutter(pg)}px">
         <li class="pg-glider" aria-hidden="true"></li><li class="pg-graph-holder" aria-hidden="true"><svg class="pg-graph"></svg></li>
         ${mergeRow(pg)}${[...shown].reverse().map((v) => versionRow(pg, v)).join('')}</ol>
       ${hidden ? `<p class="pg-hidden">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}
@@ -292,7 +310,7 @@ export const mountPlayground = (hooks) => {
     const pg = byId(list.dataset.pg), svg = list.querySelector('.pg-graph');
     if (!pg || !svg) return;
     const { lane } = lanesOf(pg);
-    const x = (id) => MAIN_X + (lane[id] ?? 0) * LANE;
+    const gap = laneGap(pg), x = (id) => MAIN_X + (lane[id] ?? 0) * gap;
     const rows = Object.fromEntries([...list.querySelectorAll('.pg-version')].map((r) => [r.dataset.v, r.offsetTop + NODE_Y]));
     const mergeEl = list.querySelector('.pg-merge');
     const pick = picked(pg), t = trying(pg);
@@ -477,6 +495,7 @@ export const mountPlayground = (hooks) => {
     if ('close' in t.dataset) return setOpen('files', false);
     if ('starredOnly' in t.dataset) return setStarredOnly(!nav.starred);
     if ('all' in t.dataset) return setStarredOnly(false);
+    if (t.dataset.more) { if (!opened.delete(t.dataset.more)) opened.add(t.dataset.more); return draw(true); }
     if ('star' in t.dataset) return starIt(byId(t.dataset.pg), t.dataset.ver);
     if ('delete' in t.dataset) return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey);
     if ('locate' in t.dataset) return locate();

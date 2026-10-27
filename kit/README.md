@@ -37,7 +37,7 @@ Both panels are open at first. Each minimises to a strip at its edge, and <kbd>P
 
 ## Star and delete
 
-Each exploration's title and each version have a star and a bin. They show when the pointer is over them, and a star that's on stays.
+Each version is a tile: its name, its number and date, and three actions on the right, **Show more** (the chevron), the star and the bin. An exploration's title has the same three. What a version says about itself (what it was copied from, and its note) and what an exploration tries stay folded away until **Show more** opens them. The actions are quiet until the pointer is on the tile, and a star that's on stays lit. When an exploration has many branches, the graph's lanes close up so the names keep their room.
 
 - **Star** what's worth keeping. Starred explorations come first in their folder, and everything starred is listed under **Starred** at the top of the screens list: a starred exploration opens its folder, and a starred version is tried at once. A star is kept in the exploration's `versions.json` (`"starred": true`), so it stays when the playground reloads.
 - **Starred only,** the star beside the crosshair, hides everything without a star. An exploration with starred versions shows just those, with the versions they were copied from, main, the pick and any trial, so the graph still joins up. **Show all** turns it off. It's kept in this browser.
