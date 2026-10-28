@@ -60,7 +60,7 @@ Describe a version in the Claude panel and press Enter.
   - Notes wait, pinned, until **Send** takes them all in one message.
   - Claude answers each note with **Done**, **Question** or **Skipped**, and the answer shows on its pin.
   - Notes stay on this computer (`playground/notes/`, which git ignores).
-- **Paste and dictate straight in.** A paste or ⌘V goes into the chat box even while the app has the focus.
+- **Paste and dictate straight in.** A paste or ⌘V goes into the chat box the first time, once, wherever the focus is: on the page, in the app, or while the app reloads. Dictation apps that put the old clipboard back afterwards (VoiceInk and the like) work too.
 - **Follow-ups change the same version.**
 - **Run up to four chats at once,** with **+** at the top of the panel. Each chat is its own conversation and makes its own versions. Every chat shares the one app, so an error in one chat's version shows in every reload until it's fixed.
 - **Claude is locked down.** It can read the project, write only under `<data>/`, and run only `new.py`, `duplicate.py` and `reload.py`. Anything else is refused without asking, and your own Claude Code settings and MCP servers aren't loaded. Only the playground's own page can start a run.

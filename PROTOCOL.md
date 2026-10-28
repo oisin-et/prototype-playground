@@ -20,7 +20,7 @@ The playground page (`kit/src/host.js`) runs the app in an iframe at `<app origi
 | `{type: 'where', screen, params, title?}` | The screen on show. `params` tells its states apart, and `title` overrides the header's. |
 | `{type: 'captured', id, png, note}` or `{type: 'captured', id, error}` | A capture: base64 PNG, and a note naming what it covers. |
 | `{type: 'inspected', id, box: [x, y, w, h], widget, location, text}` | What's at the point: its name, where it was built (`lib/x.dart:12`, or what the app knows), and its text. Just `{type, id}` if nothing is there. |
-| `{type: 'key', key, down}`, `{type: 'zoomkey', key}`, `{type: 'wheel', x, y, dx, dy}`, `{type: 'paste', text, images}`, `{type: 'pastekey'}` | Keys, zoom and pastes the app's frame swallowed, passed on to the playground. Each carries `from: 'page'`. |
+| `{type: 'key', key, down}`, `{type: 'zoomkey', key}`, `{type: 'wheel', x, y, dx, dy}`, `{type: 'paste', text, images}`, `{type: 'pastekey'}` | Keys, zoom and pastes the app's frame swallowed, passed on to the playground. Each carries `from: 'page'`. A ⌘V outside the app's text fields must become a `paste` (the web bridge focuses a hidden box so it does). `pastekey` is only for a bridge that can't do that (Flutter): the playground then reads the clipboard, unless a `paste` follows within 120 ms. |
 
 ## Server endpoints (`kit/serve.py`)
 

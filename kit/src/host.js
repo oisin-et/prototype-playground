@@ -189,6 +189,9 @@ let helloWaiters = [];
 const reloadFrame = async () => {
   loadedRegistry = await registryNow();
   const back = new Promise((ok) => { helloWaiters.push(ok); setTimeout(ok, 15000); });
+  // Until the app is back and listening, a frame with the focus swallows
+  // every key, ⌘V (a dictation) too: the page takes the focus meanwhile.
+  if (document.activeElement === frame) frame.blur();
   frame.src = appUrl();
   return back;
 };

@@ -215,7 +215,7 @@ if (embedded) {
     else if (e.key === 'Escape') send({ type: 'key', key: 'Escape', down: true });
     else if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'p', down: true });
     else if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'n', down: true });
-    else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v' && !editable(e.target)) send({ type: 'pastekey' });
+    else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v' && !editable(e.target)) catchPaste();
   }, true);
   addEventListener('keyup', (e) => {
     if (e.key === 'Alt') send({ type: 'key', key: 'Alt', down: false });
@@ -230,9 +230,31 @@ if (embedded) {
     e.stopPropagation();
     send({ type: 'wheel', x: e.clientX, y: e.clientY, dx: e.deltaX, dy: e.deltaY });
   }, { capture: true, passive: false });
+  // A ⌘V outside the app's text fields: a hidden box in the app takes the
+  // focus until the paste lands in it, so every browser makes it a paste (and
+  // nothing has to read the clipboard), then the focus goes back.
+  const catcher = Object.assign(document.createElement('textarea'), { tabIndex: -1 });
+  catcher.setAttribute('aria-hidden', 'true');
+  catcher.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+  let before = null;
+  const release = () => {
+    if (!catcher.isConnected) return;
+    const back = before;
+    before = null;
+    catcher.value = '';
+    catcher.remove();
+    if (back?.isConnected && back !== document.body) back.focus?.({ preventScroll: true });
+  };
+  const catchPaste = () => {
+    before = document.activeElement;
+    document.body.append(catcher);
+    catcher.focus({ preventScroll: true });
+    setTimeout(release, 500);
+  };
   addEventListener('paste', async (e) => {
-    if (editable(e.target)) return;
+    if (editable(e.target) && e.target !== catcher) return;
     e.preventDefault();
+    release();
     const images = await Promise.all([...(e.clipboardData?.files || [])]
       .filter((f) => /^image\/(png|jpeg|webp|gif)$/.test(f.type))
       .map((f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok({ type: f.type, url: r.result }); r.readAsDataURL(f); })));

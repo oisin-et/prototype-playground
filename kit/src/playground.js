@@ -1120,10 +1120,14 @@ export const mountPlayground = (hooks) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
   });
 
-  // Pasting and dictation (VoiceInk and the like paste with ⌘V) always reach the
-  // chat box. A paste made while a version, a button or the screen has the focus
-  // goes into the box instead of nowhere, and a ⌘V the browser doesn't turn into
-  // a paste is read from the clipboard.
+  // Pasting and dictation (VoiceInk and the like paste with ⌘V, then put the
+  // old clipboard back) always reach the chat box, the first time. A ⌘V made
+  // while a version, a button or the screen has the focus moves the focus to
+  // the box before the browser pastes, so the paste lands there itself. Any
+  // paste that still lands elsewhere is put in the box. The clipboard is only
+  // read as a last resort, for an app that sends a ⌘V and no paste: by then a
+  // dictation app may have put the old clipboard back, so a paste that does
+  // arrive always cancels it.
   const editable = (el) => el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
   const insert = (text) => {
     if (!text || !chat.enabled) return;
@@ -1135,12 +1139,16 @@ export const mountPlayground = (hooks) => {
     }
   };
   let pasteWait = 0;
-  document.addEventListener('keydown', (e) => {
-    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'v' || !chat.enabled) return;
-    const target = editable(e.target);
-    if (target && target !== input) return;
+  const readLater = () => {
     clearTimeout(pasteWait);
     pasteWait = setTimeout(() => navigator.clipboard?.readText().then(insert).catch(() => {}), 120);
+  };
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'v' || !chat.enabled) return;
+    if (editable(e.target)) return;
+    if (!isOpen(chatPanel)) setOpen('chat', true);
+    input.focus({ preventScroll: true });
+    if (document.activeElement !== input) readLater();
   }, true);
   document.addEventListener('paste', (e) => {
     clearTimeout(pasteWait);
@@ -1629,14 +1637,15 @@ export const mountPlayground = (hooks) => {
       else if (key === 'p') { const open = !isOpen(filesPanel) || !isOpen(chatPanel); setOpen('files', open); setOpen('chat', open); }
     },
     async paste(text, images = []) {
+      clearTimeout(pasteWait);
       if (!chat.enabled) return;
       for (const im of images) attach(await (await fetch(im.url)).blob(), 'Pasted');
       if (!images.length) insert(text);
     },
+    // From a bridge that can't catch the paste itself (the Flutter one): the
+    // paste, if one comes, follows within a few milliseconds and cancels this.
     pasteKey() {
-      if (!chat.enabled) return;
-      clearTimeout(pasteWait);
-      pasteWait = setTimeout(() => navigator.clipboard?.readText().then(insert).catch(() => {}), 120);
+      if (chat.enabled) readLater();
     },
   };
 

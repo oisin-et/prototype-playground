@@ -134,6 +134,7 @@ A playground isn't done until all of this works. Check by measuring and clicking
   - the header follows navigation inside the app;
   - ⌥-drag captures part of the app with a note naming what it covers, and N-notes outline what's under the pointer;
   - ⌘+, P, Esc and pastes reach the playground while the app has the focus.
+- **Pasting, every time:** a paste or ⌘V (how dictation apps like VoiceInk type) lands in the chat box **once, the first time**, wherever the focus is: in the box, on the page or a button, in the app, and while the app reloads after a new version. A dictation app puts the old clipboard back straight after its ⌘V, so test that too: nothing old may follow the text. Never rely on reading the clipboard (it can ask permission and returns the old clipboard): the page moves the focus to the chat box on ⌘V, and the web bridge catches the paste in a hidden box in the app. Test it in headed Chrome with focus emulation, sending ⌘V with the `paste` command.
 - **Reloads:**
   - a changed version shows after **Reload app**;
   - a new version is picked up (Flutter: a hot reload; web: the frame reloads, and the playground goes back to the same screen);
