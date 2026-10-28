@@ -320,9 +320,10 @@ export const mountPlayground = (hooks) => {
     const on = numOf(trying(pg) || picked(pg));
     return new Set(on ? [on[0]] : []);
   };
+  let opening = null; // the folder that's opening, so only it springs in
   const toggleFolder = (pg, key) => {
     const open = openFolders(pg);
-    if (!open.delete(key)) open.add(key);
+    if (!open.delete(key)) { open.add(key); opening = `${pg.id}#${key}`; }
     nav.cols = { ...nav.cols, [pg.id]: [...open] };
     store.set(`${hooks.key}.playground.cols`, nav.cols);
     draw(true);
@@ -340,13 +341,13 @@ export const mountPlayground = (hooks) => {
         </button>
         <span class="pg-tools">${typeof key === 'number' ? colBinBtn(pg, key, head.name) : ''}</span>
       </div>
-      ${open ? `<ol class="pg-versions pg-iters" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#${key}`)}"><li class="pg-glider" aria-hidden="true"></li>${list.map((v) => versionRow(pg, v)).join('')}</ol>` : ''}
+      ${open ? `<ol class="pg-versions pg-iters${opening === `${pg.id}#${key}` ? ' enter' : ''}" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#${key}`)}"><li class="pg-glider" aria-hidden="true"></li>${list.map((v) => versionRow(pg, v)).join('')}</ol>` : ''}
     </li>`;
   };
   const exploration = (pg) => {
     const cols = columnsOf(pg), main = versionById(pg, 'default') || { id: 'default', name: 'As it is' };
     const open = openFolders(pg), hidden = pg.versions.length - shownVersions(pg).length;
-    return `<section class="pg-group">
+    return `<section class="pg-group pg-tree" data-pg="${esc(pg.id)}"><svg class="pg-graph" aria-hidden="true"></svg>
       ${mergeRow(pg)}
       <ol class="pg-versions pg-mainrow" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#main`)}"><li class="pg-glider" aria-hidden="true"></li>${versionRow(pg, main)}</ol>
       <h4 class="pg-xtitle">Explorations <small>${cols.length}</small></h4>
@@ -354,6 +355,64 @@ export const mountPlayground = (hooks) => {
       ${hidden ? `<p class="pg-hidden">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}
     </section>`;
   };
+
+  // ---- The graph ---------------------------------------------------------------
+  // Down the left of the list, like a git graph: main's line, each exploration
+  // a branch off it, and an open folder's versions joined down its own line.
+  // The picked version's way back to main is blue, and the dashed node at the
+  // top of main is what a commit would bring in; a trial's way is amber.
+  // Drawn after layout, from where the rows landed.
+  const MAIN_X = 9, BRANCH_X = 23, R = 7;
+  const drawGraph = (tree) => {
+    const pg = byId(tree.dataset.pg), svg = tree.querySelector('.pg-graph');
+    if (!pg || !svg) return;
+    const top = tree.getBoundingClientRect().top;
+    const mid = (el) => { const r = el.getBoundingClientRect(); return r.top - top + Math.min(r.height / 2, 19); };
+    const pick = picked(pg), t = trying(pg);
+    const blue = new Set(lineage(pg, pick).map((v) => v.id)), amber = new Set(lineage(pg, t).map((v) => v.id));
+    const tone = (ids) => (ids.some((i) => amber.has(i)) && t ? 'try' : ids.some((i) => blue.has(i)) ? 'pick' : '');
+    const mainRow = tree.querySelector('.pg-mainrow .pg-version'), merge = tree.querySelector('.pg-merge');
+    const paths = [], nodes = [];
+    const mainY = mainRow ? mid(mainRow) : 0, inY = merge ? mid(merge) : null;
+    let lastY = mainY, lit = null; // lit: [y, tone] where the pick's (or trial's) branch leaves main
+    for (const f of tree.querySelectorAll('.pg-xfolder')) {
+      const key = f.querySelector('[data-open-col]')?.dataset.openCol;
+      const ids = columnOf(pg, /^\d+$/.test(key) ? +key : key).map((v) => v.id);
+      const hy = mid(f.querySelector('.pg-xhead')), cls = tone(ids);
+      // Off main, round the corner, into the folder's node.
+      paths.push([cls, `M${MAIN_X} ${hy - R}Q${MAIN_X} ${hy} ${MAIN_X + R} ${hy}H${BRANCH_X}`]);
+      nodes.push(`<circle class="${cls}" cx="${BRANCH_X}" cy="${hy}" r="4"/>`);
+      if (cls && (!lit || cls === 'try')) lit = [hy, cls];
+      lastY = hy;
+      // Its versions, down the folder's line: each step is lit if it's on the way.
+      let prev = hy;
+      for (const row of f.querySelectorAll('.pg-iters .pg-version')) {
+        const y = mid(row), id = row.dataset.v;
+        const c = amber.has(id) && t ? 'try' : blue.has(id) ? 'pick' : '';
+        paths.push([c, `M${BRANCH_X} ${prev}V${y}`]);
+        nodes.push(`<circle class="${id === t ? 'try head' : id === pick ? 'pick head' : c}" cx="${BRANCH_X}" cy="${y}" r="${id === t || id === pick ? 5 : 3.5}"/>`);
+        prev = y;
+      }
+    }
+    // main's line, from the top down to the last branch.
+    paths.unshift(['main', `M${MAIN_X} ${inY ?? mainY}V${Math.max(lastY - R, mainY)}`]);
+    // The way into main: from the branch the pick (or trial) is on, up main to the incoming node.
+    if (lit && inY != null) paths.push([`${lit[1]} merge`, `M${MAIN_X} ${lit[0] - R}V${inY}`]);
+    if (inY != null) nodes.push(`<circle class="incoming${t ? ' try' : ''}" cx="${MAIN_X}" cy="${inY}" r="6"/>`);
+    nodes.push(`<circle class="main${pick === 'default' && !t ? ' pick' : ''}" cx="${MAIN_X}" cy="${mainY}" r="5"/>`);
+    const order = (c) => (c.startsWith('pick') ? 3 : c.startsWith('try') ? 2 : c === 'main' ? 1 : 0);
+    paths.sort((a, b) => order(a[0]) - order(b[0]));
+    svg.setAttribute('width', 32);
+    svg.setAttribute('height', tree.offsetHeight);
+    svg.innerHTML = paths.map(([c, d]) => `<path class="${c}" d="${d}"/>`).join('') + nodes.join('');
+  };
+  const graphSizes = new ResizeObserver((entries) => { for (const e of entries) drawGraph(e.target); });
+  const drawGraphs = () => {
+    graphSizes.disconnect();
+    opening = null;
+    for (const tree of files.querySelectorAll('.pg-tree')) { drawGraph(tree); graphSizes.observe(tree); }
+  };
+  document.fonts?.ready.then(() => drawGraphs());
 
   // ---- The preview ------------------------------------------------------------
   // Hovering a version (or tabbing to it) shows a card beside the panel: its
@@ -525,6 +584,8 @@ export const mountPlayground = (hooks) => {
     lastLevel = level;
     const trialEnters = !!pg && !hadTrial && !still();
     hadTrial = !!pg;
+    // A redraw keeps the list where it was scrolled to, unless it moved to another level.
+    const scrolled = moved ? 0 : files.querySelector('.pg-list')?.scrollTop || 0;
     files.innerHTML = `
       <div class="pg-head"><h2>Explorations</h2><button type="button" class="pg-locate pg-filter${nav.starred ? ' on' : ''}" data-starred-only aria-pressed="${nav.starred}" aria-label="Starred only" title="${nav.starred ? 'Show everything' : 'Show only what has a star'}">${STAR_ICON}</button><button type="button" class="pg-locate" data-locate aria-label="Show the page on show" title="Go to the page on show">${LOCATE_ICON}</button><button type="button" class="pg-min" data-close aria-label="Minimise Explorations" title="Minimise (P)">‹</button></div>
       ${hooks.local() ? `<div class="pg-local"><p>Your picks are saved in this browser only, because the server can't write
@@ -537,8 +598,10 @@ export const mountPlayground = (hooks) => {
         </div>`
       : `<div class="pg-foot"><p>Each exploration is a folder: open it to see its iterations. <b>4.0</b> is exploration 4, and <b>4.1</b>, <b>4.2</b> are steps on it.
         Hover a version to see it, click it to try it, then <b>Use this version</b> to get it ready for main.</p></div>`}`;
+    if (scrolled) files.querySelector('.pg-list').scrollTop = scrolled;
     hidePeek();
     placeGliders();
+    drawGraphs();
     drawCommitBtn();
   };
 
