@@ -64,6 +64,7 @@ Describe a version in the Claude panel and press Enter.
 - **Follow-ups change the same version.**
 - **Run up to four chats at once,** with **+** at the top of the panel. Each chat is its own conversation and makes its own versions. Every chat shares the one app, so an error in one chat's version shows in every reload until it's fixed.
 - **Claude is locked down.** It can read the project, write only under `<data>/`, and run only `new.py`, `duplicate.py` and `reload.py`. Anything else is refused without asking, and your own Claude Code settings and MCP servers aren't loaded. Only the playground's own page can start a run.
+- **Other folders it can read.** `"read"` in `playground.json` lists folders outside the project that Claude may read but never change, such as another app with the same features or a design library: `"read": [{"path": "../other-app", "about": "what's there and when to look"}]`. A path is from the project's top (or absolute). Claude is told each one's path and `about` on every message, and Commit's move can read them too. A folder that isn't there is left out, with a warning where the playground runs.
 - **"Use it" or "make it the real thing"** gets you pointed at **Use this version**: the chat can't pick for you.
 
 ## Add a version

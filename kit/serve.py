@@ -31,7 +31,8 @@ It's `python3 -m http.server` over the project with five additions:
 - Chat (on unless --no-chat, when Claude Code is on this computer). The Claude
   panel posts a prompt here, and this runs Claude Code headless (`claude -p`)
   in the project, using your own Claude login, and streams what it does back to
-  the panel as lines of JSON. Claude is locked down: it can read the project,
+  the panel as lines of JSON. Claude is locked down: it can read the project
+  (and the folders "read" in playground.json names, only to read them),
   write only under <data>/, and run only playground/new.py, duplicate.py and
   reload.py. Anything else is refused without asking
   (--permission-mode dontAsk), and your own Claude settings and MCP servers
@@ -133,6 +134,37 @@ VERSION_RULES = {
 }
 
 
+def references():
+    """The folders outside the project that Claude may read: "read" in playground.json,
+    [{"path": <from the project's top, or absolute>, "about": <what's there>}]. Those that
+    aren't there are left out, with a warning."""
+    found = []
+    for item in CONFIG.get("read", []):
+        item = {"path": item} if isinstance(item, str) else item
+        path = (ROOT / str(item.get("path", ""))).resolve()
+        if path.is_dir() and item.get("path"):
+            found.append((path, str(item.get("about", "")).strip()))
+        else:
+            print(f"playground.json \"read\": {item.get('path')!r} isn't a folder, so Claude can't read it.", file=sys.stderr)
+    return found
+
+
+def reference_flags():
+    """Claude Code's flags that let it read the references (and nothing more there). They
+    start with Read rules, so they go straight after the --allowedTools list."""
+    paths = [str(path) for path, _ in references()]
+    return [f"Read(/{p}/**)" for p in paths] + (["--add-dir", *paths] if paths else [])
+
+
+def reference_rules():
+    """The references, for the rules: where each is and what it's for."""
+    refs = references()
+    if not refs:
+        return ""
+    return "\nOther folders you can read (only read: never change them, and don't run anything there):\n" + \
+        "".join(f"- {path}" + (f": {about}" if about else "") + "\n" for path, about in refs)
+
+
 def chat_rules():
     """What Claude is told on every run, after Claude Code's own instructions:
     the kit's rules, then the project's own (playground/RULES.md), read
@@ -206,7 +238,7 @@ Rules:
   index.json gets the earlier one's screen as `below`, and a whole copy hides it. So
   change only what the idea needs, and wrap `below` where you can rather than copying
   the whole screen.
-"""
+""" + reference_rules()
     if own:
         rules += "\nThis project's own rules (playground/RULES.md):\n\n" + own + "\n"
     return rules
@@ -733,6 +765,7 @@ class Chat:
             "--allowedTools", "Read(./**)", f"Edit({DATA_REL}/**)", f"Write({DATA_REL}/**)", "Edit(playground/notes/**)",
             "Bash(python3 playground/duplicate.py:*)", "Bash(python3 playground/new.py:*)",
             "Bash(python3 playground/reload.py:*)",
+            *reference_flags(),
             "--append-system-prompt", chat_rules(),
         ]
         if self.model:
@@ -1055,7 +1088,7 @@ class Commit:
             f"(its folder is {DATA_REL}/{p['playground']}/{p['version']}/)" + (f". Its note: {p['note']}" if p["note"] else "")
             for n, p in enumerate(picks, 1))
         own = HERE / "RULES.md"
-        rules = MOVE_RULES + ("\n\nThis project's own rules for versions (playground/RULES.md):\n\n" + own.read_text().strip() if own.exists() else "")
+        rules = MOVE_RULES + reference_rules() + ("\n\nThis project's own rules for versions (playground/RULES.md):\n\n" + own.read_text().strip() if own.exists() else "")
         cmd = [
             self.chat.claude, "-p", prompt,
             "--output-format", "stream-json", "--verbose",
@@ -1066,6 +1099,7 @@ class Commit:
             "--tools", "Read,Glob,Grep,Edit,Write,Bash",
             "--allowedTools", "Read(./**)", "Edit(./**)", "Write(./**)", "Bash(python3 playground/reload.py:*)",
             *[str(a) for a in CONFIG.get("commit", {}).get("allow", [])],
+            *reference_flags(),
             "--disallowedTools", "Edit(playground/**)", "Write(playground/**)", "Edit(.git/**)", "Write(.git/**)",
             f"Edit({DATA_REL}/**)", f"Write({DATA_REL}/**)",
             "--append-system-prompt", rules,
