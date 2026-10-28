@@ -55,7 +55,7 @@ Find the widget that owns navigation: the `State` that decides which screen show
 
 ## screens.json
 
-One entry per screen. `duplicate.py` uses `file`, `type` and `build` to copy a screen into a version. `build` constructs the copy from the original widget `o`, passing on each of its constructor arguments:
+One entry per screen. `new.py` uses `file`, `type` and `build` to copy a screen into a new exploration. `build` constructs the copy from the original widget `o`, passing on each of its constructor arguments:
 
 ```json
 "settings": {"title": "Settings", "file": "lib/ui/settings_page.dart", "type": "SettingsPage",

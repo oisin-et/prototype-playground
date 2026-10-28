@@ -8,7 +8,7 @@
 // calls attach() once, wraps each screen in page(), and calls report() when
 // the screen on show changes:
 //
-//   host → app  {type: 'layers', layers: ['settings/compact/v1', …]}
+//   host → app  {type: 'layers', layers: ['settings/v4.2', …]}
 //               the versions to run, in <data>/index.json order
 //               {type: 'show', screen}             open that screen
 //               {type: 'capture', id, rect, scale} draw part of the app

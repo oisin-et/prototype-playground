@@ -25,15 +25,15 @@ It's `python3 -m http.server` over the project with five additions:
   written again.
 
 - Picks. The Explorations panel's "Use this version" posts the picks here,
-  and they're written to <data>/picks.json. Only picks that name an
-  exploration in <data>/index.json and one of its versions are kept.
+  and they're written to <data>/picks.json, one per screen. Only picks that
+  name a screen in <data>/index.json and one of its versions are kept.
 
 - Chat (on unless --no-chat, when Claude Code is on this computer). The Claude
   panel posts a prompt here, and this runs Claude Code headless (`claude -p`)
   in the project, using your own Claude login, and streams what it does back to
   the panel as lines of JSON. Claude is locked down: it can read the project
   (and the folders "read" in playground.json names, only to read them),
-  write only under <data>/, and run only playground/new.py, duplicate.py and
+  write only under <data>/, and run only playground/new.py, iterate.py and
   reload.py. Anything else is refused without asking
   (--permission-mode dontAsk), and your own Claude settings and MCP servers
   aren't loaded. Only the playground's own page can call it: the request must
@@ -49,8 +49,8 @@ It's `python3 -m http.server` over the project with five additions:
   the Commit class.
 
 - Stars and deletes (POST /playground/explorations), from the star and bin
-  buttons in Explorations. A star is kept in the exploration's versions.json.
-  A delete moves the exploration's or version's folder to playground/trash/
+  buttons in Explorations. A star is kept in the screen's versions.json.
+  A delete moves a version's folder to playground/trash/
   (git ignores it; cleared after 14 days), and the toast's Undo puts it back.
 
 Screenshots sent with a prompt are saved to playground/attachments/ (git
@@ -183,34 +183,56 @@ Rules:
   where it has tokens).
 - Work only in {DATA_REL}/ (and, to answer notes, the notes.json you're sent). You can't
   change anything else, and the only commands you can run are python3 playground/new.py,
-  python3 playground/duplicate.py and python3 playground/reload.py.
-- Explorations are kept by screen: {DATA_REL}/<screen>/<exploration>/<version>/,
-  where <screen> is an id in {DATA_REL}/screens.json.
-  An exploration's id is <screen>/<exploration>, as in {DATA_REL}/index.json.
-- A new idea for an existing exploration is a new version: run
-  python3 playground/duplicate.py <screen>/<exploration> <version to start from> "<short name>"
-  starting from the version the person is looking at, unless they say otherwise.
-  Copying "default" copies the app's own file for the screen into the version, with a
-  {VERSION_FILE} that draws the copy in its place. Then change only the new version's folder.
-- A new idea that fits no exploration of that screen starts a new exploration:
-  python3 playground/new.py <screen> <exploration> "<Title>" "<what it tries, one sentence>"
-  then duplicate its default and change the copy.
-{VERSION_RULES[ADAPTER]}
+  python3 playground/iterate.py and python3 playground/reload.py.
+- Each screen's explorations are kept in {DATA_REL}/<screen>/, where <screen> is an id
+  in {DATA_REL}/screens.json, with their list in its versions.json. Explorations go
+  across and iterations go down, like columns on a board:
+  - An exploration is one direction for the screen, numbered 1, 2, 3 … Its first
+    version is v<N>.0 (folder {DATA_REL}/<screen>/v<N>.0/).
+  - An iteration is a step further along one exploration: v<N>.1, v<N>.2 … down
+    its column, each copied from the one it builds on ("from" in versions.json).
+  - The person may say "exploration 4", "version 4", "route 4" or "4" for the
+    column, and "4.2" or "v4.2" for one iteration. main ("default") is the app as it is.
+- Work out which the message is before you touch a file:
+  - Feedback on what's on show, or a change to it ("make the meters thinner", "move
+    that left", "now add a label", a note pinned to it) is an iteration. Build on the
+    version on show:
+    python3 playground/iterate.py <screen> <version on show> "<short name>"
+    That makes the next iteration of its column (on show 4.2, with 4.3 already
+    made, it makes 4.4 from 4.2). If the version on show is main, there's nothing
+    to iterate on: start an exploration instead.
+  - A different idea, another way to do it, an alternative or "a new exploration"
+    is a new column:
+    python3 playground/new.py <screen> "<short name>"
+    which starts v<N>.0 from main. To take a version in a new direction ("try 2.3
+    another way"), add --from <version>.
+  - "Go back to 2" means iterate on exploration 2's latest version (2.0 if it has
+    no iterations yet), and "carry on from 2.1" on 2.1, not on the one on show.
+  - If you can't tell whether it's a step on what's shown or a new direction, it's
+    a step (an iteration). Never make a new exploration for a small change.
+- Every message that changes the design makes a new version, so each step stays in
+  the column to go back to: a follow-up in this conversation iterates on the
+  version you made last (or the one on show, if the person has moved to another).
+  Change a version in place only to fix it (a reload error, something that didn't
+  work as asked), and only one you made in this conversation.
+- Start every version from its copy: change only the new version's folder.
 - After changing a version, run python3 playground/reload.py. It reloads the app
   and prints any errors: fix them before you finish. A reload error about a
   version you didn't touch is still yours to report, not to fix.
-- A follow-up in this conversation ("make it bigger") changes the version you made
-  in this conversation, in place. Never change a version you didn't make in this
-  conversation unless the person asks for exactly that.
+- Never change a version you didn't make in this conversation unless the person asks
+  for exactly that: iterate on it instead.
 - Write what the version changes in its "note" in versions.json, in one or two
-  plain sentences. Leave "starred" as it is: the person stars versions and
-  explorations, and deletes them, in the Explorations panel. Never delete one yourself. Keep the JSON style: short arrays and objects on one line.
+  plain sentences: for an iteration, what changed since the version it's from.
+  Leave "starred" as it is: the person stars versions, and deletes them, in the
+  Explorations panel. Never delete one yourself. Keep the JSON style: short arrays and objects on one line.
 - Other chats may be working in {DATA_REL}/ at the same time as you, in their own
-  versions. Change versions.json and index.json only with the Edit tool (never Write
+  versions, so the next number may not be the one you expect: use the one the
+  script prints. Change versions.json and index.json only with the Edit tool (never Write
   them whole), so you don't wipe out a version another chat has just added, and
   leave versions you didn't make alone. A reload error in a version another chat is
   making may show up in your reload too: report it, don't fix it.
-- Finish with one or two sentences saying what you made and which version it is.
+- Finish with one or two sentences saying what you made and which version it is,
+  by its number ("4.3, an iteration of exploration 4" or "exploration 6, new").
 - The person may attach screenshots: captures of part of the app, with a note naming
   the screen and the parts of it the capture covers, or images of their own. Read
   each one with the Read tool before you answer. Don't change or delete files in
@@ -218,10 +240,10 @@ Rules:
 - The person may send notes: several at once, each pinned to a part or an area of a
   screen, with a picture of it. They're listed in the prompt (with where the part was
   built, when the app can say) and saved in a notes.json under playground/notes/. Read
-  each note's picture. Work through them as one batch: notes on the same exploration go
-  into one new version, started from the version the note was made on (or, as a
-  follow-up, the version you made in this conversation); notes on a screen with no
-  exploration start one, as above. A "question" note asks something: answer it, and
+  each note's picture. Work through them as one batch: notes on the same screen go
+  into one new iteration of the version the notes were made on (or, as a follow-up,
+  the version you made in this conversation); notes made on main start an
+  exploration, as above. A "question" note asks something: answer it, and
   change nothing unless it asks you to. Reload and fix errors before you answer.
   As you finish each note, set its "status" and "reply" in that notes.json, changing
   nothing else in the file: "done" with one plain sentence saying what you changed and
@@ -234,8 +256,9 @@ Rules:
   what the playground runs. If it's already picked, say so. Moving a version into the
   app for good is done in Claude Code outside this chat (the prototype-playground
   skill), so say that too.
-- Two explorations' picked versions can change the same screen: the later one in
-  index.json gets the earlier one's screen as `below`, and a whole copy hides it. So
+- Two screens' picked versions can change the same screen (a version can add or
+  change other screens too): the later one in index.json gets the earlier one's
+  screen as `below`, and a whole copy hides it. So
   change only what the idea needs, and wrap `below` where you can rather than copying
   the whole screen.
 """ + reference_rules()
@@ -383,7 +406,7 @@ def describe_note(note):
     if note["files"]:
         where += ", drawn from " + " combined with ".join(note["files"])
     if note["playground"]:
-        where += f"; exploration \"{note['playground']}\", version \"{note['version'] or 'default'}\""
+        where += f"; made on {note['playground']} {note['version'] or 'default'}"
     at = []
     if note["node"]:
         n = note["node"]
@@ -424,14 +447,14 @@ def in_notes(path):
 
 
 def playground_of(path):
-    """(exploration, version) for a file under <data>/<screen>/<exploration>/<version>/."""
+    """(screen, version) for a file under <data>/<screen>/<version>/."""
     try:
         parts = Path(path).resolve().relative_to(DATA).parts
     except ValueError:
         return None, None
-    if len(parts) < 3:
+    if len(parts) < 2:
         return None, None
-    return f"{parts[0]}/{parts[1]}", (parts[2] if len(parts) > 3 else None)
+    return parts[0], (parts[1] if len(parts) > 2 else None)
 
 
 def label(name, args):
@@ -706,14 +729,10 @@ def make_app(port):
 
 
 def made_by(text):
-    """[(exploration, version)] that a run of new.py or duplicate.py says it made:
-    "Started <screen>/<exploration> in …" (its default) or "Made <screen>/<exploration>
-    <version> from …"."""
-    # A screen's id is as screens.json names it (it may have capitals); an
-    # exploration's and a version's are lowercase.
-    out = [(pg, "default") for pg in re.findall(r"Started ([\w-]+/[a-z0-9-]+) in ", text)]
-    out += re.findall(r"Made ([\w-]+/[a-z0-9-]+) ([a-z0-9]+) from ", text)
-    return out
+    """[(screen, version)] that a run of new.py or iterate.py says it made:
+    "Made <screen> v<N>.<M> from …"."""
+    # A screen's id is as screens.json names it (it may have capitals).
+    return re.findall(r"Made ([\w-]+) (v\d+\.\d+) from ", text)
 
 
 def result_text(content):
@@ -763,7 +782,7 @@ class Chat:
             "--permission-prompts", "none",
             "--tools", "Read,Glob,Grep,Edit,Write,Bash",
             "--allowedTools", "Read(./**)", f"Edit({DATA_REL}/**)", f"Write({DATA_REL}/**)", "Edit(playground/notes/**)",
-            "Bash(python3 playground/duplicate.py:*)", "Bash(python3 playground/new.py:*)",
+            "Bash(python3 playground/iterate.py:*)", "Bash(python3 playground/new.py:*)",
             "Bash(python3 playground/reload.py:*)",
             *reference_flags(),
             "--append-system-prompt", chat_rules(),
@@ -802,9 +821,11 @@ class Chat:
         if body.get("folder"):
             context.append(f"The Explorations panel has the \"{body['folder']}\" screen's folder open.")
         if body.get("playground"):
+            v = body.get("version") or "default"
+            m = re.match(r"v(\d+)\.(\d+)$", v)
+            what = (f"exploration {m[1]}'s own version" if m[2] == "0" else f"iteration {m[2]} of exploration {m[1]}") if m else "main" if v == "default" else v
             context.append(
-                f"The exploration on show is \"{body['playground']}\", "
-                f"version \"{body.get('version') or 'default'}\" ({body.get('versionState') or 'shown'})."
+                f"The version on show is {body['playground']} {v} ({what}, {body.get('versionState') or 'shown'})."
             )
         prompt = message + ("\n\n(" + " ".join(context) + ")" if context else "")
         shots = save_attachments(body.get("attachments"))
@@ -819,7 +840,7 @@ class Chat:
                 f", saved in {notes_file}. Read each picture with the Read tool, and set each note's status " + \
                 "and reply in that file as you finish it:\n" + "\n".join(describe_note(n) for n in notes)
         before = known_versions()
-        mine = set()  # (exploration, version) this run made: other tabs' runs make versions too
+        mine = set()  # (screen, version) this run made: other tabs' runs make versions too
         tools = {}
         errors = tempfile.TemporaryFile("w+")
         flutter = find_flutter() if ADAPTER == "flutter" else None
@@ -1155,15 +1176,15 @@ def clear_old_trash(days=14):
 
 def tidy(pg, change):
     """Explorations' stars and deletes (POST /playground/explorations). A star is
-    kept in the exploration's versions.json: "starred": true at the top for the
-    exploration, on a version's entry for the version. A delete moves the
-    exploration's folder, or the version's, to playground/trash/<stamp>/ with a
+    kept in the screen's versions.json, on the version's entry. A delete moves
+    the version's folder (or, with no version, every exploration of the
+    screen) to playground/trash/<stamp>/ with a
     deleted.json saying where it was, so "restore" can put it back. Returns
     (status, reply)."""
     with playground_lock():
         order = (read_json_file(INDEX) or {}).get("playgrounds", [])
         if pg not in order:
-            return 404, {"error": f"There's no exploration {pg} in {DATA_REL}/index.json."}
+            return 404, {"error": f"The {pg} screen has no explorations in {DATA_REL}/index.json."}
         meta_path = DATA / pg / "versions.json"
         meta = read_json_file(meta_path)
         if not isinstance(meta, dict):
@@ -1250,7 +1271,7 @@ def restore(stamp):
             meta_path = DATA / pg / "versions.json"
             meta = read_json_file(meta_path)
             if pg not in order or not isinstance(meta, dict):
-                return 409, {"error": f"Its exploration, {pg}, isn't there any more."}
+                return 409, {"error": f"Its screen's explorations, {pg}, aren't there any more."}
             versions = meta.setdefault("versions", [])
             if dest.exists() or any(v.get("id") == version for v in versions):
                 return 409, {"error": f"{pg} has a {version} again, so it can't be put back."}
@@ -1389,7 +1410,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(picks, dict) or not all(pg in versions and v in versions[pg] for pg, v in picks.items()):
                 raise ValueError
         except (ValueError, OSError, KeyError):
-            self.send_error(400, f"Picks must name an exploration in {DATA_REL}/index.json and one of its versions")
+            self.send_error(400, f"Picks must name a screen in {DATA_REL}/index.json and one of its versions")
             return
         write_json(PICKS, dict(sorted(picks.items())))
         self.log_message("Saved playground picks: %s", ", ".join(f"{pg} {v}" for pg, v in sorted(picks.items())) or "none")

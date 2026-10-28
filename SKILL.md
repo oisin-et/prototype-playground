@@ -49,14 +49,14 @@ Do it in this order, and tell the person what you're doing.
 
    If you can't find one place that decides which screen shows, ask before restructuring anything.
 6. **Write `playground/RULES.md`**: the project's rules for Claude in the chat. Cover its tokens and how a version uses them, what a builder returns in this project, and anything a version must not touch. Take them from the project's CLAUDE.md and code. Keep it short: the kit's rules already cover the playground itself.
-7. **Check that it works** (see "The fidelity bar"). At least: the app loads in the frame, the header lists the screens, **Show this screen** opens each one, and a first exploration works end to end. Make that exploration with `new.py` and `duplicate.py ... default`, change something visible, then **Reload app**, try it, **Use this version**, and **Back**. Then delete that test exploration unless the person wants to keep it.
+7. **Check that it works** (see "The fidelity bar"). At least: the app loads in the frame, the header lists the screens, **Show this screen** opens each one, and a first exploration works end to end. Make that exploration with `new.py <screen> "Name"`, change something visible, then **Reload app**, try it, **Use this version**, and **Back**. Then delete that test exploration unless the person wants to keep it.
 8. Commit the result according to step 1. Never commit explorations, `index.json` entries for them, or `picks.json` changes unless the person asks.
 
 ## 3. Run it
 
 1. From the project's top: `python3 playground/serve.py --open`, or double-click `playground/Open playground.command`. If the port is taken, check with `lsof -nP -iTCP:<port> -sTCP:LISTEN`: it may already be running, and `--open` then just opens it.
 2. The first start of a Flutter app takes about a minute. A web app is up when its dev server is.
-3. To open straight on a version: `http://localhost:<port>/?playground=<screen>/<exploration>&v=<version>`.
+3. To open straight on a version: `http://localhost:<port>/?playground=<screen>&v=<version>`.
 4. Chat is on whenever `serve.py` finds Claude Code. `--model sonnet` picks the model, and `--no-chat` turns it off. When chat can't run, the panel itself shows the fix with a Copy button, so point the person at the panel.
 
 Don't start `claude -p` yourself to test chat: a Claude Code session may not be allowed to start another agent. Test the panel with a stand-in that prints stream-json (set `PLAYGROUND_CLAUDE` to it), and leave the real run to the person.
@@ -69,16 +69,18 @@ Tell the person the URL and how to use it:
 
 ## 4. Add a version of a screen
 
-1. Find the exploration in the screen's folder: `<data>/index.json` lists them all. If none fits the idea, start one: `python3 playground/new.py <screen> <exploration> "Title" "What it tries, in one sentence"`.
-2. Copy the closest version: `python3 playground/duplicate.py <screen>/<exploration> <from-version> "Name"`. Add `--id v2b` for a variant. Copying `default` copies the app's own file for the screen and writes the version file from `playground/templates/`.
+Explorations go wide and iterations go deep. Each screen's versions are in `<data>/<screen>/versions.json`: exploration 4 is `v4.0`, and its iterations are `v4.1`, `v4.2` …, each copied from the one it builds on (`"from"`). The person says "exploration 4", "version 4" or "4.2".
+
+1. Decide which it is. A change to a version ("make it bigger", a note on it) is an **iteration** of that version: `python3 playground/iterate.py <screen> <version> "Name"` makes the next number down its column. A different idea is a new **exploration**: `python3 playground/new.py <screen> "Name"` copies main (the app's own file for the screen, with a version file from `playground/templates/`), and `--from <version>` takes a version in a new direction. When it's unclear, it's an iteration. Every change is a new version, so each step stays to go back to; change a version in place only to fix it.
+2. A playground from before the numbering (`<data>/<screen>/<topic>/v1`) moves over once with `python3 playground/migrate.py`, then `--apply`; `setup.py --update` says when it's needed.
 3. Change only the new version's folder. A version maps each screen it changes to a builder that gets `below` (the screen under it) and `app` (the app's own screen). Wrap `below` for a small change, or draw the copy for a big one. To change a part the screen uses, copy that part's file into the version folder too.
 4. Write what it changes in the version's `note` in `versions.json`, in one or two plain sentences.
 5. Never edit `default/` or another version. Versions don't share files, so an idea can be picked up again later.
-6. `python3 playground/reload.py`, then fix any errors. Open `?playground=<screen>/<exploration>&v=<version>`, tap through every screen the version touches and the paths in and out of them, and check the console.
+6. `python3 playground/reload.py`, then fix any errors. Open `?playground=<screen>&v=<version>`, tap through every screen the version touches and the paths in and out of them, and check the console.
 
 ## 5. Pick a version, and move it into the app
 
-- "Make it the real thing" in the panel means **Use this version**, and the person picks. Change `<data>/picks.json` by hand only when asked, and only with names from `index.json` and the exploration's `versions.json` (`serve.py` refuses anything else).
+- "Make it the real thing" in the panel means **Use this version**, and the person picks. Change `<data>/picks.json` by hand only when asked, and only with names from `index.json` and the screen's `versions.json` (`serve.py` refuses anything else).
 - Explorations stay on the person's computer unless they decide otherwise. A commit makes something the team's.
 - **Commit**, at the top right of the playground's header, moves the picks into the app and commits them locally, without pushing (`kit/README.md`, "Commit to main"). If the project's screens are written by scripts, list them in `playground.json`'s `"commit": {"allow": [...]}` so the move can run them.
 - **To move a picked version into the app** by hand (only when the person says it's settled):
@@ -127,8 +129,10 @@ A playground isn't done until all of this works. Check by measuring and clicking
   - trying a version keeps the app's state;
   - **Back to …** and **Use this version** sit at the foot of Explorations;
   - picks save to `picks.json` (or to the browser, with a warning, when the server can't write them);
-  - starring an exploration or a version survives a reload, and **Starred only** hides the rest;
-  - deleting a version or an exploration (the picked one too) asks first, takes it out of the app and the picks, and **Undo** puts it back.
+  - a screen's folder lists main and its explorations; pressing one opens its versions in a second column (4.0, then 4.1, 4.2 … down it), and the panel never shows more than two columns;
+  - starring a version survives a reload, and **Starred only** hides the rest;
+  - deleting a version, or an exploration with its iterations (the picked one too), asks first, takes it out of the app and the picks, and **Undo** puts it all back.
+- **Explorations and iterations:** a change asked for in the chat makes the next iteration of the version on show (4.2 → 4.3), a new idea makes the next exploration, and both scripts refuse what doesn't fit (iterating on main).
 - **The app's bridge:**
   - the screen picker opens every screen;
   - the header follows navigation inside the app;

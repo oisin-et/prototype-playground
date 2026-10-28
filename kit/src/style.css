@@ -153,11 +153,11 @@ body {
   content: ''; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
 }
-.pg-files { width: 320px; }
+.pg-files { width: min(var(--files-w, 320px), calc(100vw - 16px)); }
 .pg-claude { width: 380px; }
 .pg-panel.min { width: 44px; }
 .pg-body { flex: none; display: flex; flex-direction: column; min-height: 0; transition: opacity 240ms ease 80ms; }
-.pg-files .pg-body { width: 320px; }
+.pg-files .pg-body { width: min(var(--files-w, 320px), calc(100vw - 16px)); }
 .pg-claude .pg-body { width: 380px; }
 .pg-panel.min .pg-body { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .pg-panel .pg-rail {
@@ -268,30 +268,54 @@ body {
 .pg-from { color: var(--page-text); opacity: 0.75; }
 .pg-version.main .pg-vname { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
 
-/* The graph beside the versions, drawn like a git graph: main's lane on the
-   left, a lane per branch, the pick's line to main in blue and a trial's in
-   amber. The dashed node at the top of main is what a commit would bring in. */
-.pg-graph-holder { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
-.pg-graph { position: absolute; left: 0; top: 0; overflow: visible; }
-.pg-graph path, .pg-ready-graph path { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; stroke-linecap: round; }
-.pg-graph path.main, .pg-ready-graph path.main { stroke: rgba(201, 204, 210, 0.5); }
-.pg-graph path.pick, .pg-ready-graph path.pick { stroke: var(--accent); }
-.pg-graph path.try { stroke: var(--amber); }
-.pg-graph path.merge, .pg-ready-graph path.pick { stroke-dasharray: 2 4; }
-.pg-graph circle, .pg-ready-graph circle { fill: var(--page-muted); stroke: #1d1e23; stroke-width: 3; paint-order: stroke; }
-.pg-graph circle.main { fill: var(--page-text); }
-.pg-graph circle.pick, .pg-ready-graph circle.pick { fill: var(--accent); }
-.pg-graph circle.try { fill: var(--amber); }
-.pg-graph circle.head { filter: drop-shadow(0 0 4px rgba(37, 195, 255, 0.55)); }
-.pg-graph circle.try.head { filter: drop-shadow(0 0 4px rgba(240, 180, 76, 0.55)); }
-.pg-graph circle.incoming, .pg-ready-graph circle.incoming { fill: #1d1e23; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 2.5 2.5; paint-order: normal; }
-.pg-graph circle.incoming.try { stroke: var(--amber); }
+/* Two columns at most: main and the explorations on the left; the open
+   exploration's versions, top down, on the right. */
+.pg-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+.pg-cols.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.pg-col { min-width: 0; display: grid; gap: 6px; }
+.pg-col > * { min-width: 0; }
+.pg-col h3 { display: flex; align-items: center; gap: 8px; min-height: 26px; margin: 0 6px; font-size: 13px; font-weight: 600; }
+.pg-col h3 small { color: var(--page-muted); font-weight: 500; font-size: 12px; }
+.pg-col h3 .pg-gtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-steps { animation: pg-pop 420ms var(--spring) both; }
+.pg-col .pg-tile { position: relative; padding-right: 0; }
+.pg-col .pg-try { padding: 8px 10px 9px 12px; gap: 2px; }
+/* Each tile: its number (or "Exploration 4") and date or count on top, its
+   name under them on up to two lines. The actions sit over its top right
+   corner, shown on hover; an exploration's chevron says it opens. */
+.pg-col .pg-tile .pg-tools { position: absolute; top: 2px; right: 2px; align-items: center; }
+.pg-col .pg-version:not(:hover) .pg-tile .pg-tools .pg-icon:not(.on) { opacity: 0; }
+@media (hover: none) { .pg-col .pg-version .pg-tile .pg-tools .pg-icon { opacity: 0.8; } }
+.pg-xrow .pg-chevron { padding: 6px 6px 0 2px; color: var(--page-muted); transition: transform 420ms var(--spring); }
+.pg-xrow.running .pg-chevron { transform: translateX(3px); color: var(--page-text); }
+.pg-vtop { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-right: 48px; color: var(--page-muted); font-size: 11px; }
+.pg-vnum { flex: none; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pg-version.head .pg-vnum, .pg-version.running .pg-vnum { color: var(--page-text); }
+.pg-col .pg-vname { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.3; font-size: 13px; }
+.pg-col .pg-version.open .pg-vname { -webkit-line-clamp: unset; }
+.pg-col .pg-version.main .pg-vname { font-family: inherit; }
+.pg-col .pg-note { padding: 0 10px 10px 12px; }
+/* Down the open exploration, a thin line joins each step to the one before it. */
+.pg-steps .pg-version + .pg-version::before {
+  content: ''; position: absolute; left: 50%; top: -4px; width: 2px; height: 6px; margin-left: -1px;
+  border-radius: 1px; background: var(--frame-edge);
+}
+.pg-steps .pg-versions { gap: 4px; }
+.pg-group > .pg-merge { margin: 0 0 10px; border-radius: var(--well-radius); background: var(--well); }
+
+/* The little graph by each pick in Ready for main: main's line, and the pick's
+   dashed line into it. */
+.pg-ready-graph path { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; stroke-linecap: round; }
+.pg-ready-graph path.main { stroke: rgba(201, 204, 210, 0.5); }
+.pg-ready-graph path.pick { stroke: var(--accent); stroke-dasharray: 2 4; }
+.pg-ready-graph circle { fill: var(--page-muted); stroke: #1d1e23; stroke-width: 3; paint-order: stroke; }
+.pg-ready-graph circle.pick { fill: var(--accent); }
+.pg-ready-graph circle.incoming { fill: #1d1e23; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 2.5 2.5; paint-order: normal; }
 .pg-merge { position: relative; z-index: 1; padding: 9px 10px 10px var(--gutter, 14px); display: grid; gap: 2px; font-size: 13px; }
 .pg-merge b { font-weight: 600; color: var(--accent); }
 .pg-merge.trying b { color: var(--amber); }
 .pg-merge small { color: var(--page-muted); font-size: 12px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .pg-merge .pg-changes { color: var(--page-text); opacity: 0.8; }
-.pg-merge + .pg-version { margin-top: 2px; }
 .pg-panel .pg-ready { overflow: hidden; width: 100%; text-align: left; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0; min-height: 46px; background: none; box-shadow: none; }
 @media (hover: hover) { .pg-panel .pg-ready:hover { filter: none; background: var(--hover-fill); } }
 .pg-ready-graph { width: 30px; height: 46px; flex: none; overflow: visible; }

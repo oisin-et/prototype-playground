@@ -10,7 +10,7 @@ date with this kit.
 A new setup copies the kit into <project>/playground/ and the adapter's
 bridge into the app, and writes what's particular to the project:
 playground/playground.json, playground/RULES.md (its rules for Claude),
-playground/templates/ (how duplicate.py turns a copied screen into a
+playground/templates/ (how new.py turns a copied screen into a
 version) and, in <data>/, an empty index.json, picks.json and screens.json.
 It never touches the app's own code: hooking the app up (HOOK.md in the
 adapter's folder) and listing its screens are left to do.
@@ -34,7 +34,8 @@ from pathlib import Path
 SKILL = Path(__file__).resolve().parent.parent
 KIT = SKILL / "kit"
 ADAPTERS = SKILL / "adapters"
-KIT_FILES = ["serve.py", "pglib.py", "new.py", "duplicate.py", "reload.py", "index.html", "README.md", "src"]
+KIT_FILES = ["serve.py", "pglib.py", "new.py", "iterate.py", "migrate.py", "reload.py", "index.html", "README.md", "src"]
+OLD_KIT_FILES = ["duplicate.py"]  # gone from the kit: --update takes them out
 DEFAULT_DATA = {"flutter": "lib/playground", "web": "src/playground"}
 LAUNCHER = """#!/bin/zsh
 # Double-click to start the playground and open it in the browser.
@@ -145,11 +146,17 @@ def main():
         config = json.loads(config_path.read_text())
         adapter, data = config.get("adapter", "web"), project / config["data"]
         install_kit(project)
+        for name in OLD_KIT_FILES:
+            (project / "playground" / name).unlink(missing_ok=True)
         install_bridge(project, adapter, data)
         install_templates(project, adapter)
         ignore_kit_files(project, config["data"])
         subprocess.run([sys.executable, "-c", "import pglib; pglib.write_registry()"], cwd=project / "playground", check=True)
         print(f"Updated the playground in {project} to kit {kit_version()}. Its config, rules, templates and explorations are as they were.")
+        index = json.loads((data / "index.json").read_text()) if (data / "index.json").is_file() else {}
+        if any("/" in pg for pg in index.get("playgrounds", [])):
+            print("Its explorations are still in topic folders. Move them to explorations and iterations with "
+                  "python3 playground/migrate.py (it shows what it would do), then --apply.")
         return
 
     if config_path.exists():
@@ -188,7 +195,7 @@ def main():
     write_new(data / "picks.json", "{}\n")
     write_new(data / "screens.json", json.dumps({
         "about": "The app's screens, by id. The playground makes a folder for each. \"file\" is the screen's own "
-                 "source file, which duplicate.py copies into a new version" + (
+                 "source file, which new.py copies into a new exploration" + (
                      "; \"type\" is its widget class and \"build\" builds the copy from the original (o)."
                      if adapter == "flutter" else "; \"export\" is the component's export name in it (\"default\" by default)."),
         "screens": {},

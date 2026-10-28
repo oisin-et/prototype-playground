@@ -14,8 +14,9 @@ Or double-click **Open playground.command** in this folder. It opens `http://loc
 
 The app sits on a **canvas**, and two panels float over it, one on each side:
 
-- **Explorations, on the left,** is the file manager. Every screen of the app is a folder, and the screen on show is pinned at the top. A folder holds that screen's explorations, and each exploration holds its versions. **Show this screen** takes the app there. The crosshair does the reverse: it opens the folder of the screen on show, scrolled to the running version.
-- **The versions are drawn as a git graph,** as on GitHub. **main** is the app as it is (the default version, at the foot). Each exploration is a branch off it, and each version is a commit joined to the one it was copied from. The pick's line back to main is blue and a trial's is amber. **Ready for main**, at the top, gathers every pick.
+- **Explorations, on the left,** is the file manager. Every screen of the app is a folder, and the screen on show is pinned at the top. **Show this screen** takes the app there. The crosshair does the reverse: it opens the folder of the screen on show, with the running version's exploration open.
+- **Explorations go wide, iterations go deep.** An exploration is one direction for the screen, numbered 1, 2, 3 … An iteration is a step further along one: exploration 4 starts at **4.0**, and its iterations are **4.1**, **4.2** … each copied from the one it builds on. Going back to exploration 2 and carrying on makes 2.1, and so on.
+- **Two columns at most.** A folder lists **main** (the app as it is) and the explorations, one tile each, with how many iterations each has and whether the pick or a trial is in it. Pressing an exploration opens its versions in a second column to the right, 4.0 at the top and each iteration under it; the panel widens for it, and pressing the exploration again, or ×, shuts it. **Ready for main**, at the top, says what a commit would bring in, and gathers every pick on the screens list.
 - **Stars and deletes** keep it tidy (see "Star and delete").
 - **Claude, on the right,** is the chat (see "Ask Claude for a version").
 
@@ -29,7 +30,7 @@ Both panels are open at first. Each minimises to a strip at its edge, and <kbd>P
 - **Click a version to try it.** It runs at once on the same screen, and the app keeps its state.
 - **While you try one,** **Back to …** and **Use this version** sit at the foot of Explorations.
 - **Use this version** makes it the pick, saved to `<data>/picks.json`.
-- **Links:** `?playground=<screen>/<exploration>&v=v1` opens trying that version, and `#/<screen>` opens on a screen.
+- **Links:** `?playground=<screen>&v=v4.2` opens trying that version, and `#/<screen>` opens on a screen.
 
 **The header** has the screen picker, the window size (the sizes in `playground.json`; `"zoom": "fit"` there opens the window fitted between the panels instead of at 100%), **Reset**, which starts the app again, and, at the top right, **Commit** (see "Commit to main"). **The bar** under it has **Reload app**, the app's status, any errors from the last reload, and **Open the app alone ↗**.
 
@@ -37,11 +38,11 @@ Both panels are open at first. Each minimises to a strip at its edge, and <kbd>P
 
 ## Star and delete
 
-Each version is a tile: its name, its number and date, and three actions on the right, **Show more** (the chevron), the star and the bin. An exploration's title has the same three. What a version says about itself (what it was copied from, and its note) and what an exploration tries stay folded away until **Show more** opens them. The actions are quiet until the pointer is on the tile, and a star that's on stays lit. When an exploration has many branches, the graph's lanes close up so the names keep their room.
+Each version is a tile: its number and date, its name, and three actions over its top right corner, **Show more** (the chevron), the star and the bin. What a version says about itself (what it was copied from, and its note) stays folded away until **Show more** opens it. The actions are quiet until the pointer is on the tile, and a star that's on stays lit. An exploration's tile has a bin too, which deletes it with all its iterations.
 
-- **Star** what's worth keeping. Starred explorations come first in their folder, and everything starred is listed under **Starred** at the top of the screens list: a starred exploration opens its folder, and a starred version is tried at once. A star is kept in the exploration's `versions.json` (`"starred": true`), so it stays when the playground reloads.
-- **Starred only,** the star beside the crosshair, hides everything without a star. An exploration with starred versions shows just those, with the versions they were copied from, main, the pick and any trial, so the graph still joins up. **Show all** turns it off. It's kept in this browser.
-- **Delete** what you won't use. It asks first (<kbd>⇧</kbd>-click doesn't), then moves the folder to `playground/trash/`. A deleted version's copies stay, joined to the version it came from. If it was the pick, its exploration goes back to main. The app reloads without it, and **Undo** in the toast puts it back. The trash is kept for 14 days, and git ignores it. main can't be deleted: it's the app.
+- **Star** what's worth keeping. Everything starred is listed under **Starred** at the top of the screens list, and a starred version is tried at once from there. A star is kept in the screen's `versions.json` (`"starred": true`), so it stays when the playground reloads.
+- **Starred only,** the star beside the crosshair, hides everything without a star: just the starred versions show, with the versions they were copied from, main, the pick and any trial. **Show all** turns it off. It's kept in this browser.
+- **Delete** what you won't use. It asks first (<kbd>⇧</kbd>-click doesn't), then moves the folder to `playground/trash/`. A deleted version's copies stay, joined to the version it came from. If it was the pick, the screen goes back to main. The app reloads without it, and **Undo** in the toast puts it back. The trash is kept for 14 days, and git ignores it. main can't be deleted: it's the app.
 
 Deletes wait while a commit is running.
 
@@ -52,8 +53,10 @@ Chat is on whenever `serve.py` finds Claude Code: on the PATH, in its usual inst
 Describe a version in the Claude panel and press Enter.
 
 - **Claude Code runs on this computer** (`claude -p`, headless), with your own login, in the project.
-- **Claude starts a version** with `duplicate.py`, from the version on show, or with `new.py` for a new exploration. It changes the copy, then runs `reload.py`, which reloads the app and prints any errors, so Claude fixes them before it finishes. The playground tries the new version as soon as it exists.
-- **Claude knows what's on show:** the screen and its parameters, the file it's drawn from, the open folder, and the exploration and version.
+- **A change is an iteration, a new idea an exploration.** Feedback on what's on show ("make the meters thinner", a note pinned to it) makes the next iteration of the version on show with `iterate.py`: on show 4.2, it makes 4.3 (or the next free number in that column). A different idea, another way, or "a new exploration" starts the next exploration with `new.py`, from main, or from a version to take it in a new direction. "Go back to 2" carries on from exploration 2. When it's unclear, Claude makes an iteration.
+- **Every step is kept.** Each follow-up makes a new iteration, so you can step back up the column. Claude changes a version in place only to fix it.
+- **Claude starts each version from its copy.** It changes the copy, then runs `reload.py`, which reloads the app and prints any errors, so Claude fixes them before it finishes. The playground tries the new version as soon as it exists.
+- **Claude knows what's on show:** the screen and its parameters, the file it's drawn from, the open folder, and the version by its number. Say "exploration 4", "version 4" or "4.2" and it knows which.
 - **Screenshots.** Hold <kbd>⌥</kbd> and drag over any part of the page, or press the capture button and drag. The app draws its part at twice its size, and the capture comes with a note naming the parts of the app inside it. You can also drag, paste or pick images of your own. They're saved to `playground/attachments/`, which git ignores.
 - **Notes**, after [Agentation](https://www.agentation.com/):
   - Press <kbd>N</kbd>, then click a part of the app or drag over an area, and write a note. Mark it **Fix**, **Change** or **Question**.
@@ -61,28 +64,22 @@ Describe a version in the Claude panel and press Enter.
   - Claude answers each note with **Done**, **Question** or **Skipped**, and the answer shows on its pin.
   - Notes stay on this computer (`playground/notes/`, which git ignores).
 - **Paste and dictate straight in.** A paste or ⌘V goes into the chat box the first time, once, wherever the focus is: on the page, in the app, or while the app reloads. Dictation apps that put the old clipboard back afterwards (VoiceInk and the like) work too.
-- **Follow-ups change the same version.**
 - **Run up to four chats at once,** with **+** at the top of the panel. Each chat is its own conversation and makes its own versions. Every chat shares the one app, so an error in one chat's version shows in every reload until it's fixed.
-- **Claude is locked down.** It can read the project, write only under `<data>/`, and run only `new.py`, `duplicate.py` and `reload.py`. Anything else is refused without asking, and your own Claude Code settings and MCP servers aren't loaded. Only the playground's own page can start a run.
+- **Claude is locked down.** It can read the project, write only under `<data>/`, and run only `new.py`, `iterate.py` and `reload.py`. Anything else is refused without asking, and your own Claude Code settings and MCP servers aren't loaded. Only the playground's own page can start a run.
 - **Other folders it can read.** `"read"` in `playground.json` lists folders outside the project that Claude may read but never change, such as another app with the same features or a design library: `"read": [{"path": "../other-app", "about": "what's there and when to look"}]`. A path is from the project's top (or absolute). Claude is told each one's path and `about` on every message, and Commit's move can read them too. A folder that isn't there is left out, with a warning where the playground runs.
 - **"Use it" or "make it the real thing"** gets you pointed at **Use this version**: the chat can't pick for you.
 
-## Add a version
+## Start an exploration, or iterate on one
 
 ```sh
-python3 playground/duplicate.py <screen>/<exploration> v1 "Name"      # or default; --id v2b for a variant
+python3 playground/new.py <screen> "Name"                   # the next exploration, from main
+python3 playground/new.py <screen> "Name" --from 4.2        # a new direction from a version
+python3 playground/iterate.py <screen> 4.2 "Name"           # the next iteration of exploration 4, from 4.2
 ```
 
-This copies `v1` to the next free number and adds it to `versions.json` with today's date. Change the copy, write what it changes in its `note`, then press **Reload app** (or run `python3 playground/reload.py`). Copying `default` copies the app's own file for the screen (its `file` in `screens.json`) and writes the version file from `templates/`.
+The screen must be one listed in `<data>/screens.json`; its first exploration starts its `versions.json`. A version is named by its number: `4.2`, `v4.2`, or `4` for 4.0. Each copies the version (or, from main, the app's own file for the screen, its `file` in `screens.json`, with a version file from `templates/`) and adds it to `versions.json` with today's date. Change the copy, write what it changes in its `note`, then press **Reload app** (or run `python3 playground/reload.py`).
 
-## Start an exploration
-
-```sh
-python3 playground/new.py <screen> <exploration> "Title" "What it tries, in one sentence."
-python3 playground/duplicate.py <screen>/<exploration> default "First idea"
-```
-
-The screen must be one listed in `<data>/screens.json`. The exploration's name is lowercase letters, numbers and hyphens.
+A playground from before the numbering, with explorations by topic (`<screen>/<topic>/v1`), moves over once with `python3 playground/migrate.py` (it shows what it would do) and then `--apply`. Each version is renumbered by what it was copied from: one copied from main starts an exploration, and one copied from another is the next iteration of that one's.
 
 ## How it works
 
@@ -90,22 +87,23 @@ The screen must be one listed in `<data>/screens.json`. The exploration's name i
 playground/                  the page and its tools (the kit, plus this project's files)
   playground.json            this project: name, ports, data folder, how the app starts
   RULES.md                   this project's rules for Claude in the chat
-  templates/                 how duplicate.py turns a copied screen into a version
+  templates/                 how a copied screen becomes a version
   serve.py                   the server: files, the app, picks, stars and deletes, chat, commit
   trash/                     deleted explorations and versions, for 14 days (git ignores it)
   index.html, src/           the page: host.js (the layers, the canvas, the app's frame),
                              playground.js (the panels), style.css
-  new.py, duplicate.py       start an exploration, start a version
+  new.py, iterate.py         start an exploration, iterate on one
+  migrate.py                 move topic folders to explorations and iterations, once
   reload.py                  reload the app and print its errors
   pglib.py                   what those share; writes the registry
 <data>/                      the explorations, inside the app's source so it compiles them
   screens.json               the app's screens by id, with the file each is drawn from
-  index.json                 every exploration, as <screen>/<exploration>
-  picks.json                 which version of each runs ("default" is the app as it is)
-  registry.*                 generated: every version, by id
-  <screen>/<exploration>/    one exploration
-    versions.json            its title, start screen and versions, oldest first, and their stars
-    v1/                      what v1 changes, and the files it copied
+  index.json                 every screen with explorations
+  picks.json                 which version of each screen runs ("default" is the app as it is)
+  registry.*                 generated: every version, by id (<screen>/v4.2)
+  <screen>/                  one screen's explorations
+    versions.json            its versions, oldest first, with "from", notes and stars
+    v4.0/, v4.1/             exploration 4 and its first iteration: what each changes, and the files it copied
 ```
 
 - **The page is the player.** `host.js` keeps the explorations, the picks and the version being tried. It tells the app over `postMessage` which versions to lay over its screens, and the app's bridge answers.
@@ -125,4 +123,4 @@ Explorations, `index.json` and `picks.json` are never committed. Commit waits wh
 
 ## Move a picked version into the app
 
-**Commit** does this for you. To do it by hand, outside the chat, ask Claude Code to "move the picked <screen> › <exploration> version into the app". It copies the version's changes over the app's own files, following the project's conventions, sets the pick back to `default`, and keeps the version folder as the record.
+**Commit** does this for you. To do it by hand, outside the chat, ask Claude Code to "move the picked <screen> version into the app". It copies the version's changes over the app's own files, following the project's conventions, sets the pick back to `default`, and keeps the version folder as the record.

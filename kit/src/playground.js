@@ -5,14 +5,15 @@
 // that's kept for next time.
 //
 // Explorations, on the left, is the file manager. Every screen of the
-// prototype is a folder, and each folder holds the explorations of that
-// screen (<data>/<screen>/<exploration>/), each with its versions. The
-// screen on show is pinned at the top. Clicking a version runs it at once, on
-// the same screen and with the same state; "Use this version" makes it the
-// prototype's pick, saved to <data>/picks.json. A star marks an exploration
-// or a version worth keeping, and "Starred only" hides the rest; the bin
-// deletes one, to playground/trash/, with Undo in the toast (serve.py's
-// /playground/explorations).
+// prototype is a folder, and each folder holds that screen's explorations
+// (<data>/<screen>/): exploration 4 is v4.0, and its iterations v4.1, v4.2 …
+// The folder lists the explorations; pressing one opens its versions in a
+// second column. The screen on show is pinned at the top. Clicking a version
+// runs it at once, on the same screen and with the same state; "Use this
+// version" makes it the prototype's pick, saved to <data>/picks.json. A star
+// marks a version worth keeping, and "Starred only" hides the rest; the bin
+// deletes a version, or an exploration with its iterations, to
+// playground/trash/, with Undo in the toast (serve.py's /playground/explorations).
 //
 // Claude, on the right, is a chat that asks Claude Code for versions (serve.py
 // runs it). Each prompt goes to serve.py with what's on show (the screen, its
@@ -22,7 +23,8 @@
 // drag over any part of it (or press the capture button, then drag), and the
 // capture is added with the names of the app's widgets it covers (the host's
 // capture hook draws it). When a file is saved the app is reloaded, and a
-// new version is tried as soon as it exists, so it takes shape on the screen. Follow-ups continue the same Claude conversation.
+// new version is tried as soon as it exists, so it takes shape on the screen. Follow-ups continue the same Claude conversation:
+// each change is the next iteration of the version on show, and a new idea a new exploration.
 //
 // Chats sit along the top of the panel like a Stepper's steps: Chat 1, and a
 // + that opens the next, up to four (serve.py's MAX_RUNS). Each is its own
@@ -100,10 +102,17 @@ export const mountPlayground = (hooks) => {
   let route = null, busy = false, lastSig = '';
   // starred: only starred explorations and versions are shown (the star by the
   // crosshair), kept in this browser.
-  const nav = { folder: store.get(`${hooks.key}.playground.folder`, null), starred: store.get(`${hooks.key}.playground.starred`, false) };
+  const nav = {
+    folder: store.get(`${hooks.key}.playground.folder`, null), starred: store.get(`${hooks.key}.playground.starred`, false),
+    cols: store.get(`${hooks.key}.playground.cols`, {}), // the exploration open on each screen
+  };
   const byId = (id) => playgrounds.find((x) => x.id === id);
-  // The default version is main: the app as it is.
-  const versionName = (pg, id) => (id === 'default' ? 'main' : pg.versions.find((v) => v.id === id)?.name ?? id);
+  // The default version is main: the app as it is. Others go by number and name: "4.2 Thinner meters".
+  const versionName = (pg, id) => {
+    if (id === 'default') return 'main';
+    const m = /^v(\d+\.\d+)$/.exec(id), name = pg.versions.find((v) => v.id === id)?.name;
+    return m ? `${m[1]}${name && name !== id ? ` ${name}` : ''}` : name ?? id;
+  };
   const picked = (pg) => hooks.picks()[pg.id] || 'default';
   // A trial of the picked version is no trial: it's what runs anyway.
   const trying = (pg) => (hooks.preview()?.playground === pg.id && hooks.preview().version !== picked(pg) ? hooks.preview().version : null);
@@ -118,16 +127,15 @@ export const mountPlayground = (hooks) => {
   const folderOf = (id) => folders().find((f) => f.id === id);
 
   // ---- Stars ---------------------------------------------------------------------
-  // A star marks an exploration, or a version, worth keeping ("starred" in its
-  // versions.json, through serve.py). Starred explorations come first in their
-  // folder and are listed under Starred at the top. With Starred only on, an
-  // exploration without a star is hidden unless one of its versions has one, and
-  // then only those versions show, with the ones they were copied from (so the
-  // graph still joins up), main, the pick and the trial.
-  const hasStar = (pg) => !!pg.starred || pg.versions.some((v) => v.starred);
-  const shownExplorations = (f) => [...f.explorations].sort((a, b) => !!b.starred - !!a.starred).filter((pg) => !nav.starred || hasStar(pg));
+  // A star marks a version worth keeping ("starred" in its screen's
+  // versions.json, through serve.py). Starred versions are listed under Starred
+  // at the top. With Starred only on, a screen with no star is hidden, and on
+  // a screen only the starred versions show, with the ones they were copied
+  // from (so a column still reads down to them), main, the pick and the trial.
+  const hasStar = (pg) => pg.versions.some((v) => v.starred);
+  const shownExplorations = (f) => f.explorations.filter((pg) => !nav.starred || hasStar(pg));
   const shownVersions = (pg) => {
-    if (!nav.starred || pg.starred) return pg.versions;
+    if (!nav.starred) return pg.versions;
     const keep = new Set(['default']);
     for (const v of pg.versions) if (v.starred || v.id === picked(pg) || v.id === trying(pg)) for (const x of lineage(pg, v.id)) keep.add(x.id);
     return pg.versions.filter((v) => keep.has(v.id));
@@ -152,8 +160,10 @@ export const mountPlayground = (hooks) => {
     return `<button type="button" class="pg-icon pg-more${on ? ' on' : ''}" data-more="${esc(key)}" aria-expanded="${on}"
       aria-label="${on ? 'Show less' : 'Show more'} about ${esc(what)}" title="${on ? 'Show less' : 'Show more'}">${MORE_ICON}</button>`;
   };
-  const binBtn = (pg, v) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}"${v ? ` data-ver="${esc(v.id)}"` : ''}
-      aria-label="Delete ${v ? esc(v.name) : esc(pg.title)}" title="Delete${v ? ' this version' : ' this exploration'} (⇧-click: no question)">${BIN_ICON}</button>`;
+  const binBtn = (pg, v) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}" data-ver="${esc(v.id)}"
+      aria-label="Delete ${esc(versionName(pg, v.id))}" title="Delete this version (⇧-click: no question)">${BIN_ICON}</button>`;
+  const colBinBtn = (pg, key, name) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}" data-col="${esc(key)}"
+      aria-label="Delete exploration ${esc(key)}, ${esc(name)}" title="Delete this exploration and its iterations (⇧-click: no question)">${BIN_ICON}</button>`;
 
   // ---- Minimising and expanding -----------------------------------------------
   const isOpen = (el) => !el.classList.contains('min');
@@ -200,10 +210,12 @@ export const mountPlayground = (hooks) => {
   // tried there, or else the picked one.
   const locate = () => {
     if (!route) return;
+    const pg = playgrounds.find((x) => x.screen === route.screen), running = pg && (trying(pg) || picked(pg));
+    if (pg && numOf(running)) { nav.cols = { ...nav.cols, [pg.id]: numOf(running)[0] }; store.set(`${hooks.key}.playground.cols`, nav.cols); }
     openFolder(route.screen);
     const rows = [...files.querySelectorAll('.pg-version.running')];
     const row = rows.find((r) => r.querySelector('.pg-chip.try')) || rows.find((r) => !r.classList.contains('main'));
-    row?.scrollIntoView({ block: 'center', behavior: still() ? 'auto' : 'smooth' });
+    row?.scrollIntoView({ block: 'center', inline: 'center', behavior: still() ? 'auto' : 'smooth' });
   };
 
   // ---- Explorations panel ----------------------------------------------------
@@ -219,15 +231,13 @@ export const mountPlayground = (hooks) => {
     chatDot.title = working ? (working === 1 ? 'Claude is working' : `${working} chats are working`) : '';
   };
 
-  // ---- The graph ---------------------------------------------------------------
-  // Drawn like a git graph (GitHub, VS Code), so it reads the way a commit will
-  // work: main is the prototype as it is (the default version), an exploration
-  // is a branch off main, and each version is a commit on it, joined to the
-  // version it was copied from ("from" in versions.json). Newest at the top.
-  // The picked version's line back to main is blue: it's what a commit to main
-  // would bring in, and a dashed node at the top of main's lane says so, with
-  // the pages it would change. A version being tried is amber.
-  const LANE = 14, MAIN_X = 15, NODE_Y = 19, R = 8;
+  // ---- The board -------------------------------------------------------------
+  // A screen's explorations go across and their iterations down, like columns
+  // on a board: v4.0 heads exploration 4's column, and v4.1, v4.2 … are the
+  // steps on it, each copied from the one it builds on ("from" in
+  // versions.json). main, the app as it is (the default version), sits on the
+  // left. The picked version is in the prototype (blue); a version being tried
+  // is amber, and a card over the board says what a commit to main would bring in.
   const versionById = (pg, id) => pg.versions.find((v) => v.id === id);
   const parentOf = (pg, v) => (v.from && v.from !== v.id && versionById(pg, v.from) ? v.from : 'default');
   // The versions a commit of this one brings in: it and those it was copied
@@ -237,22 +247,23 @@ export const mountPlayground = (hooks) => {
     for (let v = versionById(pg, id); v && v.id !== 'default' && !out.includes(v); v = versionById(pg, parentOf(pg, v))) out.unshift(v);
     return out;
   };
-  // A lane per branch: main is lane 0, the first copy of a version carries on
-  // in its lane, and any other copy starts a lane of its own.
-  const lanesOf = (pg) => {
-    const lane = { default: 0 }, carried = new Set();
-    let count = 1;
-    for (const v of pg.versions) {
+  // v4.2 → [4, 2]; main, and an id from before the numbering, → null.
+  const numOf = (id) => { const m = /^v(\d+)\.(\d+)$/.exec(id || ''); return m ? [+m[1], +m[2]] : null; };
+  const numLabel = (id) => (id === 'default' ? 'main' : numOf(id) ? numOf(id).join('.') : id);
+  // The columns: [exploration number, its versions top down], in order.
+  const columnsOf = (pg) => {
+    const cols = new Map();
+    for (const v of shownVersions(pg)) {
       if (v.id === 'default') continue;
-      const p = parentOf(pg, v);
-      if (p !== 'default' && lane[p] != null && !carried.has(p)) { lane[v.id] = lane[p]; carried.add(p); } else lane[v.id] = count++;
+      const key = numOf(v.id)?.[0] ?? v.id;
+      if (!cols.has(key)) cols.set(key, []);
+      cols.get(key).push(v);
     }
-    return { lane, count };
+    for (const list of cols.values()) list.sort((a, b) => (numOf(a.id)?.[1] ?? 0) - (numOf(b.id)?.[1] ?? 0));
+    const order = (k) => (typeof k === 'number' ? k : Infinity);
+    return [...cols.entries()].sort(([a], [b]) => order(a) - order(b));
   };
-  // Lanes close up when there are many, so the graph never takes more than
-  // about a fifth of the panel from the names.
-  const laneGap = (pg) => Math.min(LANE, 36 / Math.max(1, lanesOf(pg).count - 1));
-  const gutter = (pg) => Math.round(MAIN_X + (lanesOf(pg).count - 1) * laneGap(pg) + 13);
+  const columnOf = (pg, key) => pg.versions.filter((v) => v.id !== 'default' && (numOf(v.id)?.[0] ?? v.id) === key);
   // What a version does to main, in screen names: the screens it replaces and
   // the ones it adds.
   const changesOf = (pg, v) => {
@@ -263,8 +274,8 @@ export const mountPlayground = (hooks) => {
     const list = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0]);
     return [changed.length && `changes ${list(changed)}`, added.length && `adds ${list(added)}`].filter(Boolean).join(', ');
   };
-  const trail = (pg, id) => lineage(pg, id).map((v) => esc(v.name)).join(' › ');
-  // The row at the top of main's lane: what a commit to main would bring in.
+  const trail = (pg, id) => lineage(pg, id).map((v) => esc(numLabel(v.id))).join(' › ');
+  // The card over the board: what a commit to main would bring in.
   const mergeRow = (pg) => {
     const pick = picked(pg), t = trying(pg);
     if (pick === 'default' && !t) return '';
@@ -274,83 +285,81 @@ export const mountPlayground = (hooks) => {
       ? `<b>Trying ${esc(versionName(pg, t))}</b><small>${t === 'default' ? `Use this version to take ${esc(pg.title)} out of the prototype, so main's pages run again.`
         : `Use this version, and a commit to main brings in ${trail(pg, t)}${pick !== 'default' ? `, in place of ${esc(versionName(pg, pick))}` : ''}.`}</small>`
       : `<b>Ready for main</b><small>A commit to main brings in ${trail(pg, pick)}.</small>`;
-    return `<li class="pg-merge${t ? ' trying' : ''}" title="Committing to main moves these pages into the app for good: Commit, at the top right.">
-      ${head}${what && t !== 'default' ? `<small class="pg-changes">It ${esc(what)}.</small>` : ''}</li>`;
+    return `<div class="pg-merge${t ? ' trying' : ''}" title="Committing to main moves these pages into the app for good: Commit, at the top right.">
+      ${head}${what && t !== 'default' ? `<small class="pg-changes">It ${esc(what)}.</small>` : ''}</div>`;
   };
   const versionRow = (pg, v) => {
     const isPicked = picked(pg) === v.id, isTrying = trying(pg) === v.id;
     const running = isTrying || (isPicked && !trying(pg));
     const main = v.id === 'default', key = `${pg.id}/${v.id}`, open = opened.has(key);
-    const from = main ? '' : `from ${parentOf(pg, v) === 'default' ? 'main' : versionName(pg, parentOf(pg, v))}`;
+    const p = parentOf(pg, v), n = numOf(v.id);
+    // Where it came from, when it isn't simply the step above it.
+    const above = n && n[1] > 0 && numOf(p)?.[0] === n[0] && numOf(p)[1] === n[1] - 1;
+    const from = main ? '' : `from ${numLabel(p)}${above ? '' : p === 'default' ? ', the app as it is' : ''}`;
     const about = [from, v.note].filter(Boolean);
-    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}${open ? ' open' : ''}" data-v="${esc(v.id)}">
+    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}${open ? ' open' : ''}${n && n[1] === 0 ? ' head' : ''}" data-v="${esc(v.id)}">
       <div class="pg-tile">
-        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" title="${esc(main ? 'main' : v.name)}">
-          <b class="pg-vname">${main ? 'main' : esc(v.name)}</b>
-          <span class="pg-vmeta">${main ? 'the app as it is' : `<span class="pg-vwhen">${esc(v.id)} · ${esc(v.date)}</span>`}${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}</span>
+        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" title="${esc(versionName(pg, v.id))}">
+          ${main ? '' : `<span class="pg-vtop"><span class="pg-vnum">${esc(numLabel(v.id))}</span><span class="pg-vwhen">${esc(v.date)}</span></span>`}
+          <b class="pg-vname">${main ? 'As it is' : esc(v.name)}</b>
+          ${isPicked || isTrying ? `<span class="pg-vmeta">${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}</span>` : ''}
         </button>
-        <span class="pg-tools${v.starred ? ' starred' : ''}">${about.length ? moreBtn(key, main ? 'main' : v.name) : ''}${main ? '' : starBtn(pg, v) + binBtn(pg, v)}</span>
+        <span class="pg-tools${v.starred ? ' starred' : ''}">${about.length ? moreBtn(key, versionName(pg, v.id)) : ''}${main ? '' : starBtn(pg, v) + binBtn(pg, v)}</span>
       </div>
       ${open && about.length ? `<p class="pg-note">${from ? `<span class="pg-from">${esc(from)}</span>` : ''}${from && v.note ? ' · ' : ''}${esc(v.note)}</p>` : ''}
     </li>`;
   };
+  // Two columns at most. On the left, main and the screen's explorations, one
+  // tile each; pressing an exploration opens its column on the right, with its
+  // versions down it (N.0 at the top, then each iteration), and pressing it
+  // again, or ×, shuts it. Which one is open is kept for each screen.
+  const openCol = (pg) => {
+    const key = nav.cols[pg.id];
+    return columnsOf(pg).some(([k]) => k === key) ? key : null;
+  };
+  const setCol = (pg, key) => {
+    nav.cols = { ...nav.cols, [pg.id]: key };
+    if (key == null) delete nav.cols[pg.id];
+    store.set(`${hooks.key}.playground.cols`, nav.cols);
+    draw(true);
+  };
+  const explorationRow = (pg, key, list) => {
+    const head = list[0], steps = list.length - 1, open = openCol(pg) === key;
+    const ids = new Set(list.map((v) => v.id)), pick = picked(pg), t = trying(pg);
+    return `<li class="pg-version pg-xrow${open ? ' running' : ''}" data-v="${esc(head.id)}">
+      <div class="pg-tile">
+        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-open-col="${esc(key)}" aria-expanded="${open}" title="${esc(head.name)}: ${open ? 'shut' : 'open'} its iterations">
+          <span class="pg-vtop"><span class="pg-vnum">${typeof key === 'number' ? `Exploration ${key}` : esc(key)}</span><span class="pg-vwhen">${steps ? `${steps} iteration${steps === 1 ? '' : 's'}` : 'no iterations yet'}</span></span>
+          <b class="pg-vname">${esc(head.name)}</b>
+          ${ids.has(pick) || ids.has(t) ? `<span class="pg-vmeta">${ids.has(pick) ? `<span class="pg-chip pick">${esc(numLabel(pick))} in the prototype</span>` : ''}${ids.has(t) ? `<span class="pg-chip try">Trying ${esc(numLabel(t))}</span>` : ''}</span>` : ''}
+        </button>
+        <span class="pg-tools">${typeof key === 'number' ? colBinBtn(pg, key, head.name) : ''}<span class="pg-chevron" aria-hidden="true">›</span></span>
+      </div>
+    </li>`;
+  };
   const exploration = (pg) => {
-    const shown = shownVersions(pg), hidden = pg.versions.length - shown.length, open = opened.has(pg.id);
-    return `<section class="pg-group${pg.starred ? ' starred' : ''}">
-      <h3>${BRANCH_ICON}<span class="pg-gtitle" title="${esc(pg.title)}">${esc(pg.title)}</span><span class="pg-tools${pg.starred ? ' starred' : ''}">${pg.about ? moreBtn(pg.id, pg.title) : ''}${starBtn(pg)}${binBtn(pg)}</span></h3>
-      ${open && pg.about ? `<p class="pg-about">${esc(pg.about)}</p>` : ''}
-      <ol class="pg-versions" data-pg="${esc(pg.id)}" style="--gutter:${gutter(pg)}px">
-        <li class="pg-glider" aria-hidden="true"></li><li class="pg-graph-holder" aria-hidden="true"><svg class="pg-graph"></svg></li>
-        ${mergeRow(pg)}${[...shown].reverse().map((v) => versionRow(pg, v)).join('')}</ol>
+    const cols = columnsOf(pg), main = versionById(pg, 'default') || { id: 'default', name: 'As it is' };
+    const key = openCol(pg), list = key == null ? null : cols.find(([k]) => k === key)[1];
+    const hidden = pg.versions.length - shownVersions(pg).length;
+    return `<section class="pg-group">
+      ${mergeRow(pg)}
+      <div class="pg-cols${list ? ' two' : ''}">
+        <div class="pg-col">
+          <h3><span class="pg-gtitle">Explorations</span><small>${cols.length}</small></h3>
+          <ol class="pg-versions" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#list`)}"><li class="pg-glider" aria-hidden="true"></li>
+            ${key == null ? versionRow(pg, main) : versionRow(pg, main).replace(' running', '')}${cols.map(([k, l]) => explorationRow(pg, k, l)).join('')}</ol>
+        </div>
+        ${list ? `<div class="pg-col pg-steps">
+          <h3><span class="pg-gtitle" title="${esc(list[0].name)}">${typeof key === 'number' ? `${key} · ` : ''}${esc(list[0].name)}</span>
+            <button type="button" class="pg-icon" data-shut-col data-pg="${esc(pg.id)}" aria-label="Shut this exploration" title="Shut">×</button></h3>
+          <ol class="pg-versions" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#${key}`)}"><li class="pg-glider" aria-hidden="true"></li>${list.map((v) => versionRow(pg, v)).join('')}</ol>
+        </div>` : ''}
+      </div>
       ${hidden ? `<p class="pg-hidden">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}
     </section>`;
   };
-  // Lines and nodes are drawn after layout, from where the rows landed.
-  const drawGraph = (list) => {
-    const pg = byId(list.dataset.pg), svg = list.querySelector('.pg-graph');
-    if (!pg || !svg) return;
-    const { lane } = lanesOf(pg);
-    const gap = laneGap(pg), x = (id) => MAIN_X + (lane[id] ?? 0) * gap;
-    const rows = Object.fromEntries([...list.querySelectorAll('.pg-version')].map((r) => [r.dataset.v, r.offsetTop + NODE_Y]));
-    const mergeEl = list.querySelector('.pg-merge');
-    const pick = picked(pg), t = trying(pg);
-    const blue = new Set(lineage(pg, pick).map((v) => v.id)), amber = new Set(lineage(pg, t).map((v) => v.id));
-    // Down a lane from (x1, y1) to row y2, then across to x2, round the corner.
-    const link = (x1, y1, x2, y2) => {
-      if (x1 === x2) return `M${x1} ${y1}V${y2}`;
-      const dy = Math.sign(y2 - y1), dx = Math.sign(x2 - x1), r = Math.min(R, Math.abs(y2 - y1), Math.abs(x2 - x1));
-      return `M${x1} ${y1}V${y2 - dy * r}Q${x1} ${y2} ${x1 + dx * r} ${y2}H${x2}`;
-    };
-    const paths = [], nodes = [];
-    const my = mergeEl ? mergeEl.offsetTop + NODE_Y : null;
-    if (my != null && rows.default != null) paths.push(['main', link(MAIN_X, rows.default, MAIN_X, my)]);
-    for (const v of pg.versions) {
-      if (v.id === 'default' || rows[v.id] == null) continue;
-      const p = parentOf(pg, v);
-      const cls = blue.has(v.id) ? 'pick' : amber.has(v.id) ? 'try' : '';
-      paths.push([cls, link(x(v.id), rows[v.id], x(p), rows[p])]);
-      nodes.push(`<circle class="${v.id === pick ? 'pick head' : v.id === t ? 'try head' : cls}" cx="${x(v.id)}" cy="${rows[v.id]}" r="${v.id === pick || v.id === t ? 5 : 4}"/>`);
-    }
-    if (my != null) {
-      // While trying, only the trial's line goes to main: it's what Use would change.
-      if (pick !== 'default' && !t && rows[pick] != null) paths.push(['pick merge', link(x(pick), rows[pick], MAIN_X, my)]);
-      if (t && t !== 'default' && rows[t] != null) paths.push(['try merge', link(x(t), rows[t], MAIN_X, my)]);
-      nodes.push(`<circle class="incoming${t ? ' try' : ''}" cx="${MAIN_X}" cy="${my}" r="6"/>`);
-    }
-    if (rows.default != null) nodes.push(`<circle class="main${pick === 'default' && !t ? ' pick' : ''}" cx="${MAIN_X}" cy="${rows.default}" r="5"/>`);
-    // Grey first, then amber, then blue on top, so a shared stretch shows the pick.
-    const order = (c) => (c.startsWith('pick') ? 3 : c.startsWith('try') ? 2 : c === 'main' ? 1 : 0);
-    paths.sort((a, b) => order(a[0]) - order(b[0]));
-    svg.setAttribute('width', list.offsetWidth);
-    svg.setAttribute('height', list.offsetHeight);
-    svg.innerHTML = paths.map(([c, d]) => `<path class="${c}" d="${d}"/>`).join('') + nodes.join('');
-  };
-  const graphSizes = new ResizeObserver((entries) => { for (const e of entries) drawGraph(e.target); });
-  const drawGraphs = () => {
-    graphSizes.disconnect();
-    for (const list of files.querySelectorAll('.pg-versions')) { drawGraph(list); graphSizes.observe(list); }
-  };
-  document.fonts?.ready.then(() => drawGraphs());
+  // The panel widens for the second column while one is open, and springs back.
+  const fitWidth = (two) => filesPanel.style.setProperty('--files-w', two ? '600px' : '320px');
 
   // Everything picked, across the explorations: what a commit to main would
   // bring in all together.
@@ -369,18 +378,16 @@ export const mountPlayground = (hooks) => {
   // Starred, at the top: each starred exploration opens its folder, and each
   // starred version is tried at once.
   const starredRows = () => playgrounds.flatMap((pg) => [
-    ...(pg.starred ? [`<li><button type="button" class="pg-folder" data-folder="${esc(pg.screen)}">${STAR_ICON}
-      <span class="pg-fname"><b>${esc(pg.title)}</b><small>${esc(folderTitle(folderOf(pg.screen)?.title, pg.screen))} · ${pg.versions.filter((v) => v.id !== 'default').length} versions</small></span>
-      <span class="pg-chevron" aria-hidden="true">›</span></button></li>`] : []),
     ...pg.versions.filter((v) => v.starred).map((v) => `<li><button type="button" class="pg-folder" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}">${STAR_ICON}
-      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(v.name)}</b><small>${esc(v.id)} · ${esc(v.date)} · try it</small></span>
+      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(versionName(pg, v.id))}</b><small>${esc(v.date)} · try it</small></span>
       ${trying(pg) === v.id ? '<span class="pg-chip try">Trying</span>' : picked(pg) === v.id ? '<span class="pg-chip pick">Picked</span>' : ''}</button></li>`),
   ]).join('');
   const folderRow = (f) => {
-    const versions = f.explorations.reduce((n, pg) => n + pg.versions.filter((v) => v.id !== 'default').length, 0);
-    const stars = f.explorations.filter(hasStar).length;
-    const meta = f.explorations.length
-      ? `${f.explorations.length} exploration${f.explorations.length === 1 ? '' : 's'} · ${versions} version${versions === 1 ? '' : 's'}${stars ? ` · ${stars} starred` : ''}`
+    const all = f.explorations.flatMap((pg) => pg.versions.filter((v) => v.id !== 'default'));
+    const cols = new Set(all.map((v) => numOf(v.id)?.[0] ?? v.id)).size, steps = all.length - cols;
+    const stars = all.filter((v) => v.starred).length;
+    const meta = all.length
+      ? `${cols} exploration${cols === 1 ? '' : 's'} · ${steps} iteration${steps === 1 ? '' : 's'}${stars ? ` · ${stars} starred` : ''}`
       : 'Empty';
     const tryingHere = f.explorations.some((pg) => trying(pg));
     return `<li><button type="button" class="pg-folder${f.explorations.length ? '' : ' empty'}" data-folder="${esc(f.id)}">
@@ -401,7 +408,7 @@ export const mountPlayground = (hooks) => {
     for (const list of files.querySelectorAll('.pg-versions')) {
       const glider = list.querySelector('.pg-glider');
       const row = list.querySelector('.pg-version.running');
-      const key = list.dataset.pg;
+      const key = list.dataset.glide || list.dataset.pg;
       if (!row) { glider.style.opacity = '0'; delete gliderAt[key]; continue; }
       const to = { y: row.offsetTop, h: row.offsetHeight };
       const from = gliderAt[key];
@@ -422,7 +429,7 @@ export const mountPlayground = (hooks) => {
   let lastLevel = null, hadTrial = false;
   const hiddenNote = (f) => {
     const n = f.explorations.length - shownExplorations(f).length;
-    return n ? `<p class="pg-hidden">${n} exploration${n === 1 ? '' : 's'} without a star ${n === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : '';
+    return n ? `<p class="pg-hidden">Nothing on this screen has a star, so its explorations are hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : '';
   };
 
   const draw = (force = false) => {
@@ -464,7 +471,7 @@ export const mountPlayground = (hooks) => {
         ${folder.explorations.length ? shownExplorations(folder).map(exploration).join('') + hiddenNote(folder)
           : `<p class="pg-empty">No explorations of ${esc(folder.title)} yet. ${chat.enabled
             ? 'Ask Claude on the right to start one.'
-            : `Set up Claude on the right to start one, or run <code>python3 playground/new.py ${esc(folder.id)} &lt;name&gt; "Title"</code>.`}</p>`}`;
+            : `Set up Claude on the right to start one, or run <code>python3 playground/new.py ${esc(folder.id)} "Name"</code>.`}</p>`}`;
     }
 
     const level = nav.folder || '';
@@ -482,10 +489,10 @@ export const mountPlayground = (hooks) => {
           <button type="button" data-back title="Back to ${esc(versionName(pg, picked(pg)))}: drop the trial">Back to ${esc(versionName(pg, picked(pg)))}</button>
           <button type="button" class="pg-use" data-use>Use this version</button>
         </div>`
-      : `<div class="pg-foot"><p>As on GitHub: <b>main</b> is the app as it is, each exploration is a branch off it, and each version a commit on that branch.
+      : `<div class="pg-foot"><p>Press an exploration to see its iterations: <b>4.0</b> is exploration 4, and <b>4.1</b>, <b>4.2</b> are steps on it.
         Click a version to try it, then <b>Use this version</b> to get it ready for main.</p></div>`}`;
+    fitWidth(!!(folder && folder.explorations[0] && openCol(folder.explorations[0]) != null));
     placeGliders();
-    drawGraphs();
     drawCommitBtn();
   };
 
@@ -496,8 +503,13 @@ export const mountPlayground = (hooks) => {
     if ('starredOnly' in t.dataset) return setStarredOnly(!nav.starred);
     if ('all' in t.dataset) return setStarredOnly(false);
     if (t.dataset.more) { if (!opened.delete(t.dataset.more)) opened.add(t.dataset.more); return draw(true); }
+    if (t.dataset.openCol) {
+      const pg = byId(t.dataset.pg), key = /^\d+$/.test(t.dataset.openCol) ? +t.dataset.openCol : t.dataset.openCol;
+      return setCol(pg, openCol(pg) === key ? null : key);
+    }
+    if ('shutCol' in t.dataset) return setCol(byId(t.dataset.pg), null);
     if ('star' in t.dataset) return starIt(byId(t.dataset.pg), t.dataset.ver);
-    if ('delete' in t.dataset) return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey);
+    if ('delete' in t.dataset) return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey, t.dataset.col);
     if ('locate' in t.dataset) return locate();
     if (t.dataset.folder) return openFolder(t.dataset.folder);
     if ('up' in t.dataset) return openFolder(null);
@@ -547,26 +559,33 @@ export const mountPlayground = (hooks) => {
     askDialog.showModal();
     askDialog.querySelector('[data-yes]').focus();
   });
-  const deleteIt = async (pg, vid, quick) => {
+  // A version's bin deletes it; an exploration's (its column's) deletes it with
+  // all its iterations, last first, and Undo puts them back first first.
+  const deleteIt = async (pg, vid, quick, col) => {
     if (!pg || busy) return;
-    const v = vid && versionById(pg, vid);
-    if (vid && !v) return;
-    const count = pg.versions.filter((x) => x.id !== 'default').length;
-    const pick = picked(pg), what = v ? `${pg.title} › ${v.name}` : pg.title;
-    const lines = v
-      ? [`<b>${esc(v.name)}</b> (${esc(v.id)}) and its files go to <code>playground/trash/</code>.`,
-        ...(pick === v.id ? [`It's in the prototype, so ${esc(pg.title)} goes back to main.`] : []),
-        ...(pg.versions.some((x) => x.from === v.id) ? ['The versions copied from it stay, joined to the one it came from.'] : [])]
-      : [`<b>${esc(pg.title)}</b> and its ${count} version${count === 1 ? '' : 's'} go to <code>playground/trash/</code>.`,
-        ...(pick !== 'default' ? [`Its pick, ${esc(versionName(pg, pick))}, is in the prototype, so its pages go back to main.`] : [])];
+    const key = col == null ? null : (/^\d+$/.test(col) ? +col : col);
+    const doomed = key != null ? columnOf(pg, key) : [versionById(pg, vid)].filter(Boolean);
+    if (!doomed.length) return;
+    const pick = picked(pg), v = doomed[0];
+    const what = key != null ? `${pg.title} › exploration ${key}` : `${pg.title} › ${versionName(pg, v.id)}`;
+    const lines = key != null
+      ? [`Exploration ${esc(key)}, <b>${esc(v.name)}</b>, and ${doomed.length === 1 ? 'its files go' : `its ${doomed.length - 1} iteration${doomed.length === 2 ? '' : 's'} go`} to <code>playground/trash/</code>.`]
+      : [`<b>${esc(versionName(pg, v.id))}</b> and its files go to <code>playground/trash/</code>.`,
+        ...(pg.versions.some((x) => x.from === v.id) ? ['The versions copied from it stay, joined to the one it came from.'] : [])];
+    if (doomed.some((x) => x.id === pick)) lines.push(`${esc(versionName(pg, pick))} is in the prototype, so ${esc(pg.title)} goes back to main.`);
     lines.push('You can undo it straight after, and the trash keeps it for 14 days.');
     if (!quick && !(await ask(`Delete ${what}?`, lines, 'Delete'))) return;
-    let trash = null;
+    const trash = [];
     await run(async () => {
-      try { trash = await hooks.remove(pg, vid || null); } catch (err) { toast(`Couldn't delete ${what}: ${err.message}`); }
+      try {
+        for (const x of [...doomed].reverse()) trash.push(await hooks.remove(pg, x.id));
+      } catch (err) { toast(`Couldn't delete ${what}: ${err.message}`); }
     });
-    if (trash) toast(`Deleted ${what}.`, { label: 'Undo', run: () => run(async () => {
-      try { await hooks.restore(trash); toast(`${what} is back.`); } catch (err) { toast(`Couldn't put it back: ${err.message}`); }
+    if (trash.length) toast(`Deleted ${what}.`, { label: 'Undo', run: () => run(async () => {
+      try {
+        for (const t of [...trash].reverse()) await hooks.restore(t);
+        toast(`${what} is back.`);
+      } catch (err) { toast(`Couldn't put it back: ${err.message}`); }
     }) });
   };
 
@@ -811,7 +830,7 @@ export const mountPlayground = (hooks) => {
     const { log } = tab();
     logEl.innerHTML = log.length
       ? log.map(message).join('')
-      : `<li class="pg-msg note">Describe an idea for the screen on show. Claude makes it a new version, in that screen's folder, and the app reloads to try it as it's written. Follow-ups change that version. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
+      : `<li class="pg-msg note">Describe an idea for the screen on show. A new idea becomes a new exploration; a change to what's on show ("make it bigger") becomes its next iteration, 4.1, 4.2 and so on, so every step stays to go back to. The app reloads to try each one as it's written. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
     logEl.scrollTop = logEl.scrollHeight;
   };
   // A new message is added on its own and rises in; the log scrolls to it. It

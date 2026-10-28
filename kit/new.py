@@ -1,51 +1,41 @@
-"""Start an exploration of one of the app's screens.
+"""Start a new exploration of one of the app's screens: the next column.
 
-    python3 playground/new.py <screen> <exploration> "Title" "What it tries, in one sentence"
+    python3 playground/new.py <screen> "Name" [--from <version>]
 
-Makes <data>/<screen>/<exploration>/versions.json with its default version
-(the app as it is), and adds the exploration to <data>/index.json, so it
-shows in that screen's folder in the Explorations panel. <data> is "data" in
-playground/playground.json; <screen> is an id from <data>/screens.json;
-<exploration> is lowercase letters, numbers and hyphens. Then start its first
-version:
+A screen's explorations go across, numbered 1, 2, 3 …, and each one's
+iterations go down under it (playground/iterate.py). This makes the next
+exploration, v<N>.0, by copying main (the app's own file for the screen,
+with a version file from playground/templates/ that draws the copy in its
+place), or --from a version (4.2, v4.2) to take that one in a new direction.
+The first exploration of a screen starts its <data>/<screen>/versions.json
+and adds it to <data>/index.json. Change the copy, and write what it tries
+in the version's "note".
 
-    python3 playground/duplicate.py <screen>/<exploration> default "Name"
+Rewrites the registry, so the app picks the new version up at the next
+reload (serve.py does one when chat or the panel asks; python3
+playground/reload.py does one from a terminal).
 """
 
 import sys
-import time
 
-from pglib import DATA, INDEX, NAME, playground_lock, read_json, rel, screens, write_json, write_registry
+from pglib import find_version, make_version, number, playground_lock, screen_meta
 
 
 def main(argv):
-    if len(argv) < 3:
+    source = "default"
+    if "--from" in argv:
+        i = argv.index("--from")
+        if i + 1 >= len(argv):
+            sys.exit(__doc__)
+        source = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+    if len(argv) < 2:
         sys.exit(__doc__)
-    screen, name, title = argv[0], argv[1], argv[2]
-    about = argv[3] if len(argv) > 3 else ""
-    if screen not in screens():
-        sys.exit(f"No screen called {screen!r}. The screens are: {', '.join(screens())}")
-    if not NAME.match(name):
-        sys.exit("The exploration's name is lowercase letters, numbers and hyphens, like compact-list.")
-    pg = f"{screen}/{name}"
-    folder = DATA / pg
-    if (folder / "versions.json").exists():
-        sys.exit(f"{pg} exists already.")
-    folder.mkdir(parents=True)
-    write_json(folder / "versions.json", {
-        "title": title,
-        "about": about,
-        "start": screen,
-        "versions": [{
-            "id": "default", "name": "As it is", "date": time.strftime("%Y-%m-%d"),
-            "note": f"The {screens()[screen]['title']} screen as the app has it.",
-        }],
-    })
-    index = read_json(INDEX, {"playgrounds": []})
-    index.setdefault("playgrounds", []).append(pg)
-    write_json(INDEX, index)
-    write_registry()
-    print(f"Started {pg} in {rel(folder)}/. Next: python3 playground/duplicate.py {pg} default \"Name\"")
+    screen, name = argv[0], argv[1]
+    meta_path, meta = screen_meta(screen)
+    source = find_version(meta, screen, source)
+    n = 1 + max([number(v["id"])[0] for v in meta["versions"] if number(v["id"])] or [0])
+    make_version(screen, source, f"v{n}.0", name, meta_path, meta)
 
 
 if __name__ == "__main__":

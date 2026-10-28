@@ -57,7 +57,7 @@ Vue, Svelte and plain JS work the same way. Call `attach` once, call `page(id, o
 "settings": {"title": "Settings", "file": "src/pages/Settings.jsx", "export": "default"}
 ```
 
-`file` is what `duplicate.py` copies into a version, and `export` is the component's name in it. Its relative imports are pointed back at the files they named.
+`file` is what `new.py` copies into a new exploration, and `export` is the component's name in it. Its relative imports are pointed back at the files they named.
 
 ## Naming parts for notes
 
