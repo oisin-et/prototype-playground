@@ -941,8 +941,35 @@ playground/README.md, done for them.
   Where two picks change the same screen, the later one is laid over the earlier one.
 - Don't change the version folders, index.json, picks.json, versions.json or anything under
   playground/. Don't run git: the playground commits when you're done.
+- Move the design, not the version's baggage. A version is built to be tried, not kept,
+  so before you finish, make what you moved lean:
+  - one copy of anything used more than once: share a part, don't paste it again for
+    each place (a screen file that holds the same subtree twice is a sign);
+  - only the assets the design uses, copied into the app's own asset folder: never a
+    link to a folder outside the project, which a teammate's clone won't have;
+  - none of the version's history (its "vN: …" comments, dead code from earlier
+    iterations, ids or names marked with version numbers that no longer mean anything);
+  - no file over {max_mb} MB: Commit refuses one (playground.json's "commit":
+    {{"maxFileMB": …}} sets the limit). If a file can't be made smaller, say why in your
+    summary, so the person can decide to raise the limit.
 - When the files are moved, run python3 playground/reload.py and fix any errors it prints.
 - Finish with one short paragraph: what moved where.""".replace("<data>", DATA_REL)
+
+
+def lean_problems(paths):
+    """Why these files (paths from the project's top) shouldn't be committed as they
+    are: a link out of the project, or a file over the size playground.json allows."""
+    problems = []
+    limit = float(CONFIG.get("commit", {}).get("maxFileMB", 5))
+    for p in paths:
+        f = ROOT / p
+        if f.is_symlink():
+            target = f.resolve()
+            if ROOT.resolve() not in target.parents and target != ROOT.resolve():
+                problems.append(f"{p} links outside the project, which a clone won't have: copy what it needs instead.")
+        elif f.is_file() and f.stat().st_size > limit * 1e6:
+            problems.append(f"{p} is {f.stat().st_size / 1e6:.1f} MB, over the {limit:g} MB a file may be (\"commit\": {{\"maxFileMB\"}} in playground.json).")
+    return problems
 
 
 def git(*args):
@@ -1065,11 +1092,17 @@ class Commit:
             result = Handler.app.reload()
             moved = [p for p, h in fingerprint(changed_files()).items() if before.get(p, "new") != h]
             errors = list(result.get("errors") or []) + check_paths(moved)
+            if not moved and not errors:
+                # Nothing moved: the picks stay as they are, so the design isn't lost.
+                emit({"type": "error", "message": "The move didn't change any of the app's files, so nothing was committed, and the picks are left as they are."})
+                return
+            errors += lean_problems(moved)
             if errors:
-                emit({"type": "error", "message": "After the move the app has errors, so nothing was committed. The moved files are left as they are. "
+                emit({"type": "error", "message": "After the move the app has errors or baggage, so nothing was committed. The moved files are left as they are. "
                       + " ".join(errors[:4])})
                 return
-            emit({"type": "step", "text": "The app reloads without errors."})
+            size = sum((ROOT / p).stat().st_size for p in moved if (ROOT / p).is_file())
+            emit({"type": "step", "text": f"The app reloads without errors. The move changed {len(moved)} file{'' if len(moved) == 1 else 's'} ({size / 1e6:.1f} MB)."})
             # Each pick goes back to main, which now shows it, and its version is
             # marked as merged. These are the playground's files: never committed.
             picked = read_json_file(PICKS) or {}
@@ -1114,7 +1147,7 @@ class Commit:
             f"(its folder is {DATA_REL}/{p['playground']}/{p['version']}/)" + (f". Its note: {p['note']}" if p["note"] else "")
             for n, p in enumerate(picks, 1))
         own = HERE / "RULES.md"
-        rules = MOVE_RULES + reference_rules() + ("\n\nThis project's own rules for versions (playground/RULES.md):\n\n" + own.read_text().strip() if own.exists() else "")
+        rules = MOVE_RULES.format(max_mb=f"{float(CONFIG.get('commit', {}).get('maxFileMB', 5)):g}") + reference_rules() + ("\n\nThis project's own rules for versions (playground/RULES.md):\n\n" + own.read_text().strip() if own.exists() else "")
         cmd = [
             self.chat.claude, "-p", prompt,
             "--output-format", "stream-json", "--verbose",

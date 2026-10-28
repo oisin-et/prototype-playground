@@ -84,7 +84,7 @@ Explorations go wide and iterations go deep. Each screen's versions are in `<dat
 - Explorations stay on the person's computer unless they decide otherwise. A commit makes something the team's.
 - **Commit**, at the top right of the playground's header, moves the picks into the app and commits them locally, without pushing (`kit/README.md`, "Commit to main"). If the project's screens are written by scripts, list them in `playground.json`'s `"commit": {"allow": [...]}` so the move can run them.
 - **To move a picked version into the app** by hand (only when the person says it's settled):
-  1. Copy its changes over the app's own files, following the project's conventions (tokens, no hard-coded values).
+  1. Copy its changes over the app's own files, following the project's conventions (tokens, no hard-coded values). Move the design, not the version's baggage: one copy of any part used twice, only the assets it uses (copied into the app, never a link outside the project), none of its history comments or version-numbered names, and no file over the project's limit (`"commit": {"maxFileMB": …}`, 5 MB by default).
   2. Set the pick back to `default`, which now shows the moved design.
   3. Keep the version folder as the record.
   4. Commit only the app's files. If the project has its own flow for design changes (a PR skill, a PR check), use it.

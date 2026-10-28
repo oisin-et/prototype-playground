@@ -117,7 +117,12 @@ playground/                  the page and its tools (the kit, plus this project'
 **Commit**, at the top right of the header, makes the picks part of the app, for good. It turns blue with the number of picks once a version is picked. It opens a dialog that lists the picks, the branch the project is on, and any other changes nobody has committed, with a box for a note. Then **Commit**:
 
 1. **Claude Code moves each picked version into the app's own files,** as in "Move a picked version into the app" below, following the project's conventions. It can write anywhere in the project apart from `playground/`, the explorations and `.git`. It runs only `reload.py`, plus whatever `"commit": {"allow": [...]}` in `playground.json` adds, in Claude Code's permission form. A project whose screens are written by scripts lists them, such as `"Bash(node tools/:*)"`.
-2. **The app is reloaded and checked.** If it has errors, nothing is committed and the moved files are left as they are, to fix.
+2. **The app is reloaded and checked.** Nothing is committed, and the moved files are left as they are to fix, if:
+   - the app has errors;
+   - the move changed nothing (the picks then stay as they are);
+   - or the move brought baggage: a link to a folder outside the project, or a file over 5 MB (`"commit": {"maxFileMB": …}` in `playground.json` changes the limit).
+
+   The move is told to keep the design lean: one copy of any part used twice, only the assets it uses (copied in, never linked), and none of the version's history.
 3. **Each pick goes back to main,** which now shows it, and its version is marked `"merged"` with the date in `versions.json`. The folder stays as the record.
 4. **The files the move changed are committed** on this computer, in one commit, on the branch the project is on. It's made as your git user, and the message names each pick and its note. With **Also commit the other changes** ticked, everything else git sees changed goes in too. Nothing is pushed: `git push` shares it.
 
