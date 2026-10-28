@@ -48,6 +48,10 @@ It's `python3 -m http.server` over the project with five additions:
   commits the files the move changed on this computer. Nothing is pushed. See
   the Commit class.
 
+- Pictures (GET and POST /playground/thumbs): the page sends a picture of each
+  version once it has been on screen, kept in playground/thumbs/<screen>/
+  <version>.png (git ignores it), for the preview on hover in Explorations.
+
 - Stars and deletes (POST /playground/explorations), from the star and bin
   buttons in Explorations. A star is kept in the screen's versions.json.
   A delete moves a version's folder to playground/trash/
@@ -100,6 +104,7 @@ from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VER
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
 TRASH = HERE / "trash"  # what was deleted from Explorations, for 14 days
+THUMBS = HERE / "thumbs"  # a picture of each version, for the preview in Explorations
 IMAGES = {  # type → (extension, how the file starts)
     "image/png": ("png", (b"\x89PNG\r\n\x1a\n",)),
     "image/jpeg": ("jpg", (b"\xff\xd8\xff",)),
@@ -1337,6 +1342,10 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/playground/commit":
             self.json(200, self.commit.plan())
             return
+        if path == "/playground/thumbs":
+            self.json(200, {f"{p.parent.name}/{p.stem}": int(p.stat().st_mtime * 1000)
+                            for p in THUMBS.glob("*/*.png")} if THUMBS.is_dir() else {})
+            return
         super().do_GET()
 
     def read_json(self, limit=64 * 1024 * 1024):
@@ -1373,6 +1382,11 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 body = {}
             self.json(200, self.app.reload(restart=bool(isinstance(body, dict) and body.get("restart"))))
+        elif path == "/playground/thumbs":
+            if not self.from_panel(("thumbs",)):
+                self.send_error(403)
+            else:
+                self.save_thumb()
         elif path == "/playground/explorations":
             if not self.from_panel(("explorations",)):
                 self.send_error(403)
@@ -1414,6 +1428,23 @@ class Handler(SimpleHTTPRequestHandler):
             return
         write_json(PICKS, dict(sorted(picks.items())))
         self.log_message("Saved playground picks: %s", ", ".join(f"{pg} {v}" for pg, v in sorted(picks.items())) or "none")
+        self.send_response(204)
+        self.end_headers()
+
+    def save_thumb(self):
+        """A version's picture, from the page: {"screen", "version", "png"} (base64),
+        kept in playground/thumbs/<screen>/<version>.png for Explorations' preview."""
+        try:
+            body = self.read_json(8 * 1024 * 1024)
+            screen, version = str(body["screen"]), str(body["version"])
+            assert re.fullmatch(r"[\w-]+", screen) and re.fullmatch(r"default|v\d+\.\d+|[a-z0-9]+", version)
+            data = base64.b64decode(str(body["png"]), validate=True)
+            assert data.startswith(b"\x89PNG")
+        except (ValueError, AssertionError, KeyError, TypeError, binascii.Error):
+            self.send_error(400)
+            return
+        (THUMBS / screen).mkdir(parents=True, exist_ok=True)
+        (THUMBS / screen / f"{version}.png").write_bytes(data)
         self.send_response(204)
         self.end_headers()
 

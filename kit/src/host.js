@@ -207,6 +207,7 @@ const showLoadErrors = () => {
 let reloading = false;
 const appReload = async (restart = false) => {
   reloading = true;
+  taken.clear(); // the versions may have changed: their pictures are taken again
   setStatus('busy', restart ? 'Restarting the app…' : 'Reloading the app…');
   const result = await fetch('/playground/app/reload', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'reload' }, body: JSON.stringify({ restart }),
@@ -227,7 +228,36 @@ document.getElementById('btn-reset').addEventListener('click', async () => {
 });
 
 // The versions to run, in index.json order.
-const sendLayers = () => send({ type: 'layers', layers: running().map(([pg, v]) => `${pg.id}/${v}`) });
+// ---- Pictures of the versions ------------------------------------------------------
+// A version's picture is taken once it has been on its own screen for a
+// moment (main's too), and again after every reload, so it follows the version
+// as it changes. It's the element "preview" in playground.json names (a CSS
+// selector), or the whole app, 480 px wide, kept in playground/thumbs/
+// <screen>/<version>.png (git ignores it). Explorations shows it on hover.
+const thumbs = {}; // '<screen>/<version>' → when its picture was taken
+fetch('/playground/thumbs', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : {})).then((t) => Object.assign(thumbs, t)).catch(() => {});
+const taken = new Set(); // pictures taken since the last reload
+let thumbWait = 0;
+function snapshot() {
+  clearTimeout(thumbWait);
+  thumbWait = setTimeout(async () => {
+    const pg = playgrounds.find((p) => p.screen === route.screen);
+    if (!pg || !booted || reloading) return;
+    const v = versionOf(pg), key = `${pg.id}/${v}`;
+    if (taken.has(key) || (v !== 'default' && !registry[key])) return;
+    taken.add(key);
+    try {
+      const shot = await askApp(undefined, { selector: CFG.preview || undefined, width: 480 });
+      const r = await fetch('/playground/thumbs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'thumbs' },
+        body: JSON.stringify({ screen: pg.id, version: v, png: shot.png }),
+      });
+      if (r.ok) { thumbs[key] = Date.now(); panel.thumbed?.(key); }
+    } catch { taken.delete(key); }
+  }, 1500);
+}
+
+const sendLayers = () => { send({ type: 'layers', layers: running().map(([pg, v]) => `${pg.id}/${v}`) }); snapshot(); };
 // Says when two running versions change the same page: the later one in
 // index.json is laid over the earlier one's.
 const warnClashes = () => {
@@ -256,6 +286,7 @@ const switchVersions = (pg) => {
 // Reads the explorations from disk again (after chat, or anyone, changed
 // them), hot-reloads the app if asked, and sends the versions again.
 const refresh = async ({ reload = true } = {}) => {
+  taken.clear();
   const fresh = await loadPlaygrounds();
   playgrounds.splice(0, playgrounds.length, ...fresh);
   const result = reload ? await appReload(false) : null;
@@ -302,6 +333,7 @@ addEventListener('message', (e) => {
     for (const ok of helloWaiters.splice(0)) ok();
   } else if (m.type === 'where') {
     route = { screen: m.screen, params: m.params || {}, title: m.title };
+    snapshot();
     document.getElementById('screen-title').textContent = titleOf(route);
     jump.value = route.screen;
     history.replaceState(null, '', `${location.search}#/${route.screen}`);
@@ -494,7 +526,7 @@ addEventListener('blur', () => space(false));
 // The app draws its part of the area itself, at twice its real size (it's a
 // canvas in a frame, so the page can't redraw it), and names its widgets in
 // it. The page redraws anything around the app with modern-screenshot.
-const askApp = (rect) => new Promise((ok, fail) => {
+const askApp = (rect, extra = { scale: 2 }) => new Promise((ok, fail) => {
   const id = Math.random().toString(36).slice(2);
   const timer = setTimeout(() => { pendingShots.delete(id); fail(new Error('The app took too long to capture.')); }, 15000);
   pendingShots.set(id, (m) => {
@@ -502,7 +534,7 @@ const askApp = (rect) => new Promise((ok, fail) => {
     pendingShots.delete(id);
     if (m.error) fail(new Error(m.error)); else ok(m);
   });
-  send({ type: 'capture', id, rect, scale: 2 });
+  send({ type: 'capture', id, rect, ...extra });
 });
 const pngImage = (b64) => new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = `data:image/png;base64,${b64}`; });
 const capture = async (rect) => {
@@ -628,6 +660,7 @@ const panel = mountPlayground({
   onPlayground,
   // The pages a version changes, from the app's registry, for the graph.
   touches,
+  thumbs: () => thumbs,
   toast,
   open: !!urlParams.get('playground'),
   async tryVersion(pg, version) {

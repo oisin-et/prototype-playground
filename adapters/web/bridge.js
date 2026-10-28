@@ -12,6 +12,8 @@
 //               the versions to run, in <data>/index.json order
 //               {type: 'show', screen}             open that screen
 //               {type: 'capture', id, rect, scale} draw part of the app
+//               {type: 'capture', id, selector, width} draw the element
+//               (else the whole app) width pixels wide: a version's picture
 //               {type: 'inspect', id, x, y}        the element at a point, for a note
 //   app → host  {type: 'hello', versions: {id: [screens]}, errors: [text]}
 //               the versions in the registry, sent when the app starts, and
@@ -183,8 +185,10 @@ function coverage([x, y, w, h]) {
 async function capture(m) {
   try {
     const { domToCanvas } = await import(/* @vite-ignore */ `${origin}/playground/src/vendor/modern-screenshot.mjs`);
-    const { x, y, w, h } = m.rect;
-    const scale = m.scale || 2;
+    const el = m.selector ? document.querySelector(m.selector) : null;
+    const box = el?.getBoundingClientRect();
+    const { x, y, w, h } = m.rect || (box ? { x: box.left, y: box.top, w: box.width, h: box.height } : { x: 0, y: 0, w: innerWidth, h: innerHeight });
+    const scale = m.width ? m.width / w : m.scale || 2;
     const whole = await domToCanvas(document.documentElement, {
       scale, width: innerWidth, height: innerHeight, style: { margin: '0' },
     });

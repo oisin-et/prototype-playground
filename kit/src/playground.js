@@ -104,7 +104,7 @@ export const mountPlayground = (hooks) => {
   // crosshair), kept in this browser.
   const nav = {
     folder: store.get(`${hooks.key}.playground.folder`, null), starred: store.get(`${hooks.key}.playground.starred`, false),
-    cols: store.get(`${hooks.key}.playground.cols`, {}), // the exploration open on each screen
+    cols: store.get(`${hooks.key}.playground.cols`, {}), // the exploration folders open on each screen
   };
   const byId = (id) => playgrounds.find((x) => x.id === id);
   // The default version is main: the app as it is. Others go by number and name: "4.2 Thinner meters".
@@ -211,7 +211,7 @@ export const mountPlayground = (hooks) => {
   const locate = () => {
     if (!route) return;
     const pg = playgrounds.find((x) => x.screen === route.screen), running = pg && (trying(pg) || picked(pg));
-    if (pg && numOf(running)) { nav.cols = { ...nav.cols, [pg.id]: numOf(running)[0] }; store.set(`${hooks.key}.playground.cols`, nav.cols); }
+    if (pg && numOf(running)) { nav.cols = { ...nav.cols, [pg.id]: [...new Set([...openFolders(pg), numOf(running)[0]])] }; store.set(`${hooks.key}.playground.cols`, nav.cols); }
     openFolder(route.screen);
     const rows = [...files.querySelectorAll('.pg-version.running')];
     const row = rows.find((r) => r.querySelector('.pg-chip.try')) || rows.find((r) => !r.classList.contains('main'));
@@ -309,57 +309,103 @@ export const mountPlayground = (hooks) => {
       ${open && about.length ? `<p class="pg-note">${from ? `<span class="pg-from">${esc(from)}</span>` : ''}${from && v.note ? ' · ' : ''}${esc(v.note)}</p>` : ''}
     </li>`;
   };
-  // Two columns at most. On the left, main and the screen's explorations, one
-  // tile each; pressing an exploration opens its column on the right, with its
-  // versions down it (N.0 at the top, then each iteration), and pressing it
-  // again, or ×, shuts it. Which one is open is kept for each screen.
-  const openCol = (pg) => {
-    const key = nav.cols[pg.id];
-    return columnsOf(pg).some(([k]) => k === key) ? key : null;
+  // One column, 320 px. Each exploration is a folder: its tile says its number,
+  // name and how many iterations it has, and pressing it opens or shuts it,
+  // with its versions inside (N.0, then each iteration, down). Which folders
+  // are open is kept for each screen; until it's set, the one holding the
+  // version on show is.
+  const openFolders = (pg) => {
+    const keys = new Set(columnsOf(pg).map(([k]) => k)), set = nav.cols[pg.id];
+    if (Array.isArray(set)) return new Set(set.filter((k) => keys.has(k)));
+    const on = numOf(trying(pg) || picked(pg));
+    return new Set(on ? [on[0]] : []);
   };
-  const setCol = (pg, key) => {
-    nav.cols = { ...nav.cols, [pg.id]: key };
-    if (key == null) delete nav.cols[pg.id];
+  const toggleFolder = (pg, key) => {
+    const open = openFolders(pg);
+    if (!open.delete(key)) open.add(key);
+    nav.cols = { ...nav.cols, [pg.id]: [...open] };
     store.set(`${hooks.key}.playground.cols`, nav.cols);
     draw(true);
   };
-  const explorationRow = (pg, key, list) => {
-    const head = list[0], steps = list.length - 1, open = openCol(pg) === key;
+  const explorationFolder = (pg, key, list, open) => {
+    const head = list[0], steps = list.length - 1;
     const ids = new Set(list.map((v) => v.id)), pick = picked(pg), t = trying(pg);
-    return `<li class="pg-version pg-xrow${open ? ' running' : ''}" data-v="${esc(head.id)}">
-      <div class="pg-tile">
-        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-open-col="${esc(key)}" aria-expanded="${open}" title="${esc(head.name)}: ${open ? 'shut' : 'open'} its iterations">
-          <span class="pg-vtop"><span class="pg-vnum">${typeof key === 'number' ? `Exploration ${key}` : esc(key)}</span><span class="pg-vwhen">${steps ? `${steps} iteration${steps === 1 ? '' : 's'}` : 'no iterations yet'}</span></span>
-          <b class="pg-vname">${esc(head.name)}</b>
-          ${ids.has(pick) || ids.has(t) ? `<span class="pg-vmeta">${ids.has(pick) ? `<span class="pg-chip pick">${esc(numLabel(pick))} in the prototype</span>` : ''}${ids.has(t) ? `<span class="pg-chip try">Trying ${esc(numLabel(t))}</span>` : ''}</span>` : ''}
+    const label = typeof key === 'number' ? `Exploration ${key}` : esc(key);
+    return `<li class="pg-xfolder${open ? ' open' : ''}">
+      <div class="pg-xhead">
+        <button type="button" class="pg-xbtn" data-pg="${esc(pg.id)}" data-open-col="${esc(key)}" aria-expanded="${open}" title="${open ? 'Shut' : 'Open'} ${label}">
+          <span class="pg-xchev" aria-hidden="true">›</span>${FOLDER_ICON}
+          <span class="pg-fname"><b>${esc(head.name)}</b><small>${label} · ${steps ? `${steps} iteration${steps === 1 ? '' : 's'}` : 'no iterations yet'}</small></span>
+          ${ids.has(t) ? '<span class="pg-chip try">Trying</span>' : ids.has(pick) ? '<span class="pg-chip pick">Picked</span>' : ''}
         </button>
-        <span class="pg-tools">${typeof key === 'number' ? colBinBtn(pg, key, head.name) : ''}<span class="pg-chevron" aria-hidden="true">›</span></span>
+        <span class="pg-tools">${typeof key === 'number' ? colBinBtn(pg, key, head.name) : ''}</span>
       </div>
+      ${open ? `<ol class="pg-versions pg-iters" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#${key}`)}"><li class="pg-glider" aria-hidden="true"></li>${list.map((v) => versionRow(pg, v)).join('')}</ol>` : ''}
     </li>`;
   };
   const exploration = (pg) => {
     const cols = columnsOf(pg), main = versionById(pg, 'default') || { id: 'default', name: 'As it is' };
-    const key = openCol(pg), list = key == null ? null : cols.find(([k]) => k === key)[1];
-    const hidden = pg.versions.length - shownVersions(pg).length;
+    const open = openFolders(pg), hidden = pg.versions.length - shownVersions(pg).length;
     return `<section class="pg-group">
       ${mergeRow(pg)}
-      <div class="pg-cols${list ? ' two' : ''}">
-        <div class="pg-col">
-          <h3><span class="pg-gtitle">Explorations</span><small>${cols.length}</small></h3>
-          <ol class="pg-versions" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#list`)}"><li class="pg-glider" aria-hidden="true"></li>
-            ${key == null ? versionRow(pg, main) : versionRow(pg, main).replace(' running', '')}${cols.map(([k, l]) => explorationRow(pg, k, l)).join('')}</ol>
-        </div>
-        ${list ? `<div class="pg-col pg-steps">
-          <h3><span class="pg-gtitle" title="${esc(list[0].name)}">${typeof key === 'number' ? `${key} · ` : ''}${esc(list[0].name)}</span>
-            <button type="button" class="pg-icon" data-shut-col data-pg="${esc(pg.id)}" aria-label="Shut this exploration" title="Shut">×</button></h3>
-          <ol class="pg-versions" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#${key}`)}"><li class="pg-glider" aria-hidden="true"></li>${list.map((v) => versionRow(pg, v)).join('')}</ol>
-        </div>` : ''}
-      </div>
+      <ol class="pg-versions pg-mainrow" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#main`)}"><li class="pg-glider" aria-hidden="true"></li>${versionRow(pg, main)}</ol>
+      <h4 class="pg-xtitle">Explorations <small>${cols.length}</small></h4>
+      <ul class="pg-xfolders">${cols.map(([k, l]) => explorationFolder(pg, k, l, open.has(k))).join('')}</ul>
       ${hidden ? `<p class="pg-hidden">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}
     </section>`;
   };
-  // The panel widens for the second column while one is open, and springs back.
-  const fitWidth = (two) => filesPanel.style.setProperty('--files-w', two ? '600px' : '320px');
+
+  // ---- The preview ------------------------------------------------------------
+  // Hovering a version (or tabbing to it) shows a card beside the panel: its
+  // picture, taken the last time it was on screen (host.js), and what it is,
+  // where it came from and what it changes.
+  const peek = document.createElement('div');
+  peek.className = 'pg-peek';
+  peek.setAttribute('role', 'tooltip');
+  peek.hidden = true;
+  document.body.append(peek);
+  let peekAt = null, peekWait = 0;
+  const drawPeek = (row) => {
+    const pg = byId(row.querySelector('[data-pg]')?.dataset.pg), v = pg && versionById(pg, row.dataset.v);
+    if (!pg || (!v && row.dataset.v !== 'default')) return hidePeek();
+    const id = row.dataset.v, key = `${pg.id}/${id}`, when = hooks.thumbs?.()[key];
+    const ver = v || { id: 'default', name: 'As it is', note: '' };
+    const p = parentOf(pg, ver);
+    const from = id === 'default' ? 'The app as it is' : `From ${p === 'default' ? 'main' : esc(versionName(pg, p))}`;
+    peek.innerHTML = `
+      <div class="pg-peek-shot">${when ? `<img src="/playground/thumbs/${encodeURIComponent(pg.id)}/${encodeURIComponent(id)}.png?${when}" alt="">`
+        : `<p>No picture yet. It's taken the first time this version is on screen.</p>`}</div>
+      <div class="pg-peek-text">
+        <b>${esc(versionName(pg, id))}</b>
+        <small>${[ver.date, from].filter(Boolean).map(esc).join(' · ')}</small>
+        ${ver.note ? `<p>${esc(ver.note)}</p>` : ''}
+      </div>`;
+    peek.hidden = false;
+    peekAt = row;
+    placePeek(row);
+    peek.querySelector('img')?.addEventListener('load', () => { if (peekAt === row) placePeek(row); }, { once: true });
+  };
+  // Beside the panel, level with the version, and inside the window.
+  const placePeek = (row) => {
+    const panel = filesPanel.getBoundingClientRect(), r = row.getBoundingClientRect(), h = peek.offsetHeight;
+    peek.style.left = `${panel.right + 10}px`;
+    peek.style.top = `${Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2))}px`;
+  };
+  const hidePeek = () => { clearTimeout(peekWait); peek.hidden = true; peekAt = null; };
+  const showPeek = (row) => {
+    clearTimeout(peekWait);
+    if (narrow()) return; // at phone width the panel covers the app: no room beside it
+    peekWait = setTimeout(() => drawPeek(row), peekAt ? 0 : 160);
+  };
+  files.addEventListener('pointerover', (e) => {
+    const row = e.target.closest('.pg-version');
+    if (row && row !== peekAt && e.pointerType !== 'touch') showPeek(row);
+    else if (!row) hidePeek();
+  });
+  files.addEventListener('pointerleave', hidePeek);
+  files.addEventListener('focusin', (e) => { const row = e.target.closest('.pg-version'); if (row) showPeek(row); else hidePeek(); });
+  files.addEventListener('focusout', (e) => { if (!files.contains(e.relatedTarget)) hidePeek(); });
+  files.addEventListener('scroll', hidePeek, true);
 
   // Everything picked, across the explorations: what a commit to main would
   // bring in all together.
@@ -489,9 +535,9 @@ export const mountPlayground = (hooks) => {
           <button type="button" data-back title="Back to ${esc(versionName(pg, picked(pg)))}: drop the trial">Back to ${esc(versionName(pg, picked(pg)))}</button>
           <button type="button" class="pg-use" data-use>Use this version</button>
         </div>`
-      : `<div class="pg-foot"><p>Press an exploration to see its iterations: <b>4.0</b> is exploration 4, and <b>4.1</b>, <b>4.2</b> are steps on it.
-        Click a version to try it, then <b>Use this version</b> to get it ready for main.</p></div>`}`;
-    fitWidth(!!(folder && folder.explorations[0] && openCol(folder.explorations[0]) != null));
+      : `<div class="pg-foot"><p>Each exploration is a folder: open it to see its iterations. <b>4.0</b> is exploration 4, and <b>4.1</b>, <b>4.2</b> are steps on it.
+        Hover a version to see it, click it to try it, then <b>Use this version</b> to get it ready for main.</p></div>`}`;
+    hidePeek();
     placeGliders();
     drawCommitBtn();
   };
@@ -503,11 +549,7 @@ export const mountPlayground = (hooks) => {
     if ('starredOnly' in t.dataset) return setStarredOnly(!nav.starred);
     if ('all' in t.dataset) return setStarredOnly(false);
     if (t.dataset.more) { if (!opened.delete(t.dataset.more)) opened.add(t.dataset.more); return draw(true); }
-    if (t.dataset.openCol) {
-      const pg = byId(t.dataset.pg), key = /^\d+$/.test(t.dataset.openCol) ? +t.dataset.openCol : t.dataset.openCol;
-      return setCol(pg, openCol(pg) === key ? null : key);
-    }
-    if ('shutCol' in t.dataset) return setCol(byId(t.dataset.pg), null);
+    if (t.dataset.openCol) return toggleFolder(byId(t.dataset.pg), /^\d+$/.test(t.dataset.openCol) ? +t.dataset.openCol : t.dataset.openCol);
     if ('star' in t.dataset) return starIt(byId(t.dataset.pg), t.dataset.ver);
     if ('delete' in t.dataset) return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey, t.dataset.col);
     if ('locate' in t.dataset) return locate();
@@ -1671,5 +1713,7 @@ export const mountPlayground = (hooks) => {
   drawTabs();
   drawStatus();
   drawNotes();
-  return { update: (r) => { route = r; draw(); drawPins(); }, forward, redraw: () => draw(true) };
+  // A new picture of a version: the preview shows it if it's open on that version.
+  const thumbed = (key) => { if (peekAt && `${peekAt.querySelector('[data-pg]')?.dataset.pg}/${peekAt.dataset.v}` === key) drawPeek(peekAt); };
+  return { update: (r) => { route = r; draw(); drawPins(); }, forward, redraw: () => draw(true), thumbed };
 };

@@ -129,7 +129,8 @@ A playground isn't done until all of this works. Check by measuring and clicking
   - trying a version keeps the app's state;
   - **Back to …** and **Use this version** sit at the foot of Explorations;
   - picks save to `picks.json` (or to the browser, with a warning, when the server can't write them);
-  - a screen's folder lists main and its explorations; pressing one opens its versions in a second column (4.0, then 4.1, 4.2 … down it), and the panel never shows more than two columns;
+  - a screen's folder lists main and its explorations as folders; pressing one opens it in place (4.0, then 4.1, 4.2 … down it), and the panel stays 320 px wide;
+  - hovering a version shows its picture and note beside the panel, and its picture is taken (and taken again after a reload) once it has been on screen;
   - starring a version survives a reload, and **Starred only** hides the rest;
   - deleting a version, or an exploration with its iterations (the picked one too), asks first, takes it out of the app and the picks, and **Undo** puts it all back.
 - **Explorations and iterations:** a change asked for in the chat makes the next iteration of the version on show (4.2 → 4.3), a new idea makes the next exploration, and both scripts refuse what doesn't fit (iterating on main).

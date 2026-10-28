@@ -16,7 +16,8 @@ The app sits on a **canvas**, and two panels float over it, one on each side:
 
 - **Explorations, on the left,** is the file manager. Every screen of the app is a folder, and the screen on show is pinned at the top. **Show this screen** takes the app there. The crosshair does the reverse: it opens the folder of the screen on show, with the running version's exploration open.
 - **Explorations go wide, iterations go deep.** An exploration is one direction for the screen, numbered 1, 2, 3 … An iteration is a step further along one: exploration 4 starts at **4.0**, and its iterations are **4.1**, **4.2** … each copied from the one it builds on. Going back to exploration 2 and carrying on makes 2.1, and so on.
-- **Two columns at most.** A folder lists **main** (the app as it is) and the explorations, one tile each, with how many iterations each has and whether the pick or a trial is in it. Pressing an exploration opens its versions in a second column to the right, 4.0 at the top and each iteration under it; the panel widens for it, and pressing the exploration again, or ×, shuts it. **Ready for main**, at the top, says what a commit would bring in, and gathers every pick on the screens list.
+- **Each exploration is a folder.** A screen's folder lists **main** (the app as it is), then its explorations, each a folder of its own with its name, number and how many iterations it has, and whether the pick or a trial is in it. Pressing one opens it in place, with 4.0 at the top and each iteration under it, and pressing it again shuts it. Any number can be open; the panel stays 320 px wide. Until you open or shut one, the folder holding the version on show is open. **Ready for main**, at the top, says what a commit would bring in, and gathers every pick on the screens list.
+- **Hover a version to see it.** A card beside the panel shows its picture and what it is: its number, name, date, what it came from and its note. The picture is taken whenever the version is on its own screen (after every reload too, so it follows the version as it changes) and kept in `playground/thumbs/`, which git ignores. A version that has never been on screen says so. `"preview"` in `playground.json` names the element to picture, as a CSS selector (`"#screen"`); without it, the whole app is.
 - **Stars and deletes** keep it tidy (see "Star and delete").
 - **Claude, on the right,** is the chat (see "Ask Claude for a version").
 
@@ -90,6 +91,7 @@ playground/                  the page and its tools (the kit, plus this project'
   templates/                 how a copied screen becomes a version
   serve.py                   the server: files, the app, picks, stars and deletes, chat, commit
   trash/                     deleted explorations and versions, for 14 days (git ignores it)
+  thumbs/                    each version's picture, for the preview on hover (git ignores it)
   index.html, src/           the page: host.js (the layers, the canvas, the app's frame),
                              playground.js (the panels), style.css
   new.py, iterate.py         start an exploration, iterate on one
