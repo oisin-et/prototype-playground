@@ -120,14 +120,15 @@ playground/                  the page and its tools (the kit, plus this project'
 **Commit**, at the top right of the header, makes the picks part of the app, for good. It turns blue with the number of picks once a version is picked. It opens a dialog that lists the picks, the branch the project is on, and any other changes nobody has committed, with a box for a note. Then **Commit**:
 
 1. **Claude Code moves each picked version into the app's own files,** as in "Move a picked version into the app" below, following the project's conventions. It can write anywhere in the project apart from `playground/`, the explorations and `.git`. It runs only `reload.py`, plus whatever `"commit": {"allow": [...]}` in `playground.json` adds, in Claude Code's permission form. A project whose screens are written by scripts lists them, such as `"Bash(node tools/:*)"`.
-2. **The app is reloaded and checked.** Nothing is committed, and the moved files are left as they are to fix, if:
+2. **Generated files are written again.** `"commit": {"build": [...]}` in `playground.json` lists the commands that write them from their sources, run in order from the project's top: a project whose screens are written by scripts lists those scripts (`["node tools/screens.mjs"]`). A move that changes a script's source but not its output then can't leave the app showing the old design. A command that fails stops the commit.
+3. **The app is reloaded and checked.** Nothing is committed, and the moved files are left as they are to fix, if:
    - the app has errors;
    - the move changed nothing (the picks then stay as they are);
    - or the move brought baggage: a link to a folder outside the project, or a file over 5 MB (`"commit": {"maxFileMB": …}` in `playground.json` changes the limit).
 
    The move is told to keep the design lean: one copy of any part used twice, only the assets it uses (copied in, never linked), and none of the version's history.
-3. **Each pick goes back to main,** which now shows it (unless you picked another version of that screen while the commit ran), and its version is marked `"merged"` with the date in `versions.json`. The folder stays as the record.
-4. **The files the move changed are committed** on this computer, in one commit, on the branch the project is on. It's made as your git user, and the message names each pick and its note. With **Also commit the other changes** ticked, everything else git sees changed goes in too. Nothing is pushed: `git push` shares it.
+4. **Each pick goes back to main,** which now shows it (unless you picked another version of that screen while the commit ran), and its version is marked `"merged"` with the date in `versions.json`. The folder stays as the record.
+5. **The files the move changed are committed** on this computer, in one commit, on the branch the project is on. It's made as your git user, and the message names each pick and its note. With **Also commit the other changes** ticked, everything else git sees changed goes in too. Nothing is pushed: `git push` shares it.
 
 **It runs in the background.** Once you press **Commit**, the dialog closes and you carry on designing: trying versions, picking, and chatting with Claude all work while it runs. The header's button says **Committing…** with a bar along its foot that fills as the move, the check and the commit go by. Press it to see the steps, and close them again at any time. When it's done the button says **Committed** (or **Commit failed**) until you press it to see how it went, and a toast offers **Reload** to bring in main as it is now. Deletes wait until it's done, and leaving the page asks first (the commit carries on without it, but the page loses sight of it).
 

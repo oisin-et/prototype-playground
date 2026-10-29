@@ -82,7 +82,7 @@ Explorations go wide and iterations go deep. Each screen's versions are in `<dat
 
 - "Make it the real thing" in the panel means **Use this version**, and the person picks. Change `<data>/picks.json` by hand only when asked, and only with names from `index.json` and the screen's `versions.json` (`serve.py` refuses anything else).
 - Explorations stay on the person's computer unless they decide otherwise. A commit makes something the team's.
-- **Commit**, at the top right of the playground's header, moves the picks into the app and commits them locally, without pushing (`kit/README.md`, "Commit to main"). If the project's screens are written by scripts, list them in `playground.json`'s `"commit": {"allow": [...]}` so the move can run them.
+- **Commit**, at the top right of the playground's header, moves the picks into the app and commits them locally, without pushing (`kit/README.md`, "Commit to main"). If the project's screens are written by scripts, list them in `playground.json`'s `"commit": {"allow": [...]}` so the move can run them, and in `"commit": {"build": [...]}` so Commit runs them after every move.
 - **To move a picked version into the app** by hand (only when the person says it's settled):
   1. Copy its changes over the app's own files, following the project's conventions (tokens, no hard-coded values). Move the design, not the version's baggage: one copy of any part used twice, only the assets it uses (copied into the app, never a link outside the project), none of its history comments or version-numbered names, and no file over the project's limit (`"commit": {"maxFileMB": …}`, 5 MB by default).
   2. Set the pick back to `default`, which now shows the moved design.

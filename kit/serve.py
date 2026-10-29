@@ -84,6 +84,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import secrets
 import shutil
 import signal
@@ -952,6 +953,9 @@ playground/README.md, done for them.
   - no file over {max_mb} MB: Commit refuses one (playground.json's "commit":
     {{"maxFileMB": …}} sets the limit). If a file can't be made smaller, say why in your
     summary, so the person can decide to raise the limit.
+- If playground.json has "commit": {"build": [...]}, the playground runs those commands
+  after you finish, to write the app's generated files: change their sources, and run
+  them yourself too to check your work.
 - When the files are moved, run python3 playground/reload.py and fix any errors it prints.
 - Finish with one short paragraph: what moved where.""".replace("<data>", DATA_REL)
 
@@ -1089,6 +1093,8 @@ class Commit:
             emit({"type": "step", "phase": "move", "text": f"Claude is moving {len(picks)} pick{'' if len(picks) == 1 else 's'} into the app."})
             if not self.move(picks, emit):
                 return
+            if not self.build(emit):
+                return
             result = Handler.app.reload()
             moved = [p for p, h in fingerprint(changed_files()).items() if before.get(p, "new") != h]
             errors = list(result.get("errors") or []) + check_paths(moved)
@@ -1142,6 +1148,26 @@ class Commit:
                 return
         sha = git("rev-parse", "--short", "HEAD").stdout.strip()
         emit({"type": "done", "branch": plan["branch"], "commits": [{"sha": sha, "message": message.splitlines()[0]}], "files": files})
+
+    def build(self, emit):
+        """Runs playground.json's "commit": {"build": [...]}, in order, from the project's
+        top: the commands that write the app's generated files from its sources (a
+        project whose screens are written by scripts), so a move can't leave them
+        stale. Each is a list of arguments, or a string split as a shell would."""
+        for cmd in CONFIG.get("commit", {}).get("build", []):
+            args = shlex.split(cmd) if isinstance(cmd, str) else [str(a) for a in cmd]
+            emit({"type": "step", "text": "Running " + " ".join(args)})
+            try:
+                r = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=600)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                emit({"type": "error", "message": f"{' '.join(args)} didn't run ({e}), so nothing was committed."})
+                return False
+            if r.returncode:
+                out = (r.stderr or r.stdout).strip().splitlines()
+                emit({"type": "error", "message": f"{' '.join(args)} failed, so nothing was committed. The moved files are left as they are"
+                      + (f": {out[-1]}" if out else ".")})
+                return False
+        return True
 
     def move(self, picks, emit):
         prompt = "Move these picks into the app, in this order:\n" + "\n".join(
