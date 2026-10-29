@@ -429,14 +429,35 @@ body {
 @media (prefers-reduced-motion: reduce) { .pg-tab.running .pg-badge { animation: none; } }
 .pg-context { margin: 0 10px 4px; padding: 8px 10px; font-size: 12px; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); flex: none; }
 .pg-context b { color: var(--page-text); font-weight: 500; }
-/* Over the chat box: what's being built out of sight, then the ready version and Show it. */
-.pg-built { display: flex; align-items: center; gap: 10px; margin: 0 10px 8px; padding: 8px 8px 8px 12px; font-size: 12px; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); flex: none; animation: pg-rise 420ms var(--spring) both; }
+/* Over the chat box: the latest request, with its progress bar and, when it's
+   done, View it. Amber while Claude fixes an error, red when it stopped on one. */
+.pg-built { --bar: var(--accent); margin: 0 10px 8px; padding: 9px 10px 10px 12px; font-size: 12px; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); flex: none; animation: pg-rise 420ms var(--spring) both; }
 .pg-built[hidden] { display: none; }
-.pg-built span { flex: 1; min-width: 0; }
-.pg-built b { color: var(--page-text); font-weight: 500; }
+.pg-built.fixing { --bar: var(--amber); }
+.pg-built.failed, .pg-built.stopped { --bar: #d94a4a; }
 .pg-built.ready { color: var(--page-text); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
+.pg-built-row { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.pg-built-text { flex: 1; min-width: 0; }
+.pg-built b { color: var(--page-text); font-weight: 500; }
+.pg-built-time { flex: none; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--page-muted); }
 .pg-panel .pg-built button { flex: none; }
-@media (prefers-reduced-motion: reduce) { .pg-built, .pg-chip.building { animation: none; } }
+.pg-panel .pg-built .pg-built-x { width: 24px; min-height: 24px; padding: 0; font-size: 16px; line-height: 1; background: none; box-shadow: none; color: var(--page-muted); }
+.pg-built-bar { position: relative; height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.pg-built-bar i { position: absolute; inset: 0; border-radius: 2px; background: var(--bar); transform-origin: left; transition: transform 900ms var(--spring), background-color 300ms; }
+.pg-built:not(.final) .pg-built-bar i { background: linear-gradient(90deg, var(--bar) 40%, color-mix(in srgb, var(--bar), #fff 45%) 50%, var(--bar) 60%) 0 0 / 200% 100%; animation: pg-shimmer 1.6s linear infinite; }
+.pg-built-note { display: block; margin-top: 6px; font-size: 11px; color: var(--page-muted); }
+.pg-built-note.warn, .pg-msg.built small.warn { color: var(--amber); }
+/* A finished request's line in the chat. */
+.pg-msg.built { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; font-size: 12px; white-space: normal; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); }
+.pg-msg.built > span:nth-child(2) { flex: 1; min-width: 0; }
+.pg-msg.built b { color: var(--page-text); font-weight: 500; }
+.pg-msg.built small { display: block; font-size: 11px; color: var(--page-muted); }
+.pg-msg.built b + small { display: inline; }
+.pg-built-mark { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.pg-msg.built.done .pg-built-mark { background: var(--page-muted); }
+.pg-msg.built.failed .pg-built-mark, .pg-msg.built.stopped .pg-built-mark { background: #d94a4a; }
+.pg-panel .pg-msg.built button { flex: none; min-height: 26px; padding: 0 10px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .pg-built, .pg-chip.building, .pg-built-bar i { animation: none !important; transition: none; } }
 .pg-log { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 12px 18px; display: flex; flex-direction: column; gap: 8px; }
 .pg-log[hidden], .pg-ask[hidden], .pg-off[hidden] { display: none; }
 .pg-msg { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }

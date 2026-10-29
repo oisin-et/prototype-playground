@@ -143,7 +143,7 @@ A playground isn't done until all of this works. Check by measuring and clicking
 - **Reloads:**
   - a changed version shows after **Reload app**;
   - a new version is picked up (Flutter: a hot reload; web: the frame reloads, and the playground goes back to the same screen);
-  - while a chat works, the app on screen doesn't reload or switch, its new version is locked in Explorations, and **Show it** (card and toast) puts it on when the run is done;
+  - while a chat works, the app on screen doesn't reload or switch, its new version is locked in Explorations, a progress card over the chat box follows each request (amber while fixing an error, red if it stops), and **View it** (card and toast) puts the version on when the run is done, leaving a line with **View** in the chat;
   - a broken version shows its errors in the bar.
 - **Chat**, tested with a stand-in `claude`:
   - sending, the steps streaming in, a new version tried as it appears;

@@ -24,9 +24,10 @@
 // capture is added with the names of the app's widgets it covers (the host's
 // capture hook draws it). Claude builds out of sight: while it works, the app
 // on show is left as it is (no reloads, no switching), so it can still be used,
-// and the versions it's making are locked in Explorations. When the run is done,
-// a card over the chat box and a toast say the new version is ready, and Show it
-// puts it on. Follow-ups continue the same Claude conversation:
+// and the versions it's making are locked in Explorations. Every request gets a
+// card over the chat box with a progress bar: what Claude is doing, how long
+// it's been, any error it's fixing, and when it's done, View it (a toast says so
+// too). Each finished request leaves a line in the chat with its own View. Follow-ups continue the same Claude conversation:
 // each change is the next iteration of the version on show, and a new idea a new exploration.
 //
 // Chats sit along the top of the panel like a Stepper's steps: Chat 1, and a
@@ -901,7 +902,7 @@ export const mountPlayground = (hooks) => {
   const newTab = (from = {}) => ({
     id: from?.id || `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
     session: from?.session || null, log: Array.isArray(from?.log) ? from.log : [],
-    running: false, status: '', ready: null, made: null, tried: new Set(),
+    running: false, status: '', ready: null, made: null, build: null, tried: new Set(),
   });
   let saved = {};
   try {
@@ -975,13 +976,23 @@ export const mountPlayground = (hooks) => {
     return `<li class="${esc(x.status)}"><span class="pg-pin-n">${esc(s.n)}</span><span>${esc(s.comment)}${x.status !== 'sent' && x.status !== 'open'
       ? `<em><b>${esc(ANSWER[x.status] || x.status)}</b>${x.reply ? ` · ${esc(x.reply)}` : ''}</em>` : ''}</span></li>`;
   }).join('')}</ol>` : '';
-  const message = (m) => `<li class="pg-msg ${m.who}">${shots(m.images)}${m.text ? esc(m.text) : ''}${sentNotes(m.notes)}</li>`;
+  // A finished request's record, kept in the chat: how it went, and View.
+  const builtLine = (m) => {
+    const b = m.built, pg = b.playground && byId(b.playground);
+    const what = pg ? `${pg.title} › ${versionName(pg, b.version)}` : b.version ? `${b.playground} ${b.version}` : '';
+    const head = b.state === 'ready' ? `Built <b>${esc(what)}</b>` : b.state === 'done' ? 'Done, with no new version'
+      : b.state === 'stopped' ? 'Stopped' : 'Stopped with an error';
+    const gone = b.version && !(pg && pg.versions.some((v) => v.id === b.version));
+    return `<li class="pg-msg built ${b.state}"><span class="pg-built-mark" aria-hidden="true"></span><span>${head}${b.took ? ` <small>in ${esc(b.took)}</small>` : ''}${b.warn ? `<small class="warn">${esc(b.warn)}</small>` : ''}</span>
+      ${b.version && !gone ? `<button type="button" data-view-built data-pg="${esc(b.playground)}" data-v="${esc(b.version)}">View</button>` : ''}</li>`;
+  };
+  const message = (m) => m.built ? builtLine(m) : `<li class="pg-msg ${m.who}">${shots(m.images)}${m.text ? esc(m.text) : ''}${sentNotes(m.notes)}</li>`;
 
   const drawLog = () => {
     const { log } = tab();
     logEl.innerHTML = log.length
       ? log.map(message).join('')
-      : `<li class="pg-msg note">Describe an idea for the screen on show. A new idea becomes a new exploration; a change to what's on show ("make it bigger") becomes its next iteration, 4.1, 4.2 and so on, so every step stays to go back to. The app reloads to try each one as it's written. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
+      : `<li class="pg-msg note">Describe an idea for the screen on show. A new idea becomes a new exploration; a change to what's on show ("make it bigger") becomes its next iteration, 4.1, 4.2 and so on, so every step stays to go back to. Claude builds each one out of sight while you carry on, and the card above the box shows how it's going, with View it when it's ready. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
     logEl.scrollTop = logEl.scrollHeight;
   };
   // A new message is added on its own and rises in; the log scrolls to it. It
@@ -1006,18 +1017,73 @@ export const mountPlayground = (hooks) => {
     newBtn.title = t.running ? 'Stop this chat first' : `Clear Chat ${tabs.indexOf(t) + 1} and start again`;
     drawBuilt();
   };
-  // Over the chat box: what the chat on show is building out of sight, and then
-  // the version it made, with Show it.
+  // Over the chat box: the chat on show's latest request, from the moment it's
+  // sent. A bar fills as Claude looks, builds and checks (its length isn't
+  // known, so each step fills a little less), amber while it fixes an error;
+  // then View it, or what went wrong. It stays until the version is viewed,
+  // dismissed, or the next request.
+  const elapsed = (b) => { const s = Math.round(((b.ended || Date.now()) - b.started) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const fillOf = (b) => ({ starting: 0.04, reading: 0.04 + 0.16 * (1 - 0.8 ** b.steps), checking: 0.85 }[b.state] ?? 0.2 + 0.6 * (1 - 0.9 ** b.steps));
   function drawBuilt() {
-    const t = tab(), r = t.ready, pg = r && byId(r.playground);
-    const making = [...building].filter(([, bt]) => bt === t).map(([k]) => k.split('/'));
-    const [mpg, mv] = making.at(-1) || [];
-    builtEl.hidden = !pg && !(t.running && making.length);
-    builtEl.classList.toggle('ready', !!pg);
-    builtEl.innerHTML = pg
-      ? `<span><b>${esc(pg.title)} › ${esc(versionName(pg, r.version))}</b> is ready.</span><button type="button" class="pg-use" data-show-built>Show it</button>`
-      : !builtEl.hidden ? `<span>Building <b>${esc(byId(mpg) ? versionName(byId(mpg), mv) : mv)}</b> out of sight. What's on screen stays as it is until you show it.</span>` : '';
+    const t = tab(), b = t.build;
+    builtEl.hidden = !b || b.dismissed;
+    if (builtEl.hidden) return;
+    const v = b.version, pg = v && byId(v.playground), name = pg ? versionName(pg, v.version) : v?.version;
+    const full = pg ? `${esc(pg.title)} › ${esc(name)}` : esc(name || '');
+    const text = {
+      starting: 'Sending your request…',
+      reading: 'Claude is looking at the app…',
+      building: `Building <b>${esc(name || 'a new version')}</b> out of sight · ${b.steps} step${b.steps === 1 ? '' : 's'}`,
+      checking: `Checking <b>${esc(name || 'it')}</b> runs…`,
+      fixing: `<b>${esc(name || 'It')}</b> hit an error. Claude is fixing it…`,
+      ready: `<b>${full}</b> is ready`,
+      done: "Done. Claude didn't make a new version.",
+      stopped: 'Stopped.',
+      failed: `Stopped with an error${b.error ? `: ${esc(b.error)}` : '.'}`,
+    }[b.state];
+    const cta = b.state === 'ready' && t.ready ? '<button type="button" class="pg-use" data-show-built>View it</button>'
+      : b.state === 'failed' && t.ready ? '<button type="button" data-show-built>View what it made</button>' : '';
+    builtEl.className = `pg-built ${b.state}${b.final ? ' final' : ''}`;
+    builtEl.innerHTML = `<div class="pg-built-row"><span class="pg-built-text">${text}</span><span class="pg-built-time">${elapsed(b)}</span>${cta}
+        ${b.final ? '<button type="button" class="pg-built-x" data-dismiss-built aria-label="Dismiss" title="Dismiss">×</button>' : ''}</div>
+      <div class="pg-built-bar" role="progressbar" aria-label="How the request is going" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(b.fill * 100)}"><i style="transform: scaleX(${b.fill})"></i></div>
+      ${b.fixes && !b.final && b.state !== 'fixing' ? `<small class="pg-built-note">Fixed ${b.fixes === 1 ? 'an error' : `${b.fixes} errors`} along the way</small>` : ''}
+      ${b.warn ? `<small class="pg-built-note warn">${esc(b.warn)}</small>` : ''}`;
   }
+  setInterval(() => { if (tab()?.build && !tab().build.final && !builtEl.hidden) builtEl.querySelector('.pg-built-time').textContent = elapsed(tab().build); }, 1000);
+  // What a run's events say about its progress.
+  const track = (event, t) => {
+    const b = t.build;
+    if (!b || b.final) return;
+    if (event.type === 'tool') {
+      if (/didn't compile/.test(event.label)) { b.state = 'fixing'; b.fixes++; }
+      else if (b.state === 'starting') b.state = 'reading';
+      b.steps++;
+    } else if (event.type === 'changed') {
+      const n = (event.new || []).filter((x) => x.version !== 'default').at(-1);
+      if (n) b.version = n;
+      if (event.reloaded) b.state = 'checking';
+      else if (b.version) b.state = 'building';
+    } else if (event.type === 'done') { b.ok = event.ok; b.cost = event.cost; }
+    else if (event.type === 'error') b.error = event.message;
+    else return;
+    b.fill = Math.max(b.fill, fillOf(b));
+    if (t.id === active) drawBuilt();
+  };
+  // The end of a request: its card says how it went, and the chat keeps a line.
+  const finishBuild = (t, result) => {
+    const b = t.build;
+    if (!b || b.final) return;
+    Object.assign(b, { final: true, ended: Date.now() });
+    if (t.ready) b.version = t.ready;
+    b.state = b.stopped ? 'stopped' : b.ok === false || b.error ? 'failed' : t.ready ? 'ready' : 'done';
+    if (b.state === 'ready' || b.state === 'done') b.fill = 1; // a stopped bar stays where it stopped
+    if (result && !result.ok) b.warn = `${result.message}${result.errors?.length ? ' (see above)' : ''}`;
+    const took = [elapsed(b), b.fixes && `${b.fixes} error${b.fixes === 1 ? '' : 's'} fixed`, b.cost != null && `$${Number(b.cost).toFixed(2)}`].filter(Boolean).join(' · ');
+    t.log.push({ who: 'built', built: { state: b.state, playground: b.version?.playground, version: b.version?.version, took, warn: b.warn } });
+    keep();
+    if (t.id === active) { drawLog(); drawBuilt(); }
+  };
   const setStatus = (t, status) => { t.status = status; if (t.id === active) statusEl.textContent = status; };
   const setRunning = (t, on, status = '') => {
     t.running = on;
@@ -1026,18 +1092,26 @@ export const mountPlayground = (hooks) => {
     drawTabs();
     drawRails();
   };
-  // Show it: the chat's new version goes on, the app's frame catching up first
+  // View it: the chat's new version goes on, the app's frame catching up first
   // if it was left alone while Claude worked.
   const showBuilt = async (t) => {
     const next = t.ready;
     t.ready = null;
+    if (t.build?.final) t.build.dismissed = true;
     if (t.id !== active) showTab(t.id);
     drawTabs();
     drawBuilt();
     if (next) await tryNew(next);
     draw();
   };
-  builtEl.addEventListener('click', (e) => { if (e.target.closest('[data-show-built]')) showBuilt(tab()); });
+  builtEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-show-built]')) showBuilt(tab());
+    if (e.target.closest('[data-dismiss-built]')) { tab().build.dismissed = true; tab().ready = null; drawBuilt(); drawTabs(); }
+  });
+  logEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-view-built]');
+    if (b) tryNew({ playground: b.dataset.pg, version: b.dataset.v }).then(() => draw());
+  });
 
   // ---- Chats --------------------------------------------------------------------
   // After the Stepper's header: the open chats in a well, a raised tile (the
@@ -1179,7 +1253,7 @@ export const mountPlayground = (hooks) => {
   // the app on show alone, and lock the versions the run is making. At the end
   // of a run the app is checked (its compile errors are said in that run's
   // chat, still without loading the frame again), the versions unlock, and the
-  // newest one it made waits as the chat's ready version, for Show it.
+  // newest one it made waits as the chat's ready version, for View it.
   let refreshTimer = null, pendingNew = [], pendingFinal = new Set();
   const tryNew = async (n) => {
     const pg = byId(n.playground);
@@ -1210,15 +1284,17 @@ export const mountPlayground = (hooks) => {
           const n = ft.made, pg = byId(n.playground);
           ft.ready = n;
           ft.made = null;
-          toast(`${pg ? `${pg.title} › ${versionName(pg, n.version)}` : n.version} is ready${ft.id === active ? '' : ` in Chat ${tabs.indexOf(ft) + 1}`}.`, { label: 'Show it', run: () => showBuilt(ft) });
+          toast(`${pg ? `${pg.title} › ${versionName(pg, n.version)}` : n.version} is ready${ft.id === active ? '' : ` in Chat ${tabs.indexOf(ft) + 1}`}.`, { label: 'View it', run: () => showBuilt(ft) });
         }
       }
+      let result = null;
       try {
-        const result = await hooks.refresh({ reload: finals.length > 0, frame: false });
+        result = await hooks.refresh({ reload: finals.length > 0, frame: false });
         if (result && !result.ok) for (const f of finals) say('error', [result.message, ...(result.errors || []).slice(0, 8)].join('\n'), null, null, f);
       } catch {
         // A file half written: the next change, or the end of the run, reads it again.
       }
+      for (const ft of finals) finishBuild(ft, result);
       draw();
       drawTabs();
       drawBuilt();
@@ -1229,6 +1305,8 @@ export const mountPlayground = (hooks) => {
   const handle = (event, run) => {
     const { t } = run;
     const sayT = (who, text) => say(who, text, null, null, t);
+    track(event, t);
+    if (event.type === 'done') run.done = true;
     if (event.type === 'attached') {
       // The server's copies outlast this page, so the log keeps those.
       const mine = [...t.log].reverse().find((m) => m.who === 'you');
@@ -1242,9 +1320,7 @@ export const mountPlayground = (hooks) => {
     else if (event.type === 'changed') changed(event, t);
     else if (event.type === 'done') {
       if (event.session) t.session = event.session;
-      const made = (event.new || []).map((n) => `${n.playground} ${n.version}`).join(', ');
-      sayT('note', [event.ok ? 'Done' : 'Stopped with an error', made && `new: ${made}`,
-        event.cost != null && `$${Number(event.cost).toFixed(2)}`].filter(Boolean).join(' · '));
+      // The request's line in the chat (finishBuild) says how it went.
       changed({ new: event.new }, t, true);
     } else if (event.type === 'notes') { run.notesAnswered = true; answered(event.notes, t); }
     else if (event.type === 'error') sayT('error', event.message);
@@ -1254,6 +1330,9 @@ export const mountPlayground = (hooks) => {
   const send = async (message, files = [], batch = []) => {
     const t = tab(), run = { t, notesAnswered: false };
     say('you', message, files.map((f) => f.url), batch.map(({ id, n, comment }) => ({ id, n, comment, status: 'sent' })), t);
+    t.ready = null;
+    t.build = { state: 'starting', fill: 0.04, steps: 0, fixes: 0, version: null, started: Date.now() };
+    drawBuilt();
     drawTabs(); // its first message names it
     setRunning(t, true, files.length || batch.length ? 'Sending…' : 'Claude is working…');
     try {
@@ -1288,7 +1367,12 @@ export const mountPlayground = (hooks) => {
       say('error', 'Lost the connection to serve.py.', null, null, t);
     } finally {
       setRunning(t, false);
-      if ([...building.values()].includes(t)) changed({}, t, true); // ended without its "done"
+      if (!run.done && t.build && !t.build.final) {
+        t.build.ok = false;
+        if (!t.build.stopped) t.build.error ||= 'the run ended before Claude finished.';
+        if ([...building.values()].includes(t)) changed({}, t, true); // ended without its "done"
+        else finishBuild(t);
+      }
       const lost = batch.filter((x) => x.status === 'sent');
       if (lost.length && !run.notesAnswered) {
         for (const x of lost) x.status = 'open';
@@ -1754,9 +1838,9 @@ export const mountPlayground = (hooks) => {
     if (said) say('note', `Notes: ${said}`, null, null, t);
     else if (list.length === 0) say('error', "Claude didn't answer the notes. Their pins say Sent; open one and press Send again to retry.", null, null, t);
   };
-  stopBtn.addEventListener('click', () => fetch('/playground/chat/stop', {
+  stopBtn.addEventListener('click', () => (tab().build && (tab().build.stopped = true), fetch('/playground/chat/stop', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'chat' }, body: JSON.stringify({ tab: active }),
-  }));
+  })));
   chatBody.querySelector('[data-close]').addEventListener('click', () => setOpen('chat', false));
 
   // Chat is on whenever serve.py finds Claude Code. When it can't run, the panel
