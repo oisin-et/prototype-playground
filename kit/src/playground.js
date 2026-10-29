@@ -701,7 +701,10 @@ export const mountPlayground = (hooks) => {
   // picked version into the app's own files, puts its pick back to main, and
   // commits the files the move changed on this computer (serve.py's Commit,
   // which streams the steps). Nothing is pushed. Explorations stay on this
-  // computer. When it's done the page reloads, with main as it is now.
+  // computer. The commit runs in the background: the dialog closes, and the
+  // button shows a progress bar while it works, so designing carries on. Pressing
+  // the button then shows the steps. When it's done, Reload brings in main as it
+  // is now (a pick changed meanwhile stays picked).
   // (A function, and it looks the button up itself, because draw() calls it
   // before this part has run.)
   function drawCommitBtn() {
@@ -714,12 +717,30 @@ export const mountPlayground = (hooks) => {
     btn.classList.toggle('ready', n > 0);
   }
   const commitBtn = document.getElementById('btn-commit');
+  // The button while a commit runs, and after: its label, and a bar that fills
+  // by the server's phases (move, check, commit). Claude's move has no known
+  // length, so its share fills a little less with each step.
+  commitBtn?.insertAdjacentHTML('beforeend', '<i class="pg-cbar" aria-hidden="true"><i></i></i>');
+  const drawCommitProgress = () => {
+    if (!commitBtn) return;
+    const s = commit.state, busy = s === 'running';
+    const shown = busy || (s === 'done' || s === 'failed') && !commit.seen;
+    commitBtn.classList.toggle('busy', busy);
+    commitBtn.classList.toggle('done', shown && s === 'done');
+    commitBtn.classList.toggle('failed', shown && s === 'failed');
+    commitBtn.querySelector('span').textContent = busy ? 'Committing…' : !shown ? 'Commit' : s === 'done' ? 'Committed' : 'Commit failed';
+    const fill = s === 'done' ? 1 : commit.phase === 'commit' ? 0.92 : commit.phase === 'check' ? 0.82
+      : 0.08 + 0.7 * (1 - 0.88 ** commit.steps.length);
+    commitBtn.querySelector('.pg-cbar i').style.transform = `scaleX(${fill})`;
+    commitBtn.title = busy ? 'Committing in the background. Press to see how it\'s going.'
+      : shown ? 'Press to see how the commit went' : 'Move the picked versions into the app and commit them on this computer';
+  };
 
   const dialog = document.createElement('dialog');
   dialog.className = 'pg-modal';
   dialog.setAttribute('aria-labelledby', 'pg-modal-title');
   document.body.append(dialog);
-  const commit = { info: null, state: 'idle', steps: [], result: null, error: '', other: false, note: '', showOther: false };
+  const commit = { info: null, state: 'idle', steps: [], phase: '', seen: true, result: null, error: '', other: false, note: '', showOther: false };
   const ST = { A: ['add', 'New file'], M: ['mod', 'Changed'], D: ['del', 'Deleted'] };
   const fileRow = (path, status) => `<li>${status ? `<span class="pg-st ${ST[status][0]}" title="${ST[status][1]}">${status}</span>` : ''}<code title="${esc(path)}">${esc(path)}</code></li>`;
   const commitCard = (p, n) => `<li class="pg-ccard">
@@ -745,9 +766,10 @@ export const mountPlayground = (hooks) => {
         ${r?.commits?.length ? `<h4>Committed to ${esc(r.branch)}</h4><ul class="pg-cdone">${r.commits.map((c) => `<li><code>${esc(c.sha)}</code> ${esc(c.message)}</li>`).join('')}</ul>
           <p class="pg-cok">Committed on this computer. Nothing was pushed: <code>git push</code> shares it.</p>` : ''}
         ${commit.error ? `<p class="pg-cproblem">${esc(commit.error)}</p>` : ''}
-        ${commit.state === 'running' ? '<p class="pg-cwait">Working… This can take a few minutes while Claude moves the picks.</p>' : ''}`;
-      foot = commit.state === 'running' ? ''
-        : `<button type="button" class="pg-use" data-finish>${r?.commits?.length ? 'Reload the playground' : 'Close'}</button>`;
+        ${commit.state === 'running' ? '<p class="pg-cwait">Working… This can take a few minutes while Claude moves the picks. Close this and carry on designing: the Commit button shows how it\'s going.</p>' : ''}`;
+      foot = commit.state === 'running' ? '<button type="button" data-cancel>Carry on designing</button>'
+        : r?.commits?.length ? `<button type="button" data-cancel>Later</button><button type="button" class="pg-use" data-finish>Reload the playground</button>`
+        : '<button type="button" class="pg-use" data-finish>Close</button>';
     } else {
       const problems = i.problems || [];
       body = `
@@ -770,7 +792,7 @@ export const mountPlayground = (hooks) => {
         <button type="button" class="pg-use" data-commit ${!ready || problems.length ? 'disabled' : ''}>${ready ? 'Commit' : 'Nothing to commit'}</button>`;
     }
     dialog.innerHTML = `<div class="pg-modal-card">
-      <div class="pg-head"><h2 id="pg-modal-title">Commit to main</h2>${commit.state === 'running' ? '' : '<button type="button" class="pg-min" data-cancel aria-label="Close">×</button>'}</div>
+      <div class="pg-head"><h2 id="pg-modal-title">Commit to main</h2><button type="button" class="pg-min" data-cancel aria-label="Close">×</button></div>
       <div class="pg-modal-body">${body}</div>
       ${foot ? `<div class="pg-modal-foot">${foot}</div>` : ''}
     </div>`;
@@ -788,9 +810,12 @@ export const mountPlayground = (hooks) => {
     }
     if (dialog.open) drawCommit();
   };
+  const redraw = () => { drawCommitProgress(); if (dialog.open) drawCommit(); };
   const runCommit = async () => {
-    Object.assign(commit, { state: 'running', steps: [], result: null, error: '' });
-    drawCommit();
+    Object.assign(commit, { state: 'running', steps: [], phase: 'move', seen: false, result: null, error: '' });
+    dialog.close();
+    redraw();
+    toast('Committing in the background. Press Commit to see how it\'s going.');
     try {
       const r = await fetch('/playground/commit', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'commit' },
@@ -808,10 +833,10 @@ export const mountPlayground = (hooks) => {
         for (const line of lines) {
           let e;
           try { e = JSON.parse(line); } catch { continue; }
-          if (e.type === 'step') commit.steps.push(e.text);
+          if (e.type === 'step') { commit.steps.push(e.text); if (e.phase) commit.phase = e.phase; }
           if (e.type === 'done') commit.result = e;
           if (e.type === 'error') commit.error = e.message;
-          drawCommit();
+          redraw();
         }
       }
       commit.state = commit.error || !commit.result ? 'failed' : 'done';
@@ -820,16 +845,28 @@ export const mountPlayground = (hooks) => {
       commit.error = err.message === 'Failed to fetch' ? 'Lost the connection to serve.py.' : err.message;
       commit.state = 'failed';
     }
-    drawCommit();
+    redraw();
+    if (dialog.open) commit.seen = true;
+    else if (commit.state === 'done') toast('Committed to main. Reload the playground to see main as it is now.', { label: 'Reload', run: () => location.reload() });
+    else toast('The commit didn\'t finish. Press Commit to see why.');
   };
+  // While a commit runs, or before its outcome has been seen, the button shows
+  // it; otherwise it opens the plan for a new one.
   commitBtn?.addEventListener('click', () => {
+    if (commit.state === 'running' || !commit.seen) {
+      if (commit.state !== 'running') { commit.seen = true; drawCommitProgress(); }
+      drawCommit();
+      if (!dialog.open) dialog.showModal();
+      return;
+    }
     Object.assign(commit, { steps: [], result: null, error: '', showOther: false });
     if (!dialog.open) dialog.showModal();
     loadCommit();
   });
-  dialog.addEventListener('cancel', (e) => { if (commit.state === 'running') e.preventDefault(); });
+  // The server carries on if the page goes away, but the page would lose sight of it.
+  addEventListener('beforeunload', (e) => { if (commit.state === 'running') e.preventDefault(); });
   dialog.addEventListener('click', (e) => {
-    if (e.target === dialog && commit.state !== 'running') return dialog.close(); // the backdrop
+    if (e.target === dialog) return dialog.close(); // the backdrop
     const t = e.target.closest('button');
     if (!t) return;
     if ('cancel' in t.dataset) dialog.close();

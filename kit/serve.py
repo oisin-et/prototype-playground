@@ -1086,7 +1086,7 @@ class Commit:
         before = fingerprint(plan["other"])
 
         if picks:
-            emit({"type": "step", "text": f"Claude is moving {len(picks)} pick{'' if len(picks) == 1 else 's'} into the app."})
+            emit({"type": "step", "phase": "move", "text": f"Claude is moving {len(picks)} pick{'' if len(picks) == 1 else 's'} into the app."})
             if not self.move(picks, emit):
                 return
             result = Handler.app.reload()
@@ -1102,12 +1102,14 @@ class Commit:
                       + " ".join(errors[:4])})
                 return
             size = sum((ROOT / p).stat().st_size for p in moved if (ROOT / p).is_file())
-            emit({"type": "step", "text": f"The app reloads without errors. The move changed {len(moved)} file{'' if len(moved) == 1 else 's'} ({size / 1e6:.1f} MB)."})
+            emit({"type": "step", "phase": "check", "text": f"The app reloads without errors. The move changed {len(moved)} file{'' if len(moved) == 1 else 's'} ({size / 1e6:.1f} MB)."})
             # Each pick goes back to main, which now shows it, and its version is
             # marked as merged. These are the playground's files: never committed.
+            # The commit runs in the background, so a pick changed meanwhile stays.
             picked = read_json_file(PICKS) or {}
             for p in picks:
-                picked[p["playground"]] = "default"
+                if picked.get(p["playground"]) == p["version"]:
+                    picked[p["playground"]] = "default"
                 vfile = DATA / p["playground"] / "versions.json"
                 info = read_json_file(vfile) or {}
                 for v in info.get("versions", []):
@@ -1131,7 +1133,7 @@ class Commit:
             message += "\n\n" + note
         if picks:
             message += "\n\n" + "\n".join(f"- {p['playground']} {p['version']}" + (f": {p['note']}" if p["note"] else "") for p in picks)
-        emit({"type": "step", "text": f"Committing {len(files)} file{'' if len(files) == 1 else 's'} to {plan['branch']}."})
+        emit({"type": "step", "phase": "commit", "text": f"Committing {len(files)} file{'' if len(files) == 1 else 's'} to {plan['branch']}."})
         for step in (("add", "-A", "--", *files), ("commit", "-m", message, "--", *files)):
             r = git(*step)
             if r.returncode:

@@ -123,10 +123,12 @@ playground/                  the page and its tools (the kit, plus this project'
    - or the move brought baggage: a link to a folder outside the project, or a file over 5 MB (`"commit": {"maxFileMB": …}` in `playground.json` changes the limit).
 
    The move is told to keep the design lean: one copy of any part used twice, only the assets it uses (copied in, never linked), and none of the version's history.
-3. **Each pick goes back to main,** which now shows it, and its version is marked `"merged"` with the date in `versions.json`. The folder stays as the record.
+3. **Each pick goes back to main,** which now shows it (unless you picked another version of that screen while the commit ran), and its version is marked `"merged"` with the date in `versions.json`. The folder stays as the record.
 4. **The files the move changed are committed** on this computer, in one commit, on the branch the project is on. It's made as your git user, and the message names each pick and its note. With **Also commit the other changes** ticked, everything else git sees changed goes in too. Nothing is pushed: `git push` shares it.
 
-Explorations, `index.json` and `picks.json` are never committed. Commit waits while a chat is working, and only the playground's own page can start it.
+**It runs in the background.** Once you press **Commit**, the dialog closes and you carry on designing: trying versions, picking, and chatting with Claude all work while it runs. The header's button says **Committing…** with a bar along its foot that fills as the move, the check and the commit go by. Press it to see the steps, and close them again at any time. When it's done the button says **Committed** (or **Commit failed**) until you press it to see how it went, and a toast offers **Reload** to bring in main as it is now. Deletes wait until it's done, and leaving the page asks first (the commit carries on without it, but the page loses sight of it).
+
+Explorations, `index.json` and `picks.json` are never committed. A commit can't start while a chat is working, and only the playground's own page can start it.
 
 ## Move a picked version into the app
 

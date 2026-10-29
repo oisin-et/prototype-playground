@@ -679,6 +679,17 @@ body.pg-alt .pg-shield, body.pg-aiming .pg-shield, body.pg-space .pg-shield { di
 .toolbar .pg-commit-btn { display: inline-flex; align-items: center; gap: 8px; margin-left: 4px; }
 .toolbar .pg-commit-btn.ready { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.5); }
 @media (hover: hover) { .toolbar .pg-commit-btn.ready:hover { filter: brightness(0.92); } }
+/* While a commit runs in the background: a bar along the button's foot that
+   fills by phase; done and failed hold until the outcome is seen. */
+.toolbar .pg-commit-btn { position: relative; overflow: hidden; }
+.toolbar .pg-commit-btn.busy, .toolbar .pg-commit-btn.done, .toolbar .pg-commit-btn.failed { background: var(--tile); color: var(--page-text); font-weight: 600; box-shadow: none; }
+.toolbar .pg-commit-btn:is(.busy, .done, .failed) .pg-count { display: none; }
+.pg-cbar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.08); opacity: 0; transition: opacity 300ms; }
+.pg-cbar i { position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(0); transition: transform 900ms var(--spring); }
+.pg-commit-btn:is(.busy, .done, .failed) .pg-cbar { opacity: 1; }
+.pg-commit-btn.busy .pg-cbar i { background: linear-gradient(90deg, var(--accent) 40%, #9fe4ff 50%, var(--accent) 60%) 0 0 / 200% 100%; animation: pg-shimmer 1.6s linear infinite; }
+.pg-commit-btn.failed .pg-cbar i { background: #d94a4a; }
+@media (prefers-reduced-motion: reduce) { .pg-cbar i, .pg-commit-btn.busy .pg-cbar i { transition: none; animation: none; } }
 .pg-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center; background: var(--accent-ink); color: var(--accent); }
 .pg-count[hidden] { display: none; }
 
