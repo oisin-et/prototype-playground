@@ -262,6 +262,10 @@ body {
 .pg-chip.pick { color: var(--accent); background: rgba(37, 195, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
 .pg-chip.try { color: var(--amber); background: rgba(240, 180, 76, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 180, 76, 0.35); }
 .pg-chip.here { color: var(--page-text); background: var(--well); }
+.pg-chip.building { color: var(--accent); background: rgba(37, 195, 255, 0.08); animation: pg-built-pulse 1.6s ease-in-out infinite; }
+/* A version Claude is still building: locked until its run is done. */
+.pg-version.building .pg-try { cursor: default; opacity: 0.7; }
+@keyframes pg-built-pulse { 50% { opacity: 0.55; } }
 .pg-vwhen { white-space: nowrap; }
 .pg-version.open .pg-vname { white-space: normal; }
 .pg-note { margin: 0; padding: 0 12px 10px var(--gutter, 14px); color: var(--page-muted); font-size: 12px; animation: pg-pop 420ms var(--spring) both; }
@@ -425,6 +429,14 @@ body {
 @media (prefers-reduced-motion: reduce) { .pg-tab.running .pg-badge { animation: none; } }
 .pg-context { margin: 0 10px 4px; padding: 8px 10px; font-size: 12px; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); flex: none; }
 .pg-context b { color: var(--page-text); font-weight: 500; }
+/* Over the chat box: what's being built out of sight, then the ready version and Show it. */
+.pg-built { display: flex; align-items: center; gap: 10px; margin: 0 10px 8px; padding: 8px 8px 8px 12px; font-size: 12px; color: var(--page-muted); background: var(--well); border-radius: var(--tile-radius); flex: none; animation: pg-rise 420ms var(--spring) both; }
+.pg-built[hidden] { display: none; }
+.pg-built span { flex: 1; min-width: 0; }
+.pg-built b { color: var(--page-text); font-weight: 500; }
+.pg-built.ready { color: var(--page-text); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
+.pg-panel .pg-built button { flex: none; }
+@media (prefers-reduced-motion: reduce) { .pg-built, .pg-chip.building { animation: none; } }
 .pg-log { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 12px 18px; display: flex; flex-direction: column; gap: 8px; }
 .pg-log[hidden], .pg-ask[hidden], .pg-off[hidden] { display: none; }
 .pg-msg { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }

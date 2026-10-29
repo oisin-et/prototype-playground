@@ -22,15 +22,18 @@
 // Screenshots can be dragged in, pasted, or captured from the app: hold ⌥ and
 // drag over any part of it (or press the capture button, then drag), and the
 // capture is added with the names of the app's widgets it covers (the host's
-// capture hook draws it). When a file is saved the app is reloaded, and a
-// new version is tried as soon as it exists, so it takes shape on the screen. Follow-ups continue the same Claude conversation:
+// capture hook draws it). Claude builds out of sight: while it works, the app
+// on show is left as it is (no reloads, no switching), so it can still be used,
+// and the versions it's making are locked in Explorations. When the run is done,
+// a card over the chat box and a toast say the new version is ready, and Show it
+// puts it on. Follow-ups continue the same Claude conversation:
 // each change is the next iteration of the version on show, and a new idea a new exploration.
 //
 // Chats sit along the top of the panel like a Stepper's steps: Chat 1, and a
 // + that opens the next, up to four (serve.py's MAX_RUNS). Each is its own
 // Claude conversation with its own run, so several can work at once. Only the chat on show tries its new versions as
 // they're made; another chat's new version waits, with an amber badge, and is
-// tried when you open it. The chats are kept for this browser tab.
+// shown when you open it. The chats are kept for this browser tab.
 //
 // The player does the switching through the hooks passed in; this file only
 // draws the buttons and panels, and knows nothing about any particular
@@ -80,6 +83,9 @@ const folderTitle = (title, id) => {
 
 export const mountPlayground = (hooks) => {
   const { playgrounds, onPlayground, toast } = hooks;
+  // The versions a chat is making ('<exploration>/<version>' → its chat): locked
+  // in Explorations until the run is done.
+  const building = new Map();
   // Each panel is a strip (shown while it's minimised) and its body.
   const workspace = document.getElementById('workspace');
   const center = workspace.querySelector('.center');
@@ -291,20 +297,21 @@ export const mountPlayground = (hooks) => {
   const versionRow = (pg, v) => {
     const isPicked = picked(pg) === v.id, isTrying = trying(pg) === v.id;
     const running = isTrying || (isPicked && !trying(pg));
-    const main = v.id === 'default', key = `${pg.id}/${v.id}`, open = opened.has(key);
+    const main = v.id === 'default', key = `${pg.id}/${v.id}`, open = opened.has(key), built = building.has(key);
     const p = parentOf(pg, v), n = numOf(v.id);
     // Where it came from, when it isn't simply the step above it.
     const above = n && n[1] > 0 && numOf(p)?.[0] === n[0] && numOf(p)[1] === n[1] - 1;
     const from = main ? '' : `from ${numLabel(p)}${above ? '' : p === 'default' ? ', the app as it is' : ''}`;
     const about = [from, v.note].filter(Boolean);
-    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}${open ? ' open' : ''}${n && n[1] === 0 ? ' head' : ''}" data-v="${esc(v.id)}">
+    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}${open ? ' open' : ''}${n && n[1] === 0 ? ' head' : ''}${built ? ' building' : ''}" data-v="${esc(v.id)}">
       <div class="pg-tile">
-        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" title="${esc(versionName(pg, v.id))}">
+        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" ${built ? 'disabled ' : ''}title="${esc(versionName(pg, v.id))}${built ? ': Claude is still building it' : ''}">
           ${main ? '' : `<span class="pg-vtop"><span class="pg-vnum">${esc(numLabel(v.id))}</span><span class="pg-vwhen">${esc(v.date)}</span></span>`}
           <b class="pg-vname">${main ? 'As it is' : esc(v.name)}</b>
-          ${isPicked || isTrying ? `<span class="pg-vmeta">${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}</span>` : ''}
+          ${built ? '<span class="pg-vmeta"><span class="pg-chip building">Claude is building it…</span></span>'
+            : isPicked || isTrying ? `<span class="pg-vmeta">${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}</span>` : ''}
         </button>
-        <span class="pg-tools${v.starred ? ' starred' : ''}">${about.length ? moreBtn(key, versionName(pg, v.id)) : ''}${main ? '' : starBtn(pg, v) + binBtn(pg, v)}</span>
+        ${built ? '' : `<span class="pg-tools${v.starred ? ' starred' : ''}">${about.length ? moreBtn(key, versionName(pg, v.id)) : ''}${main ? '' : starBtn(pg, v) + binBtn(pg, v)}</span>`}
       </div>
       ${open && about.length ? `<p class="pg-note">${from ? `<span class="pg-from">${esc(from)}</span>` : ''}${from && v.note ? ' · ' : ''}${esc(v.note)}</p>` : ''}
     </li>`;
@@ -894,7 +901,7 @@ export const mountPlayground = (hooks) => {
   const newTab = (from = {}) => ({
     id: from?.id || `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
     session: from?.session || null, log: Array.isArray(from?.log) ? from.log : [],
-    running: false, status: '', ready: null, tried: new Set(),
+    running: false, status: '', ready: null, made: null, tried: new Set(),
   });
   let saved = {};
   try {
@@ -934,6 +941,7 @@ export const mountPlayground = (hooks) => {
     <div class="pg-tabs" role="tablist" aria-label="Chats"><span class="pg-tab-glider" aria-hidden="true"></span></div>
     <p class="pg-context"></p>
     <ol class="pg-log" aria-live="polite"></ol>
+    <div class="pg-built" role="status" hidden></div>
     <form class="pg-ask">
       <ol class="pg-notes" hidden></ol>
       <ul class="pg-shots new" hidden></ul>
@@ -956,6 +964,7 @@ export const mountPlayground = (hooks) => {
   const tabsEl = chatBody.querySelector('.pg-tabs');
   const tabGlider = tabsEl.querySelector('.pg-tab-glider');
   const newBtn = chatBody.querySelector('[data-new]');
+  const builtEl = chatBody.querySelector('.pg-built');
 
   const shots = (images) => images?.length
     ? `<ul class="pg-shots">${images.map((src) => `<li><a href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="Screenshot"></a></li>`).join('')}</ul>` : '';
@@ -995,7 +1004,20 @@ export const mountPlayground = (hooks) => {
     sendBtn.disabled = t.running;
     newBtn.disabled = t.running || !t.log.length;
     newBtn.title = t.running ? 'Stop this chat first' : `Clear Chat ${tabs.indexOf(t) + 1} and start again`;
+    drawBuilt();
   };
+  // Over the chat box: what the chat on show is building out of sight, and then
+  // the version it made, with Show it.
+  function drawBuilt() {
+    const t = tab(), r = t.ready, pg = r && byId(r.playground);
+    const making = [...building].filter(([, bt]) => bt === t).map(([k]) => k.split('/'));
+    const [mpg, mv] = making.at(-1) || [];
+    builtEl.hidden = !pg && !(t.running && making.length);
+    builtEl.classList.toggle('ready', !!pg);
+    builtEl.innerHTML = pg
+      ? `<span><b>${esc(pg.title)} › ${esc(versionName(pg, r.version))}</b> is ready.</span><button type="button" class="pg-use" data-show-built>Show it</button>`
+      : !builtEl.hidden ? `<span>Building <b>${esc(byId(mpg) ? versionName(byId(mpg), mv) : mv)}</b> out of sight. What's on screen stays as it is until you show it.</span>` : '';
+  }
   const setStatus = (t, status) => { t.status = status; if (t.id === active) statusEl.textContent = status; };
   const setRunning = (t, on, status = '') => {
     t.running = on;
@@ -1004,6 +1026,18 @@ export const mountPlayground = (hooks) => {
     drawTabs();
     drawRails();
   };
+  // Show it: the chat's new version goes on, the app's frame catching up first
+  // if it was left alone while Claude worked.
+  const showBuilt = async (t) => {
+    const next = t.ready;
+    t.ready = null;
+    if (t.id !== active) showTab(t.id);
+    drawTabs();
+    drawBuilt();
+    if (next) await tryNew(next);
+    draw();
+  };
+  builtEl.addEventListener('click', (e) => { if (e.target.closest('[data-show-built]')) showBuilt(tab()); });
 
   // ---- Chats --------------------------------------------------------------------
   // After the Stepper's header: the open chats in a well, a raised tile (the
@@ -1056,9 +1090,6 @@ export const mountPlayground = (hooks) => {
     const from = tabs.findIndex((t) => t.id === active), to = tabs.findIndex((t) => t.id === id);
     if (to < 0 || (to === from && !dir)) return;
     active = id;
-    // The version it made while another chat was on show is tried now.
-    const next = tabs[to].ready;
-    tabs[to].ready = null;
     keep();
     drawTabs();
     drawLog();
@@ -1067,7 +1098,6 @@ export const mountPlayground = (hooks) => {
       logEl.animate([{ transform: `translateX(${(dir || Math.sign(to - from)) * 36}px)` }, { transform: 'none' }], { duration: 560, easing: SPRING });
       logEl.animate([{ opacity: 0 }, { opacity: 0, offset: 0.25 }, { opacity: 1 }], { duration: 420, easing: 'ease-out' });
     }
-    if (next) tryNew(next).then(() => draw());
   };
   const addTab = () => {
     if (tabs.length >= CHATS) return;
@@ -1145,13 +1175,12 @@ export const mountPlayground = (hooks) => {
       : playgrounds.some((x) => x.screen === c.folder) ? ' (Claude picks the exploration, or asks)' : ' (a new exploration)'}`;
   }
 
-  // Files changed: read the prototype again (once things settle), and try a
-  // tab's new version the first time it shows up, with its folder open, if
-  // that tab is on show. Another tab keeps it until it's opened.
-  // In this app a refresh is a hot reload too: during a run its compile errors
-  // are only shown in the bar (a file may be half done), and at the end of a
-  // run they're said in that run's chat.
-  let refreshTimer = null, pendingNew = [], pendingFinal = new Set(), pendingReload = false;
+  // Files changed: read the explorations again (once things settle), leaving
+  // the app on show alone, and lock the versions the run is making. At the end
+  // of a run the app is checked (its compile errors are said in that run's
+  // chat, still without loading the frame again), the versions unlock, and the
+  // newest one it made waits as the chat's ready version, for Show it.
+  let refreshTimer = null, pendingNew = [], pendingFinal = new Set();
   const tryNew = async (n) => {
     const pg = byId(n.playground);
     if (!pg) return;
@@ -1161,29 +1190,38 @@ export const mountPlayground = (hooks) => {
   };
   const changed = (event, t, final = false) => {
     pendingNew.push(...(event.new || []).map((n) => ({ ...n, tab: t })));
+    if (!final) for (const n of event.new || []) if (n.version !== 'default') building.set(`${n.playground}/${n.version}`, t);
     if (final) pendingFinal.add(t);
-    pendingReload ||= !event.reloaded;
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(async () => {
       const fresh = pendingNew.filter((n) => !n.tab.tried.has(`${n.playground}/${n.version}`));
-      const finals = [...pendingFinal], reload = pendingReload;
+      const finals = [...pendingFinal];
       pendingNew = [];
       pendingFinal = new Set();
-      pendingReload = false;
-      try {
-        const result = await hooks.refresh({ reload });
-        if (result && !result.ok) for (const f of finals) say('error', [result.message, ...(result.errors || []).slice(0, 8)].join('\n'), null, null, f);
-        for (const ft of new Set(fresh.map((n) => n.tab))) {
-          const mine = fresh.filter((n) => n.tab === ft);
-          const next = mine.filter((n) => n.version !== 'default').at(-1) || mine.at(-1);
-          ft.tried.add(`${next.playground}/${next.version}`);
-          if (ft.id === active) await tryNew(next);
-          else { ft.ready = next; drawTabs(); }
+      for (const ft of new Set(fresh.map((n) => n.tab))) {
+        const mine = fresh.filter((n) => n.tab === ft);
+        const next = mine.filter((n) => n.version !== 'default').at(-1) || mine.at(-1);
+        ft.tried.add(`${next.playground}/${next.version}`);
+        ft.made = next;
+      }
+      for (const ft of finals) {
+        for (const [k, bt] of building) if (bt === ft) building.delete(k);
+        if (ft.made) {
+          const n = ft.made, pg = byId(n.playground);
+          ft.ready = n;
+          ft.made = null;
+          toast(`${pg ? `${pg.title} › ${versionName(pg, n.version)}` : n.version} is ready${ft.id === active ? '' : ` in Chat ${tabs.indexOf(ft) + 1}`}.`, { label: 'Show it', run: () => showBuilt(ft) });
         }
+      }
+      try {
+        const result = await hooks.refresh({ reload: finals.length > 0, frame: false });
+        if (result && !result.ok) for (const f of finals) say('error', [result.message, ...(result.errors || []).slice(0, 8)].join('\n'), null, null, f);
       } catch {
         // A file half written: the next change, or the end of the run, reads it again.
       }
       draw();
+      drawTabs();
+      drawBuilt();
     }, 300);
   };
 
@@ -1250,6 +1288,7 @@ export const mountPlayground = (hooks) => {
       say('error', 'Lost the connection to serve.py.', null, null, t);
     } finally {
       setRunning(t, false);
+      if ([...building.values()].includes(t)) changed({}, t, true); // ended without its "done"
       const lost = batch.filter((x) => x.status === 'sent');
       if (lost.length && !run.notesAnswered) {
         for (const x of lost) x.status = 'open';

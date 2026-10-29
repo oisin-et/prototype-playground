@@ -185,8 +185,12 @@ let loadedRegistry = null;
 // Loads the app again. It says hello when it's back, and is sent the versions
 // and the screen again. The promise settles then (or after 15 s), so what comes
 // next sees the app's new registry.
-let helloWaiters = [];
+// stale: a quiet refresh (a chat at work) left the frame on the registry it
+// loaded, so the app on show isn't reset while Claude builds out of sight. The
+// frame catches up when a version it doesn't have is put on (catchUp).
+let helloWaiters = [], stale = false;
 const reloadFrame = async () => {
+  stale = false;
   loadedRegistry = await registryNow();
   const back = new Promise((ok) => { helloWaiters.push(ok); setTimeout(ok, 15000); });
   // Until the app is back and listening, a frame with the focus swallows
@@ -205,7 +209,7 @@ const showLoadErrors = () => {
 };
 
 let reloading = false;
-const appReload = async (restart = false) => {
+const appReload = async (restart = false, frameToo = true) => {
   reloading = true;
   taken.clear(); // the versions may have changed: their pictures are taken again
   setStatus('busy', restart ? 'Restarting the app…' : 'Reloading the app…');
@@ -213,7 +217,10 @@ const appReload = async (restart = false) => {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'reload' }, body: JSON.stringify({ restart }),
   }).then((r) => r.json()).catch(() => ({ ok: false, message: 'Lost the connection to serve.py.', errors: [] }));
   reloading = false;
-  if (result.frame === 'reload' || (REGISTRY && (await registryNow()) !== loadedRegistry)) await reloadFrame();
+  if (result.frame === 'reload' || (REGISTRY && (await registryNow()) !== loadedRegistry)) {
+    if (frameToo) await reloadFrame();
+    else stale = true;
+  }
   setStatus(result.ok ? 'ready' : 'error', result.ok ? `App ready · ${restart ? 'restarted' : 'reloaded'} ${result.at || ''}`.trim() : result.message);
   showErrors(result);
   if (result.ok) showLoadErrors();
@@ -276,6 +283,11 @@ const notBuilt = () => {
   const [pg, v] = running().find(([p, x]) => !registry[`${p.id}/${x}`]) || [];
   if (pg && booted) toast(`${pg.title} ${v} isn't in the app yet: press Reload app.`);
 };
+// A version the frame hasn't loaded yet (made while it was left alone): the
+// frame loads again, once, now that it's asked for.
+const catchUp = async (pg, version) => {
+  if (stale && version !== 'default' && !registry[`${pg.id}/${version}`]) await reloadFrame();
+};
 const switchVersions = (pg) => {
   sendLayers();
   if (pg && !onPlayground(pg, route.screen)) send({ type: 'show', screen: pg.start || pg.screen });
@@ -284,16 +296,20 @@ const switchVersions = (pg) => {
 };
 
 // Reads the explorations from disk again (after chat, or anyone, changed
-// them), hot-reloads the app if asked, and sends the versions again.
-const refresh = async ({ reload = true } = {}) => {
+// them), hot-reloads the app if asked, and sends the versions again. frame:
+// false leaves the app's frame as it is (a chat at work): it catches up later.
+const refresh = async ({ reload = true, frame: frameToo = true } = {}) => {
   taken.clear();
   const fresh = await loadPlaygrounds();
   playgrounds.splice(0, playgrounds.length, ...fresh);
-  const result = reload ? await appReload(false) : null;
+  const result = reload ? await appReload(false, frameToo) : null;
   // A chat's reload.py has reloaded the app already. An app whose server
   // doesn't reload changed files itself ("hot": false) still needs its frame
   // loaded again to run them.
-  if (!reload && CFG.app?.hot === false) await reloadFrame();
+  if (!reload && CFG.app?.hot === false) {
+    if (frameToo) await reloadFrame();
+    else stale = true;
+  }
   sendLayers();
   panel.redraw();
   return result;
@@ -665,6 +681,7 @@ const panel = mountPlayground({
   open: !!urlParams.get('playground'),
   async tryVersion(pg, version) {
     preview = version === (picks[pg.id] || 'default') ? null : { playground: pg.id, version };
+    await catchUp(pg, version);
     switchVersions(pg);
   },
   async endPreview() {
@@ -675,6 +692,7 @@ const panel = mountPlayground({
   async use(pg, version) {
     picks = { ...picks, [pg.id]: version };
     preview = null;
+    await catchUp(pg, version);
     const at = await savePicks(picks);
     switchVersions(pg);
     return at;
