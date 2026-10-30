@@ -1062,7 +1062,9 @@ class Commit:
             problems.append("Moving a pick into the app needs Claude Code, and chat is off or not installed here.")
         if self.chat and self.chat.runs:
             problems.append("A chat is still working. Wait for it, or stop it, so it doesn't change files mid-commit.")
-        return {"git": True, "branch": branch, "picks": picks, "other": changed_files(), "problems": problems}
+        names = CONFIG.get("commit", {}).get("keepInStep", [])
+        in_step = [n for n in ([names] if isinstance(names, str) else names) if n and n != branch]
+        return {"git": True, "branch": branch, "picks": picks, "other": changed_files(), "problems": problems, "inStep": in_step}
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
@@ -1147,7 +1149,39 @@ class Commit:
                 emit({"type": "error", "message": out[-1] if out else f"git {step[0]} failed."})
                 return
         sha = git("rev-parse", "--short", "HEAD").stdout.strip()
+        self.keep_in_step(plan["branch"], emit)
         emit({"type": "done", "branch": plan["branch"], "commits": [{"sha": sha, "message": message.splitlines()[0]}], "files": files})
+
+    def keep_in_step(self, branch, emit):
+        """playground.json's "commit": {"keepInStep": ["main"]}: branches moved up to the
+        new commit as well, when the project works on a branch of its own (a worktree)
+        but the app is opened, shared or deployed from main. Only a fast-forward: a
+        branch with commits of its own is left as it is, and said so. A branch checked
+        out in another worktree is moved there, so its files follow."""
+        names = CONFIG.get("commit", {}).get("keepInStep", [])
+        for name in [names] if isinstance(names, str) else names:
+            if not name or name == branch or git("rev-parse", "--verify", "-q", f"refs/heads/{name}").returncode:
+                continue
+            if git("merge-base", "--is-ancestor", name, "HEAD").returncode:
+                emit({"type": "step", "text": f"{name} has commits of its own, so it wasn't moved up: merge {branch} into it by hand."})
+                continue
+            where, here = None, None
+            for line in git("worktree", "list", "--porcelain").stdout.splitlines():
+                if line.startswith("worktree "):
+                    here = line[9:]
+                elif line == f"branch refs/heads/{name}":
+                    where = here
+            if where:
+                r = subprocess.run(["git", "merge", "--ff-only", "-q", git("rev-parse", "HEAD").stdout.strip()],
+                                   cwd=where, capture_output=True, text=True)
+            else:
+                old = git("rev-parse", f"refs/heads/{name}").stdout.strip()
+                r = git("update-ref", f"refs/heads/{name}", "HEAD", old)
+            if r.returncode:
+                out = (r.stderr or r.stdout).strip().splitlines()
+                emit({"type": "step", "text": f"Couldn't move {name} up to it" + (f" ({where})" if where else "") + f": {out[-1] if out else 'git said no'}. It's still committed to {branch}."})
+            else:
+                emit({"type": "step", "phase": "commit", "text": f"{name} moved up to it too" + (f", in {Path(where).name}" if where else "") + "."})
 
     def build(self, emit):
         """Runs playground.json's "commit": {"build": [...]}, in order, from the project's

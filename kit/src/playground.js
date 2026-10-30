@@ -781,7 +781,7 @@ export const mountPlayground = (hooks) => {
     } else {
       const problems = i.problems || [];
       body = `
-        ${i.git ? `<p class="pg-cbranch">Commits to <b>${esc(i.branch || '?')}</b> on this computer. Nothing is pushed.</p>` : ''}
+        ${i.git ? `<p class="pg-cbranch">Commits to <b>${esc(i.branch || '?')}</b> on this computer${i.inStep?.length ? `, and moves ${i.inStep.map((b) => `<b>${esc(b)}</b>`).join(' and ')} up to it` : ''}. Nothing is pushed.</p>` : ''}
         <p class="pg-cabout">A commit makes your picks part of the app. Claude moves each picked version into the app's own files, its pick goes back to main in Explorations, and the files the move changed are committed together.</p>
         ${tried ? `<p class="pg-cnotice">You're trying ${esc(versionName(tried, p.version))}. It isn't picked, so it's not in this commit: press <b>Use this version</b> first to include it.</p>` : ''}
         ${hooks.local() ? `<p class="pg-cnotice">Your picks are saved in this browser only. A commit uses the picks in <code>${esc(hooks.data)}/picks.json</code>.</p>` : ''}
