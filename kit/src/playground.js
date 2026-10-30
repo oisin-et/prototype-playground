@@ -1119,7 +1119,8 @@ export const mountPlayground = (hooks) => {
   // that side. At first there's only Chat 1 and a +; each + opens the next chat,
   // up to CHATS, each a quarter of the row as if all four were open. Pointing at
   // a chat's number turns it into a ×, and clicking it closes the chat (Delete
-  // does too, on the chat with the focus); not the only chat, and not while it works. Each badge says
+  // does too, on the chat with the focus); not the only chat, and not while it works.
+  // A chat with a conversation asks first (⇧ doesn't), an empty one just goes. Each badge says
   // how its chat is: an outline on show, solid once it has a conversation,
   // breathing blue while it works, amber with a new version waiting. A chat's
   // first message is in its tooltip.
@@ -1181,9 +1182,13 @@ export const mountPlayground = (hooks) => {
     showTab(t.id, 1);
     input.focus();
   };
-  const closeTab = (id) => {
-    const i = tabs.findIndex((t) => t.id === id);
-    if (i < 0 || tabs[i].running || tabs.length === 1) return;
+  const closeTab = async (id, quick) => {
+    let i = tabs.findIndex((t) => t.id === id);
+    if (i < 0 || tabs[i].running || tabs.length === 1) return false;
+    if (!quick && tabs[i].log.length && !(await ask(`Delete Chat ${i + 1}?`,
+      ['Its conversation goes, and it can\'t be brought back. The versions it made stay in Explorations.'], 'Delete'))) return false;
+    i = tabs.findIndex((t) => t.id === id); // it may have changed while the question was open
+    if (i < 0 || tabs[i].running || tabs.length === 1) return false;
     tabs.splice(i, 1);
     if (id === active) showTab(tabs[Math.max(0, i - 1)].id, -1);
     else { keep(); drawTabs(); }
@@ -1192,15 +1197,14 @@ export const mountPlayground = (hooks) => {
   tabsEl.addEventListener('click', (e) => {
     if (e.target.closest('[data-add]')) return addTab();
     const x = e.target.closest('.closable [data-close-tab]');
-    if (x) return closeTab(x.dataset.closeTab);
+    if (x) return closeTab(x.dataset.closeTab, e.shiftKey);
     const b = e.target.closest('[data-tab]');
     if (b) showTab(b.dataset.tab);
   });
   tabsEl.addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && e.target.closest('[data-tab]')) {
       e.preventDefault();
-      closeTab(active);
-      tabEl(tab())?.querySelector('[data-tab]').focus();
+      closeTab(active, e.shiftKey).then(() => tabEl(tab())?.querySelector('[data-tab]').focus());
       return;
     }
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) || !e.target.closest('[data-tab]')) return;
