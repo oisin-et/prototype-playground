@@ -1,30 +1,34 @@
 // The playground: versions of the app's pages, tried out inside the running
-// app (playground/README.md), in two panels either side of the screen, under the
-// header and the prototype's bar (they never cover them). Both are open at
-// first; each minimises to a strip at its edge and expands again from it, and
-// that's kept for next time.
+// app (playground/README.md). Under the header and the prototype's bar runs
+// the Explorations strip, and two panels sit either side of the screen under
+// it (they never cover the bars). Both panels are open at first; each
+// minimises to a strip at its edge and expands again from it, and that's kept
+// for next time.
 //
-// Explorations, on the left, is the file manager. Every screen of the
-// prototype is a folder, and each folder holds that screen's explorations
-// (<data>/<screen>/): exploration 4 is v4.0, and its iterations v4.1, v4.2 …
-// The folder lists the explorations; pressing one opens its versions in a
-// second column. The screen on show is pinned at the top. Clicking a version
-// runs it at once, on the same screen and with the same state; "Use this
-// version" makes it the prototype's pick, saved to <data>/picks.json. A star
-// marks a version worth keeping, and "Starred only" hides the rest; the bin
-// deletes a version, or an exploration with its iterations, to
-// playground/trash/, with Undo in the toast (serve.py's /playground/explorations).
+// Explorations, the strip across the top, follows the screen on show
+// (<data>/<screen>/): main first, then each exploration's steps in a row,
+// exploration 4 as v4.0 and its iterations v4.1, v4.2 … Hovering a step shows
+// its picture, its note, its star and its bin. Clicking one runs it at once,
+// on the same screen and with the same state; "Use this version" makes it the
+// prototype's pick, saved to <data>/picks.json. A star marks a version worth
+// keeping, and "Starred only" hides the rest; the bin deletes a version, or an
+// exploration with its iterations, to playground/trash/, with Undo in the
+// toast (serve.py's /playground/explorations). The screen's button at the left
+// opens every screen, what's ready for main and what's starred.
+//
+// Files, on the left, is the project's folder as VS Code's explorer shows it
+// (files.js): what's behind the screen on show, what git sees changed, or the
+// whole folder, with git's marks, a glow on what has just changed, and a reader.
 //
 // Claude, on the right, is a chat that asks Claude Code for versions (serve.py
 // runs it). Each prompt goes to serve.py with what's on show (the screen, its
-// parameters and the file it's drawn from, the open folder, the
-// exploration and version) and any screenshots, and its steps stream back.
+// parameters and the file it's drawn from, the exploration and version) and any screenshots, and its steps stream back.
 // Screenshots can be dragged in, pasted, or captured from the app: hold ⌥ and
 // drag over any part of it (or press the capture button, then drag), and the
 // capture is added with the names of the app's widgets it covers (the host's
 // capture hook draws it). Claude builds out of sight: while it works, the app
 // on show is left as it is (no reloads, no switching), so it can still be used,
-// and the versions it's making are locked in Explorations. Every request gets a
+// and the versions it's making are locked in the strip. Every request gets a
 // card over the chat box with a progress bar: what Claude is doing, how long
 // it's been, any error it's fixing, and when it's done, View it (a toast says so
 // too). Each finished request leaves a line in the chat with its own View. Follow-ups continue the same Claude conversation:
@@ -37,7 +41,7 @@
 // shown when you open it. The chats are kept for this browser tab.
 //
 // The player does the switching through the hooks passed in; this file only
-// draws the buttons and panels, and knows nothing about any particular
+// draws the strip, the buttons and the panels, and knows nothing about any particular
 // exploration. P minimises or expands both panels. The host passes on what
 // the app's frame swallows (⌥, P, N, Esc, pastes) through forward().
 //
@@ -53,6 +57,10 @@
 // knows nothing about any one. hooks.key prefixes what's kept in the browser;
 // hooks.data is where the explorations are, from the project's top.
 
+import { FilesView } from './files.js';
+import { LibraryView } from './library.js';
+import { mountInspect } from './inspect.js';
+
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const MAX_SHOTS = 6;
 const ICON_CAPTURE = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7M13 3h2.5A1.5 1.5 0 0 1 17 4.5V7M17 13v2.5a1.5 1.5 0 0 1-1.5 1.5H13M7 17H4.5A1.5 1.5 0 0 1 3 15.5V13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>';
@@ -64,11 +72,8 @@ const store = {
   get: (k, fallback) => { try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch { return fallback; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-const BRANCH_ICON = '<svg class="pg-branch-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.8"/><circle cx="4.5" cy="12.5" r="1.8"/><circle cx="11.5" cy="5.5" r="1.8"/><path d="M4.5 5.3v5.4M11.5 7.3c0 3-7 2-7 3.4"/></svg>';
-const LOCATE_ICON = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="10" r="1.8" fill="currentColor"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 const STAR_ICON = '<svg class="pg-star-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="m10 2.6 2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.9l5-.7z" stroke-linejoin="round"/></svg>';
 const BIN_ICON = '<svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 5.5l.8 10.6a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4L15 5.5M8.3 8.5v6M11.7 8.5v6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const MORE_ICON = '<svg class="pg-more-icon" viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="m6 8 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FOLDER_ICON = '<svg class="pg-folder-icon" viewBox="0 0 20 16" aria-hidden="true"><path d="M1 3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z"/></svg>';
 
 // "Orders · Order {order} · Tab {tab}" → "Orders · Order": a screen's
@@ -101,18 +106,22 @@ export const mountPlayground = (hooks) => {
     if (side === 'left') center.before(a); else center.after(a);
     return a;
   };
-  const filesPanel = panel('explorations', 'pg-files', 'Explorations', 'left');
+  const filesPanel = panel('files', 'pg-files', 'Files', 'left');
   const chatPanel = panel('claude', 'pg-claude', 'Claude', 'right');
-  const files = filesPanel.querySelector('.pg-body');
+  // The panel at the left holds two panes, Files and Library, switched by the
+  // tabs in their heads.
+  const leftBody = filesPanel.querySelector('.pg-body');
+  leftBody.innerHTML = '<div class="pg-pane" data-pane="files"></div><div class="pg-pane" data-pane="library" hidden></div>';
+  const files = leftBody.querySelector('[data-pane="files"]');
+  const libraryPane = leftBody.querySelector('[data-pane="library"]');
+  const paneTabs = (on) => `<div class="pg-ptabs" role="tablist" aria-label="Files or Library">${[['files', 'Files'], ['library', 'Library']]
+    .map(([k, t]) => `<button type="button" role="tab" data-ptab="${k}" aria-selected="${k === on}" class="${k === on ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   const chatBody = chatPanel.querySelector('.pg-body');
 
   let route = null, busy = false, lastSig = '';
-  // starred: only starred explorations and versions are shown (the star by the
-  // crosshair), kept in this browser.
-  const nav = {
-    folder: store.get(`${hooks.key}.playground.folder`, null), starred: store.get(`${hooks.key}.playground.starred`, false),
-    cols: store.get(`${hooks.key}.playground.cols`, {}), // the exploration folders open on each screen
-  };
+  // starred: only starred explorations and versions are shown (the star at
+  // the right of the strip), kept in this browser.
+  const nav = { starred: store.get(`${hooks.key}.playground.starred`, false) };
   const byId = (id) => playgrounds.find((x) => x.id === id);
   // The default version is main: the app as it is. Others go by number and name: "4.2 Thinner meters".
   const versionName = (pg, id) => {
@@ -125,11 +134,15 @@ export const mountPlayground = (hooks) => {
   const trying = (pg) => (hooks.preview()?.playground === pg.id && hooks.preview().version !== picked(pg) ? hooks.preview().version : null);
 
   // The folders: the prototype's screens, and any folder an exploration names
-  // that isn't one of them.
+  // that isn't one of them. A component exploration ("component" in its
+  // versions.json) is in the folder of every screen the component is on (the
+  // Library's scan), after the screen's own.
+  let componentScreens = () => []; // set once the Library is up
+  const onScreen = (pg, id) => (pg.component ? componentScreens(pg.component).includes(id) : pg.screen === id);
   const folders = () => {
     const list = hooks.screens().map((s) => ({ id: s.id, title: folderTitle(s.title, s.id) }));
-    for (const pg of playgrounds) if (!list.some((f) => f.id === pg.screen)) list.push({ id: pg.screen, title: pg.screen });
-    return list.map((f) => ({ ...f, explorations: playgrounds.filter((pg) => pg.screen === f.id) }));
+    for (const pg of playgrounds) if (!pg.component && !list.some((f) => f.id === pg.screen)) list.push({ id: pg.screen, title: pg.screen });
+    return list.map((f) => ({ ...f, explorations: playgrounds.filter((pg) => onScreen(pg, f.id)).sort((a, b) => !!a.component - !!b.component) }));
   };
   const folderOf = (id) => folders().find((f) => f.id === id);
 
@@ -157,16 +170,8 @@ export const mountPlayground = (hooks) => {
     return `<button type="button" class="pg-icon pg-star${on ? ' on' : ''}" data-star data-pg="${esc(pg.id)}"${v ? ` data-ver="${esc(v.id)}"` : ''}
       aria-pressed="${on}" aria-label="${on ? 'Unstar' : 'Star'} ${what}" title="${on ? 'Unstar' : 'Star'}">${STAR_ICON}</button>`;
   };
-  // Each version, and each exploration's title, is a tile: its name, number and
-  // date, and its actions. What it says about itself (its note, what it came
-  // from) stays folded away until Show more opens it, for as long as the page
-  // is open.
-  const opened = new Set();
-  const moreBtn = (key, what) => {
-    const on = opened.has(key);
-    return `<button type="button" class="pg-icon pg-more${on ? ' on' : ''}" data-more="${esc(key)}" aria-expanded="${on}"
-      aria-label="${on ? 'Show less' : 'Show more'} about ${esc(what)}" title="${on ? 'Show less' : 'Show more'}">${MORE_ICON}</button>`;
-  };
+  // A version's star and bin are in its preview; an exploration's bin is by
+  // its name.
   const binBtn = (pg, v) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}" data-ver="${esc(v.id)}"
       aria-label="Delete ${esc(versionName(pg, v.id))}" title="Delete this version (⇧-click: no question)">${BIN_ICON}</button>`;
   const colBinBtn = (pg, key, name) => `<button type="button" class="pg-icon pg-bin" data-delete data-pg="${esc(pg.id)}" data-col="${esc(key)}"
@@ -186,7 +191,7 @@ export const mountPlayground = (hooks) => {
     el.classList.toggle('min', !open);
     el.querySelector('.pg-rail').setAttribute('aria-expanded', String(open));
     store.set(`${hooks.key}.playground.panels`, { files: isOpen(filesPanel), chat: isOpen(chatPanel) });
-    if (which === 'files') draw(true);
+    if (which === 'files' && open) { filesView.draw(); if (pane === 'library') libraryView.load(); }
   };
   filesPanel.querySelector('.pg-rail').addEventListener('click', () => setOpen('files', true));
   chatPanel.querySelector('.pg-rail').addEventListener('click', () => { setOpen('chat', true); chatBody.querySelector('textarea')?.focus(); });
@@ -199,52 +204,132 @@ export const mountPlayground = (hooks) => {
     }
   });
 
-  // Runs a hook, one at a time, with the panel showing it's busy.
+  // Runs a hook, one at a time, with the strip showing it's busy.
   const run = async (fn) => {
     if (busy) return;
     busy = true;
-    filesPanel.classList.add('busy');
+    strip.classList.add('busy');
     // Redraw only if something changed: a rebuild would cut short the glider's spring.
-    try { return await fn(); } finally { busy = false; filesPanel.classList.remove('busy'); draw(); }
-  };
-  const openFolder = (id) => {
-    nav.folder = id;
-    store.set(`${hooks.key}.playground.folder`, id);
-    draw(true);
-    files.querySelector('.pg-list')?.scrollTo(0, 0);
-  };
-  // The crosshair: the page on show's folder, scrolled to the version being
-  // tried there, or else the picked one.
-  const locate = () => {
-    if (!route) return;
-    const pg = playgrounds.find((x) => x.screen === route.screen), running = pg && (trying(pg) || picked(pg));
-    if (pg && numOf(running)) { nav.cols = { ...nav.cols, [pg.id]: [...new Set([...openFolders(pg), numOf(running)[0]])] }; store.set(`${hooks.key}.playground.cols`, nav.cols); }
-    openFolder(route.screen);
-    const rows = [...files.querySelectorAll('.pg-version.running')];
-    const row = rows.find((r) => r.querySelector('.pg-chip.try')) || rows.find((r) => !r.classList.contains('main'));
-    row?.scrollIntoView({ block: 'center', inline: 'center', behavior: still() ? 'auto' : 'smooth' });
+    try { return await fn(); } finally { busy = false; strip.classList.remove('busy'); draw(); }
   };
 
-  // ---- Explorations panel ----------------------------------------------------
-  // A minimised panel's strip keeps a mark: amber while a version is being
-  // tried, blue while Claude is working.
+  // A minimised panel's strip keeps a mark: blue while files are changing
+  // (Files), or while Claude is working (Claude).
+  let filesFresh = false;
   const drawRails = () => {
-    const p = hooks.preview(), pg = p && byId(p.playground);
     const fileDot = filesPanel.querySelector('.pg-rail-dot'), chatDot = chatPanel.querySelector('.pg-rail-dot');
-    fileDot.hidden = !pg;
-    fileDot.title = pg ? `Trying ${versionName(pg, p.version)}` : '';
+    fileDot.hidden = !filesFresh;
+    fileDot.title = filesFresh ? 'Files are changing' : '';
     const working = tabs.filter((t) => t.running).length;
     chatDot.hidden = !working;
     chatDot.title = working ? (working === 1 ? 'Claude is working' : `${working} chats are working`) : '';
   };
 
-  // ---- The board -------------------------------------------------------------
-  // A screen's explorations go across and their iterations down, like columns
-  // on a board: v4.0 heads exploration 4's column, and v4.1, v4.2 … are the
-  // steps on it, each copied from the one it builds on ("from" in
-  // versions.json). main, the app as it is (the default version), sits on the
-  // left. The picked version is in the prototype (blue); a version being tried
-  // is amber, and a card over the board says what a commit to main would bring in.
+  // ---- Files panel ---------------------------------------------------------------
+  // The project's folder (files.js). What's on show for it: the file the
+  // screen on show is drawn from, each version running on it (its folder), the
+  // versions Claude is building, and the screen's versions.json; and what the
+  // playground's own files are, by name.
+  const onShow = () => {
+    if (!route) return [];
+    const out = [], add = (path, label) => { if (!out.some((o) => o.path === path)) out.push({ path, label }); };
+    const s = hooks.screens().find((x) => x.id === route.screen);
+    if (s?.file) add(s.file, `${folderTitle(s.title, s.id)}, as main has it`);
+    for (const pg of playgrounds.filter((x) => onScreen(x, route.screen))) {
+      const v = trying(pg) || picked(pg);
+      if (v !== 'default') add(`${hooks.data}/${pg.id}/${v}/`, `${versionName(pg, v)}, ${trying(pg) ? 'being tried' : 'the pick'}`);
+      add(`${hooks.data}/${pg.id}/versions.json`, `${pg.title}'s versions`);
+    }
+    for (const f of hooks.where?.().files || []) add(f, 'Runs on this screen');
+    for (const k of building.keys()) { const [pid, v] = [k.slice(0, k.lastIndexOf('/')), k.slice(k.lastIndexOf('/') + 1)]; const pg = byId(pid); add(`${hooks.data}/${k}/`, `${pg ? versionName(pg, v) : v}: Claude is building it`); }
+    if (Object.keys(hooks.picks()).length) add(`${hooks.data}/picks.json`, 'The picks');
+    return out;
+  };
+  const describe = () => {
+    const d = new Map([
+      ['playground/playground.json', 'The playground'], ['playground/RULES.md', 'Its rules for Claude'],
+      [`${hooks.data}/screens.json`, 'The screens'], [`${hooks.data}/index.json`, 'The screens with explorations'], [`${hooks.data}/picks.json`, 'The picks'],
+    ]);
+    for (const s of hooks.screens()) if (s.file) d.set(s.file, folderTitle(s.title, s.id));
+    for (const pg of playgrounds) {
+      d.set(`${hooks.data}/${pg.id}`, pg.title);
+      d.set(`${hooks.data}/${pg.id}/versions.json`, 'Its versions');
+      for (const v of pg.versions) if (v.id !== 'default') d.set(`${hooks.data}/${pg.id}/${v.id}`, versionName(pg, v.id));
+    }
+    return d;
+  };
+  const filesView = new FilesView(files, {
+    key: hooks.key,
+    head: paneTabs('files'),
+    onShow,
+    describe,
+    showSummary: () => {
+      if (!route) return '';
+      const pg = playgrounds.find((x) => x.screen === route.screen), v = pg && (trying(pg) || picked(pg));
+      return `On show: ${hooks.where?.().title || route.screen}${v && v !== 'default' ? ` › ${versionName(pg, v)}` : ''}`;
+    },
+    toggle: () => setOpen('files', false),
+    onFresh: (on) => {
+      if (on === filesFresh) return;
+      filesFresh = on;
+      drawRails();
+      // Once the folder settles, the Library scans again.
+      if (!on && pane === 'library' && isOpen(filesPanel)) libraryView.load(true);
+    },
+  });
+
+  // ---- Library -------------------------------------------------------------------
+  // Every component the app is built from and everywhere it's used
+  // (library.js). Its page opens where Files' reader does, so one closes the
+  // other.
+  const libraryView = new LibraryView(libraryPane, {
+    head: paneTabs('library'),
+    toggle: () => setOpen('files', false),
+    toast,
+    locate: (q) => hooks.locate(q),
+    visit: (screen) => hooks.visit(screen),
+    picture: (items, size) => hooks.picture(items, size),
+    draw: (specimens, scale) => hooks.draw(specimens, scale),
+    route: () => hooks.route?.(),
+    screenTitle: (id) => { const s = hooks.screens().find((x) => x.id === id); return s ? folderTitle(s.title, s.id) : id; },
+    openFile: (path) => { libraryView.close(); filesView.selected = path; filesView.reader.show(path); filesView.draw(); },
+    onOpen: () => { if (!filesView.reader.el.hidden) filesView.reader.close(); },
+    // Once it has scanned: which screens each component exploration is on.
+    onLoad: () => {
+      for (const pg of playgrounds) if (pg.component) pg.on = componentScreens(pg.component);
+      draw(true);
+    },
+    explorations: (cid) => playgrounds.filter((pg) => pg.component === cid),
+    versionName: (pg, id) => versionName(pg, id),
+    picked: (pg) => picked(pg),
+    trying: (pg) => trying(pg),
+    tryVersion: (pg, v) => hooks.tryVersion(pg, v),
+  });
+  componentScreens = (cid) => { const x = libraryView.itemOf(cid); return x ? [...x.screens, ...(x.lookScreens || [])] : []; };
+  const showFile = filesView.reader.show.bind(filesView.reader);
+  filesView.reader.show = (path) => { if (!libraryView.reader.hidden) libraryView.close(); return showFile(path); };
+  let pane = store.get(`${hooks.key}.playground.pane`, 'files') === 'library' ? 'library' : 'files';
+  const setPane = (next) => {
+    pane = next;
+    store.set(`${hooks.key}.playground.pane`, pane);
+    files.hidden = pane !== 'files';
+    libraryPane.hidden = pane !== 'library';
+    filesPanel.querySelector('.pg-rail-label').textContent = pane === 'library' ? 'Library' : 'Files';
+    if (pane === 'library') libraryView.load(); else filesView.draw();
+    leftBody.querySelector(`[data-pane="${pane}"] [data-ptab="${pane}"]`)?.focus({ preventScroll: true });
+  };
+  leftBody.addEventListener('click', (e) => { const t = e.target.closest('[data-ptab]'); if (t && t.dataset.ptab !== pane) setPane(t.dataset.ptab); });
+  setPane(pane);
+
+  // ---- Explorations ----------------------------------------------------------------
+  // The strip under the bars, across the page: the screen on show's
+  // explorations, side by side, each with its iterations in a row of steps
+  // after React Bits' Stepper. main, the app as it is, comes first; then
+  // exploration 1's steps (1.0, 1.1 …), then exploration 2's, and so on, each
+  // copied from the one it builds on ("from" in versions.json). The picked
+  // version is in the prototype (blue); a version being tried is amber, and a
+  // tile springs from step to step to the one running. Hovering a step shows
+  // its picture and what it is; clicking it tries it.
   const versionById = (pg, id) => pg.versions.find((v) => v.id === id);
   const parentOf = (pg, v) => (v.from && v.from !== v.id && versionById(pg, v.from) ? v.from : 'default');
   // The versions a commit of this one brings in: it and those it was copied
@@ -257,7 +342,7 @@ export const mountPlayground = (hooks) => {
   // v4.2 → [4, 2]; main, and an id from before the numbering, → null.
   const numOf = (id) => { const m = /^v(\d+)\.(\d+)$/.exec(id || ''); return m ? [+m[1], +m[2]] : null; };
   const numLabel = (id) => (id === 'default' ? 'main' : numOf(id) ? numOf(id).join('.') : id);
-  // The columns: [exploration number, its versions top down], in order.
+  // The explorations: [exploration number, its versions in order], in order.
   const columnsOf = (pg) => {
     const cols = new Map();
     for (const v of shownVersions(pg)) {
@@ -281,164 +366,179 @@ export const mountPlayground = (hooks) => {
     const list = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0]);
     return [changed.length && `changes ${list(changed)}`, added.length && `adds ${list(added)}`].filter(Boolean).join(', ');
   };
-  const trail = (pg, id) => lineage(pg, id).map((v) => esc(numLabel(v.id))).join(' › ');
-  // The card over the board: what a commit to main would bring in.
-  const mergeRow = (pg) => {
-    const pick = picked(pg), t = trying(pg);
-    if (pick === 'default' && !t) return '';
-    const target = t || pick, v = versionById(pg, target);
-    const what = v ? changesOf(pg, v) : '';
-    const head = t
-      ? `<b>Trying ${esc(versionName(pg, t))}</b><small>${t === 'default' ? `Use this version to take ${esc(pg.title)} out of the prototype, so main's pages run again.`
-        : `Use this version, and a commit to main brings in ${trail(pg, t)}${pick !== 'default' ? `, in place of ${esc(versionName(pg, pick))}` : ''}.`}</small>`
-      : `<b>Ready for main</b><small>A commit to main brings in ${trail(pg, pick)}.</small>`;
-    return `<div class="pg-merge${t ? ' trying' : ''}" title="Committing to main moves these pages into the app for good: Commit, at the top right.">
-      ${head}${what && t !== 'default' ? `<small class="pg-changes">It ${esc(what)}.</small>` : ''}</div>`;
-  };
-  const versionRow = (pg, v) => {
+  const trail = (pg, id) => lineage(pg, id).map((v) => numLabel(v.id)).join(' › ');
+
+  const strip = document.createElement('nav');
+  strip.id = 'explorations';
+  strip.className = 'pg-strip';
+  strip.setAttribute('aria-label', 'Explorations');
+  workspace.before(strip);
+
+  // One step: its number, lit when it runs, with a star if it has one.
+  const stepEl = (pg, v) => {
     const isPicked = picked(pg) === v.id, isTrying = trying(pg) === v.id;
     const running = isTrying || (isPicked && !trying(pg));
-    const main = v.id === 'default', key = `${pg.id}/${v.id}`, open = opened.has(key), built = building.has(key);
-    const p = parentOf(pg, v), n = numOf(v.id);
-    // Where it came from, when it isn't simply the step above it.
-    const above = n && n[1] > 0 && numOf(p)?.[0] === n[0] && numOf(p)[1] === n[1] - 1;
-    const from = main ? '' : `from ${numLabel(p)}${above ? '' : p === 'default' ? ', the app as it is' : ''}`;
-    const about = [from, v.note].filter(Boolean);
-    return `<li class="pg-version${running ? ' running' : ''}${main ? ' main' : ''}${open ? ' open' : ''}${n && n[1] === 0 ? ' head' : ''}${built ? ' building' : ''}" data-v="${esc(v.id)}">
-      <div class="pg-tile">
-        <button type="button" class="pg-try" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" ${built ? 'disabled ' : ''}title="${esc(versionName(pg, v.id))}${built ? ': Claude is still building it' : ''}">
-          ${main ? '' : `<span class="pg-vtop"><span class="pg-vnum">${esc(numLabel(v.id))}</span><span class="pg-vwhen">${esc(v.date)}</span></span>`}
-          <b class="pg-vname">${main ? 'As it is' : esc(v.name)}</b>
-          ${built ? '<span class="pg-vmeta"><span class="pg-chip building">Claude is building it…</span></span>'
-            : isPicked || isTrying ? `<span class="pg-vmeta">${isPicked ? '<span class="pg-chip pick">In the prototype</span>' : ''}${isTrying ? '<span class="pg-chip try">Trying</span>' : ''}</span>` : ''}
-        </button>
-        ${built ? '' : `<span class="pg-tools${v.starred ? ' starred' : ''}">${about.length ? moreBtn(key, versionName(pg, v.id)) : ''}${main ? '' : starBtn(pg, v) + binBtn(pg, v)}</span>`}
-      </div>
-      ${open && about.length ? `<p class="pg-note">${from ? `<span class="pg-from">${esc(from)}</span>` : ''}${from && v.note ? ' · ' : ''}${esc(v.note)}</p>` : ''}
+    const main = v.id === 'default', built = building.has(`${pg.id}/${v.id}`), n = numOf(v.id);
+    const cls = ['pg-step', running && 'running', isPicked && 'pick', isTrying && 'try', main && 'main', n && n[1] === 0 && 'head', built && 'building', v.starred && 'starred'].filter(Boolean).join(' ');
+    const what = main ? 'main, the app as it is' : versionName(pg, v.id);
+    return `<li class="${cls}" data-v="${esc(v.id)}">
+      <button type="button" class="pg-step-btn" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}" aria-pressed="${running}" ${built ? 'aria-disabled="true" ' : ''}
+        aria-label="${esc(what)}${isPicked ? ', in the prototype' : ''}${isTrying ? ', being tried' : ''}${built ? ', Claude is still building it' : ''}"
+        aria-keyshortcuts="S Delete">${esc(numLabel(v.id))}${v.starred ? `<i class="pg-step-star" aria-hidden="true">${STAR_ICON}</i>` : ''}</button>
     </li>`;
   };
-  // One column, 320 px. Each exploration is a folder: its tile says its number,
-  // name and how many iterations it has, and pressing it opens or shuts it,
-  // with its versions inside (N.0, then each iteration, down). Which folders
-  // are open is kept for each screen; until it's set, the one holding the
-  // version on show is.
-  const openFolders = (pg) => {
-    const keys = new Set(columnsOf(pg).map(([k]) => k)), set = nav.cols[pg.id];
-    if (Array.isArray(set)) return new Set(set.filter((k) => keys.has(k)));
-    const on = numOf(trying(pg) || picked(pg));
-    return new Set(on ? [on[0]] : []);
-  };
-  let opening = null; // the folder that's opening, so only it springs in
-  const toggleFolder = (pg, key) => {
-    const open = openFolders(pg);
-    if (!open.delete(key)) { open.add(key); opening = `${pg.id}#${key}`; }
-    nav.cols = { ...nav.cols, [pg.id]: [...open] };
-    store.set(`${hooks.key}.playground.cols`, nav.cols);
-    draw(true);
-  };
-  const explorationFolder = (pg, key, list, open) => {
-    const head = list[0], steps = list.length - 1;
-    const ids = new Set(list.map((v) => v.id)), pick = picked(pg), t = trying(pg);
-    const label = typeof key === 'number' ? `Exploration ${key}` : esc(key);
-    return `<li class="pg-xfolder${open ? ' open' : ''}">
-      <div class="pg-xhead">
-        <button type="button" class="pg-xbtn" data-pg="${esc(pg.id)}" data-open-col="${esc(key)}" aria-expanded="${open}" title="${open ? 'Shut' : 'Open'} ${label}">
-          <span class="pg-xchev" aria-hidden="true">›</span>${FOLDER_ICON}
-          <span class="pg-fname"><b>${esc(head.name)}</b><small>${label} · ${steps ? `${steps} iteration${steps === 1 ? '' : 's'}` : 'no iterations yet'}</small></span>
-          ${ids.has(t) ? '<span class="pg-chip try">Trying</span>' : ids.has(pick) ? '<span class="pg-chip pick">Picked</span>' : ''}
-        </button>
-        <span class="pg-tools">${typeof key === 'number' ? colBinBtn(pg, key, head.name) : ''}</span>
-      </div>
-      ${open ? `<ol class="pg-versions pg-iters${opening === `${pg.id}#${key}` ? ' enter' : ''}" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#${key}`)}"><li class="pg-glider" aria-hidden="true"></li>${list.map((v) => versionRow(pg, v)).join('')}</ol>` : ''}
+  // One exploration: its name over its steps, N.0 first, then each iteration.
+  const groupEl = (pg, key, list) => {
+    const head = list[0], ids = new Set(list.map((v) => v.id));
+    const label = typeof key === 'number' ? `${key}` : esc(key);
+    const lit = ids.has(trying(pg)) ? ' try' : ids.has(picked(pg)) ? ' pick' : '';
+    return `<li class="pg-xgroup${lit}" data-pg="${esc(pg.id)}" data-col="${esc(key)}">
+      <div class="pg-xcap">${pg.component ? `<span class="pg-xcomp" title="A component exploration: it changes ${esc(pg.title)} wherever the app draws it">${esc(pg.title)}</span>` : ''}<span class="pg-xnum">${label}</span><span class="pg-xname" title="Exploration ${label}: ${esc(head.name)}">${esc(head.name)}</span>
+        ${typeof key === 'number' ? colBinBtn(pg, key, head.name) : ''}</div>
+      <ol class="pg-steps">${list.map((v) => stepEl(pg, v)).join('')}</ol>
     </li>`;
-  };
-  const exploration = (pg) => {
-    const cols = columnsOf(pg), main = versionById(pg, 'default') || { id: 'default', name: 'As it is' };
-    const open = openFolders(pg), hidden = pg.versions.length - shownVersions(pg).length;
-    return `<section class="pg-group pg-tree" data-pg="${esc(pg.id)}"><svg class="pg-graph" aria-hidden="true"></svg>
-      ${mergeRow(pg)}
-      <ol class="pg-versions pg-mainrow" data-pg="${esc(pg.id)}" data-glide="${esc(`${pg.id}#main`)}"><li class="pg-glider" aria-hidden="true"></li>${versionRow(pg, main)}</ol>
-      <h4 class="pg-xtitle">Explorations <small>${cols.length}</small></h4>
-      <ul class="pg-xfolders">${cols.map(([k, l]) => explorationFolder(pg, k, l, open.has(k))).join('')}</ul>
-      ${hidden ? `<p class="pg-hidden">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}
-    </section>`;
   };
 
-  // ---- The graph ---------------------------------------------------------------
-  // Down the left of the list, like a git graph: main's line, each exploration
-  // a branch off it, and an open folder's versions joined down its own line.
-  // The picked version's way back to main is blue, and the dashed node at the
-  // top of main is what a commit would bring in; a trial's way is amber.
-  // Drawn after layout, from where the rows landed.
-  const MAIN_X = 9, BRANCH_X = 23, R = 7;
-  const drawGraph = (tree) => {
-    const pg = byId(tree.dataset.pg), svg = tree.querySelector('.pg-graph');
-    if (!pg || !svg) return;
-    const top = tree.getBoundingClientRect().top;
-    const mid = (el) => { const r = el.getBoundingClientRect(); return r.top - top + Math.min(r.height / 2, 19); };
-    const pick = picked(pg), t = trying(pg);
-    const blue = new Set(lineage(pg, pick).map((v) => v.id)), amber = new Set(lineage(pg, t).map((v) => v.id));
-    const tone = (ids) => (ids.some((i) => amber.has(i)) && t ? 'try' : ids.some((i) => blue.has(i)) ? 'pick' : '');
-    const mainRow = tree.querySelector('.pg-mainrow .pg-version'), merge = tree.querySelector('.pg-merge');
-    const paths = [], nodes = [];
-    const mainY = mainRow ? mid(mainRow) : 0, inY = merge ? mid(merge) : null;
-    let lastY = mainY, lit = null; // lit: [y, tone] where the pick's (or trial's) branch leaves main
-    for (const f of tree.querySelectorAll('.pg-xfolder')) {
-      const key = f.querySelector('[data-open-col]')?.dataset.openCol;
-      const ids = columnOf(pg, /^\d+$/.test(key) ? +key : key).map((v) => v.id);
-      const hy = mid(f.querySelector('.pg-xhead')), cls = tone(ids);
-      // Off main, round the corner, into the folder's node.
-      paths.push([cls, `M${MAIN_X} ${hy - R}Q${MAIN_X} ${hy} ${MAIN_X + R} ${hy}H${BRANCH_X}`]);
-      nodes.push(`<circle class="${cls}" cx="${BRANCH_X}" cy="${hy}" r="4"/>`);
-      if (cls && (!lit || cls === 'try')) lit = [hy, cls];
-      lastY = hy;
-      // Its versions, down the folder's line: each step is lit if it's on the way.
-      let prev = hy;
-      for (const row of f.querySelectorAll('.pg-iters .pg-version')) {
-        const y = mid(row), id = row.dataset.v;
-        const c = amber.has(id) && t ? 'try' : blue.has(id) ? 'pick' : '';
-        paths.push([c, `M${BRANCH_X} ${prev}V${y}`]);
-        nodes.push(`<circle class="${id === t ? 'try head' : id === pick ? 'pick head' : c}" cx="${BRANCH_X}" cy="${y}" r="${id === t || id === pick ? 5 : 3.5}"/>`);
-        prev = y;
-      }
+  // At the right of the strip: while a version is tried, Back and Use this
+  // version; otherwise what a commit to main would bring in from this screen.
+  const stripEnd = (pgs) => {
+    const p = hooks.preview(), tpg = p && byId(p.playground) && trying(byId(p.playground)) ? byId(p.playground) : null;
+    const filter = `<button type="button" class="pg-locate pg-filter${nav.starred ? ' on' : ''}" data-starred-only aria-pressed="${nav.starred}" aria-label="Starred only" title="${nav.starred ? 'Show everything' : 'Show only what has a star'}">${STAR_ICON}</button>`;
+    const local = hooks.local() ? `<button type="button" class="pg-local-btn" data-team title="Your picks are saved in this browser only, because the server can't write ${esc(hooks.data)}/picks.json. Run python3 playground/serve.py to save them there. Press to use the saved picks instead.">Picks in this browser only</button>` : '';
+    if (tpg) {
+      const t = p.version, pick = picked(tpg), v = versionById(tpg, t), what = v ? changesOf(tpg, v) : '';
+      const why = t === 'default' ? `Use this version to take ${tpg.title} out of the prototype, so main's pages run again.`
+        : `Use this version, and a commit to main brings in ${trail(tpg, t)}${pick !== 'default' ? `, in place of ${versionName(tpg, pick)}` : ''}.${what ? ` It ${what}.` : ''}`;
+      return `<div class="pg-strip-end">${local}${filter}<div class="pg-actions${hadTrial ? '' : ' enter'}" role="group" aria-label="Trying ${esc(versionName(tpg, t))}">
+          <span class="pg-trying" title="${esc(why)}">Trying <b>${esc(numLabel(t))}</b></span>
+          <button type="button" data-back title="Back to ${esc(versionName(tpg, pick))}: drop the trial">Back to ${esc(numLabel(pick))}</button>
+          <button type="button" class="pg-use" data-use title="${esc(why)}">Use this version</button></div></div>`;
     }
-    // main's line, from the top down to the last branch.
-    paths.unshift(['main', `M${MAIN_X} ${inY ?? mainY}V${Math.max(lastY - R, mainY)}`]);
-    // The way into main: from the branch the pick (or trial) is on, up main to the incoming node.
-    if (lit && inY != null) paths.push([`${lit[1]} merge`, `M${MAIN_X} ${lit[0] - R}V${inY}`]);
-    if (inY != null) nodes.push(`<circle class="incoming${t ? ' try' : ''}" cx="${MAIN_X}" cy="${inY}" r="6"/>`);
-    nodes.push(`<circle class="main${pick === 'default' && !t ? ' pick' : ''}" cx="${MAIN_X}" cy="${mainY}" r="5"/>`);
-    const order = (c) => (c.startsWith('pick') ? 3 : c.startsWith('try') ? 2 : c === 'main' ? 1 : 0);
-    paths.sort((a, b) => order(a[0]) - order(b[0]));
-    svg.setAttribute('width', 32);
-    svg.setAttribute('height', tree.offsetHeight);
-    svg.innerHTML = paths.map(([c, d]) => `<path class="${c}" d="${d}"/>`).join('') + nodes.join('');
+    const ready = pgs.filter((pg) => picked(pg) !== 'default');
+    const chip = ready.length === 1 ? `<span class="pg-chip pick" title="${esc(`A commit to main brings in ${trail(ready[0], picked(ready[0]))}: Commit, at the top right.`)}">${esc(numLabel(picked(ready[0])))} is in the prototype</span>`
+      : ready.length ? `<span class="pg-chip pick">${ready.length} picks on this screen</span>` : '';
+    return `<div class="pg-strip-end">${local}${chip}${filter}</div>`;
   };
-  const graphSizes = new ResizeObserver((entries) => { for (const e of entries) drawGraph(e.target); });
-  const drawGraphs = () => {
-    graphSizes.disconnect();
-    opening = null;
-    for (const tree of files.querySelectorAll('.pg-tree')) { drawGraph(tree); graphSizes.observe(tree); }
+
+  // ---- The screens -------------------------------------------------------------
+  // The button at the left of the strip names the screen on show; it opens a
+  // card with every screen, what's ready for main and what's starred.
+  // Pressing a screen goes to it; pressing a starred version tries it.
+  const readyRows = () => {
+    const ready = playgrounds.filter((pg) => picked(pg) !== 'default');
+    return ready.length ? ready.map(readyRow).join('') : '';
   };
-  document.fonts?.ready.then(() => drawGraphs());
+  const readyRow = (pg) => {
+    const v = versionById(pg, picked(pg)), what = v ? changesOf(pg, v) : '';
+    return `<li><button type="button" class="pg-folder pg-ready" data-folder="${esc(pg.screen)}">
+      <span class="pg-dotmark pick" aria-hidden="true"></span>
+      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(versionName(pg, picked(pg)))}</b><small title="${esc(what)}">${esc(what || folderTitle(folderOf(pg.screen)?.title, pg.screen))}</small></span>
+      <span class="pg-chevron" aria-hidden="true">›</span></button></li>`;
+  };
+  const starredRows = () => playgrounds.flatMap((pg) => [
+    ...pg.versions.filter((v) => v.starred).map((v) => `<li><button type="button" class="pg-folder" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}">${STAR_ICON}
+      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(versionName(pg, v.id))}</b><small>${esc(v.date)} · try it</small></span>
+      ${trying(pg) === v.id ? '<span class="pg-chip try">Trying</span>' : picked(pg) === v.id ? '<span class="pg-chip pick">Picked</span>' : ''}</button></li>`),
+  ]).join('');
+  const folderMeta = (f) => {
+    const all = f.explorations.flatMap((pg) => pg.versions.filter((v) => v.id !== 'default'));
+    const cols = new Set(all.map((v) => numOf(v.id)?.[0] ?? v.id)).size, steps = all.length - cols;
+    const stars = all.filter((v) => v.starred).length;
+    return all.length ? `${cols} exploration${cols === 1 ? '' : 's'} · ${steps} iteration${steps === 1 ? '' : 's'}${stars ? ` · ${stars} starred` : ''}` : 'No explorations yet';
+  };
+  const folderRow = (f) => {
+    const here = route?.screen === f.id, tryingHere = f.explorations.some((pg) => trying(pg));
+    return `<li><button type="button" class="pg-folder${f.explorations.length ? '' : ' empty'}${here ? ' here' : ''}" data-folder="${esc(f.id)}"${here ? ' aria-current="page"' : ''}>
+      ${FOLDER_ICON}<span class="pg-fname"><b>${esc(f.title)}</b><small>${folderMeta(f)}</small></span>
+      ${here ? '<span class="pg-chip here">On screen</span>' : tryingHere ? '<span class="pg-chip try">Trying</span>' : ''}<span class="pg-chevron" aria-hidden="true">›</span>
+    </button></li>`;
+  };
+  const screensCard = document.createElement('div');
+  screensCard.className = 'pg-popover pg-screens';
+  screensCard.setAttribute('role', 'dialog');
+  screensCard.setAttribute('aria-label', 'Screens');
+  screensCard.hidden = true;
+  document.body.append(screensCard);
+  const drawScreens = () => {
+    const all = folders(), used = all.filter((f) => f.explorations.length && shownExplorations(f).length), empty = all.filter((f) => !f.explorations.length);
+    const ready = readyRows(), starred = starredRows();
+    screensCard.innerHTML = `
+      ${ready ? `<h4>Ready for main</h4><ul class="pg-folders pg-readies">${ready}</ul><p class="pg-sub">Commit, at the top right, brings ${playgrounds.filter((pg) => picked(pg) !== 'default').length === 1 ? 'it' : 'them'} in.</p>` : ''}
+      ${starred ? `<h4>Starred</h4><ul class="pg-folders pg-starred">${starred}</ul>` : ''}
+      ${used.length ? `<h4>Explorations</h4><ul class="pg-folders">${used.map(folderRow).join('')}</ul>` : ''}
+      ${empty.length && !nav.starred ? `<h4>No explorations yet</h4><ul class="pg-folders">${empty.map(folderRow).join('')}</ul>` : ''}`;
+  };
+  const placeScreens = () => {
+    const b = strip.querySelector('[data-screens]')?.getBoundingClientRect();
+    if (!b) return;
+    screensCard.style.left = `${Math.max(8, b.left)}px`;
+    screensCard.style.top = `${b.bottom + 8}px`;
+    screensCard.style.maxHeight = `${innerHeight - b.bottom - 24}px`;
+  };
+  const toggleScreens = (open = screensCard.hidden) => {
+    screensCard.hidden = !open;
+    strip.querySelector('[data-screens]')?.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    hidePeek();
+    drawScreens();
+    placeScreens();
+    if (!still()) { screensCard.classList.remove('enter'); void screensCard.offsetWidth; screensCard.classList.add('enter'); }
+    screensCard.querySelector('button')?.focus({ preventScroll: true });
+  };
+  screensCard.addEventListener('click', (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    toggleScreens(false);
+    if (t.dataset.folder) return hooks.show(t.dataset.folder);
+    if (t.dataset.v) return run(() => hooks.tryVersion(byId(t.dataset.pg), t.dataset.v));
+  });
+  addEventListener('pointerdown', (e) => { if (!screensCard.hidden && !screensCard.contains(e.target) && !e.target.closest?.('[data-screens]')) toggleScreens(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !screensCard.hidden) { toggleScreens(false); strip.querySelector('[data-screens]')?.focus(); } });
 
   // ---- The preview ------------------------------------------------------------
-  // Hovering a version (or tabbing to it) shows a card beside the panel: its
-  // picture, taken the last time it was on screen (host.js), and what it is,
-  // where it came from and what it changes.
+  // Hovering a step (or tabbing to it) shows a card under it: its picture,
+  // taken the last time it was on screen (host.js), what it is, where it came
+  // from and its note, with its star and its bin. The card stays while the
+  // pointer is on it. With a step focused, S stars it and Delete deletes it.
   const peek = document.createElement('div');
   peek.className = 'pg-peek';
   peek.setAttribute('role', 'tooltip');
   peek.hidden = true;
   document.body.append(peek);
-  let peekAt = null, peekWait = 0;
+  let peekAt = null, peekWait = 0, peekLeave = 0;
+  const stepOf = (row) => { const pg = byId(row?.querySelector('[data-pg]')?.dataset.pg); return [pg, pg && (versionById(pg, row.dataset.v) || (row.dataset.v === 'default' ? { id: 'default', name: 'As it is', note: '' } : null))]; };
+  // Each version's library check (library.py --check, through serve.py): what
+  // it brings in that's out of step with the library. Asked for when its card
+  // opens, and kept a little while.
+  const checks = new Map(); // '<pg>/<version>' → {at, result}
+  const checkHTML = (key) => {
+    const c = checks.get(key)?.result;
+    if (!c) return '<span class="pg-check wait">Checking against the library…</span>';
+    if (c.error) return '';
+    const props = (c.proposed || []).map((p) => `Proposes ${esc(p.name)}`);
+    if (!c.findings.length) return `<span class="pg-check ok">In step with the library</span>${props.length ? `<small>${props.join(' · ')}</small>` : ''}`;
+    const short = (f) => (f.kind === 'new' ? `${f.name}: new, no entry` : f.kind === 'look-alike' ? `${f.name}: a look-alike`
+      : f.kind === 'copy' ? `a copy of ${f.name}` : 'colours not from a token');
+    return `<span class="pg-check out">${c.findings.length} out of step with the library</span><small title="${esc(c.findings.map((f) => f.text).join('\n'))}">${esc(c.findings.slice(0, 4).map(short).join(' · '))}${c.findings.length > 4 ? ' …' : ''}</small>${props.length ? `<small>${props.join(' · ')}</small>` : ''}`;
+  };
+  const askCheck = async (pg, id, row) => {
+    const key = `${pg.id}/${id}`, had = checks.get(key);
+    if (had && Date.now() - had.at < 20000) return;
+    try {
+      const r = await fetch(`/playground/library/check?pg=${encodeURIComponent(pg.id)}&v=${encodeURIComponent(id)}`, { cache: 'no-store' });
+      checks.set(key, { at: Date.now(), result: r.ok ? await r.json() : { error: true } });
+    } catch { checks.set(key, { at: Date.now(), result: { error: true } }); }
+    const el = peek.querySelector(`[data-check="${CSS.escape(key)}"]`);
+    if (el && peekAt === row) { el.innerHTML = checkHTML(key); placePeek(row); }
+  };
   const drawPeek = (row) => {
-    const pg = byId(row.querySelector('[data-pg]')?.dataset.pg), v = pg && versionById(pg, row.dataset.v);
-    if (!pg || (!v && row.dataset.v !== 'default')) return hidePeek();
-    const id = row.dataset.v, key = `${pg.id}/${id}`, when = hooks.thumbs?.()[key];
-    const ver = v || { id: 'default', name: 'As it is', note: '' };
-    const p = parentOf(pg, ver);
-    const from = id === 'default' ? 'The app as it is' : `From ${p === 'default' ? 'main' : esc(versionName(pg, p))}`;
+    const [pg, ver] = stepOf(row);
+    if (!pg || !ver) return hidePeek();
+    const id = ver.id, key = `${pg.id}/${id}`, when = hooks.thumbs?.()[key];
+    const p = parentOf(pg, ver), main = id === 'default', built = building.has(key);
+    const from = main ? 'The app as it is' : `From ${p === 'default' ? 'main' : versionName(pg, p)}`;
+    const state = built ? '<span class="pg-chip building">Claude is building it…</span>'
+      : trying(pg) === id ? '<span class="pg-chip try">Trying</span>' : picked(pg) === id ? '<span class="pg-chip pick">In the prototype</span>' : '';
     peek.innerHTML = `
       <div class="pg-peek-shot">${when ? `<img src="/playground/thumbs/${encodeURIComponent(pg.id)}/${encodeURIComponent(id)}.png?${when}" alt="">`
         : `<p>No picture yet. It's taken the first time this version is on screen.</p>`}</div>
@@ -446,188 +546,146 @@ export const mountPlayground = (hooks) => {
         <b>${esc(versionName(pg, id))}</b>
         <small>${[ver.date, from].filter(Boolean).map(esc).join(' · ')}</small>
         ${ver.note ? `<p>${esc(ver.note)}</p>` : ''}
+        ${!main && !built ? `<div class="pg-peek-check" data-check="${esc(key)}">${checkHTML(key)}</div>` : ''}
+        ${state || (!main && !built) ? `<div class="pg-peek-foot">${state}${main || built ? '' : `<span class="pg-tools${ver.starred ? ' starred' : ''}">${starBtn(pg, ver)}${binBtn(pg, ver)}</span>`}</div>` : ''}
       </div>`;
     peek.hidden = false;
     peekAt = row;
     placePeek(row);
     peek.querySelector('img')?.addEventListener('load', () => { if (peekAt === row) placePeek(row); }, { once: true });
+    if (!main && !built) askCheck(pg, id, row);
   };
-  // Beside the panel, level with the version, and inside the window.
+  // Under the step, centred on it, and inside the window.
   const placePeek = (row) => {
-    const panel = filesPanel.getBoundingClientRect(), r = row.getBoundingClientRect(), h = peek.offsetHeight;
-    peek.style.left = `${panel.right + 10}px`;
-    peek.style.top = `${Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2))}px`;
+    const r = row.getBoundingClientRect(), w = peek.offsetWidth;
+    peek.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+    peek.style.top = `${strip.getBoundingClientRect().bottom + 6}px`;
   };
-  const hidePeek = () => { clearTimeout(peekWait); peek.hidden = true; peekAt = null; };
+  const hidePeek = () => { clearTimeout(peekWait); clearTimeout(peekLeave); peek.hidden = true; peekAt = null; };
   const showPeek = (row) => {
     clearTimeout(peekWait);
-    if (narrow()) return; // at phone width the panel covers the app: no room beside it
+    clearTimeout(peekLeave);
+    if (row === peekAt) return;
     peekWait = setTimeout(() => drawPeek(row), peekAt ? 0 : 160);
   };
-  files.addEventListener('pointerover', (e) => {
-    const row = e.target.closest('.pg-version');
-    if (row && row !== peekAt && e.pointerType !== 'touch') showPeek(row);
-    else if (!row) hidePeek();
+  const leavePeek = () => { clearTimeout(peekWait); clearTimeout(peekLeave); peekLeave = setTimeout(hidePeek, 220); };
+  strip.addEventListener('pointerover', (e) => {
+    const row = e.target.closest('.pg-step');
+    if (row && e.pointerType !== 'touch') showPeek(row);
+    else if (!row) leavePeek();
   });
-  files.addEventListener('pointerleave', hidePeek);
-  files.addEventListener('focusin', (e) => { const row = e.target.closest('.pg-version'); if (row) showPeek(row); else hidePeek(); });
-  files.addEventListener('focusout', (e) => { if (!files.contains(e.relatedTarget)) hidePeek(); });
-  files.addEventListener('scroll', hidePeek, true);
-
-  // Everything picked, across the explorations: what a commit to main would
-  // bring in all together.
-  const readyRows = () => {
-    const ready = playgrounds.filter((pg) => picked(pg) !== 'default');
-    return ready.length ? `<li class="pg-ready-head"><svg class="pg-ready-graph" viewBox="0 0 30 40" aria-hidden="true"><path class="main" d="M13 20V40"/><circle class="incoming" cx="13" cy="20" r="6"/></svg>
-      <span><b>Into main</b><small>Commit, at the top right, brings in ${ready.length === 1 ? 'this pick' : `these ${ready.length} picks`}.</small></span></li>${ready.map(readyRow).join('')}` : '';
-  };
-  const readyRow = (pg) => {
-    const v = versionById(pg, picked(pg)), what = v ? changesOf(pg, v) : '';
-    return `<li><button type="button" class="pg-ready" data-folder="${esc(pg.screen)}">
-      <svg class="pg-ready-graph" viewBox="0 0 30 46" aria-hidden="true"><path class="main" d="M13 0V46"/><path class="pick" d="M23 30V16Q23 8 15 8H13"/><circle class="pick head" cx="23" cy="30" r="4"/></svg>
-      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(versionName(pg, picked(pg)))}</b><small title="${esc(what)}">${esc(what || folderTitle(folderOf(pg.screen)?.title, pg.screen))}</small></span>
-      <span class="pg-chevron" aria-hidden="true">›</span></button></li>`;
-  };
-  // Starred, at the top: each starred exploration opens its folder, and each
-  // starred version is tried at once.
-  const starredRows = () => playgrounds.flatMap((pg) => [
-    ...pg.versions.filter((v) => v.starred).map((v) => `<li><button type="button" class="pg-folder" data-pg="${esc(pg.id)}" data-v="${esc(v.id)}">${STAR_ICON}
-      <span class="pg-fname"><b>${esc(pg.title)} › ${esc(versionName(pg, v.id))}</b><small>${esc(v.date)} · try it</small></span>
-      ${trying(pg) === v.id ? '<span class="pg-chip try">Trying</span>' : picked(pg) === v.id ? '<span class="pg-chip pick">Picked</span>' : ''}</button></li>`),
-  ]).join('');
-  const folderRow = (f) => {
-    const all = f.explorations.flatMap((pg) => pg.versions.filter((v) => v.id !== 'default'));
-    const cols = new Set(all.map((v) => numOf(v.id)?.[0] ?? v.id)).size, steps = all.length - cols;
-    const stars = all.filter((v) => v.starred).length;
-    const meta = all.length
-      ? `${cols} exploration${cols === 1 ? '' : 's'} · ${steps} iteration${steps === 1 ? '' : 's'}${stars ? ` · ${stars} starred` : ''}`
-      : 'Empty';
-    const tryingHere = f.explorations.some((pg) => trying(pg));
-    return `<li><button type="button" class="pg-folder${f.explorations.length ? '' : ' empty'}" data-folder="${esc(f.id)}">
-      ${FOLDER_ICON}<span class="pg-fname"><b>${esc(f.title)}</b><small>${meta}</small></span>
-      ${tryingHere ? '<span class="pg-chip try">Trying</span>' : ''}<span class="pg-chevron" aria-hidden="true">›</span>
-    </button></li>`;
-  };
+  strip.addEventListener('pointerleave', leavePeek);
+  peek.addEventListener('pointerenter', () => clearTimeout(peekLeave));
+  peek.addEventListener('pointerleave', leavePeek);
+  peek.addEventListener('click', (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    if ('star' in t.dataset) return starIt(byId(t.dataset.pg), t.dataset.ver);
+    if ('delete' in t.dataset) { hidePeek(); return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey); }
+  });
+  strip.addEventListener('focusin', (e) => { const row = e.target.closest('.pg-step'); if (row) showPeek(row); else hidePeek(); });
+  strip.addEventListener('focusout', (e) => { if (!strip.contains(e.relatedTarget)) hidePeek(); });
+  strip.addEventListener('keydown', (e) => {
+    const row = e.target.closest('.pg-step'), [pg, v] = stepOf(row);
+    if (!pg || !v || v.id === 'default' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 's' || e.key === 'S') { e.preventDefault(); starIt(pg, v.id); }
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); hidePeek(); deleteIt(pg, v.id, e.shiftKey); }
+  });
 
   // ---- Motion -----------------------------------------------------------------
   // After React Bits' Stepper: the running version rides on a tile that springs
-  // from row to row; moving between folders slides the new list in from the
-  // side you're heading; the trial card springs in when a trial starts. With
-  // reduced motion, things just appear.
+  // from step to step; moving to another screen slides the new steps in; the
+  // trial's buttons spring in when a trial starts. With reduced motion, things
+  // just appear.
   const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const SPRING = getComputedStyle(document.documentElement).getPropertyValue('--spring').trim() || 'ease-out';
-  const gliderAt = {}; // exploration id → { y, h } where its glider last sat
-  const placeGliders = () => {
-    for (const list of files.querySelectorAll('.pg-versions')) {
-      const glider = list.querySelector('.pg-glider');
-      const row = list.querySelector('.pg-version.running');
-      const key = list.dataset.glide || list.dataset.pg;
-      if (!row) { glider.style.opacity = '0'; delete gliderAt[key]; continue; }
-      const to = { y: row.offsetTop, h: row.offsetHeight };
-      const from = gliderAt[key];
-      const put = ({ y, h }) => { glider.style.transform = `translate3d(0, ${y}px, 0)`; glider.style.height = `${h}px`; };
-      glider.classList.toggle('trying', !!row.querySelector('.pg-chip.try'));
-      glider.style.transition = 'opacity 200ms ease';
-      if (from && !still() && (from.y !== to.y || from.h !== to.h)) {
-        put(from);
-        glider.style.opacity = '1';
-        glider.getBoundingClientRect(); // start from where it was
-        glider.style.transition = `transform 560ms ${SPRING}, height 560ms ${SPRING}, opacity 200ms ease`;
-      }
-      put(to);
+  let gliderAt = null; // { screen, x, w } where the glider last sat
+  const placeGlider = () => {
+    const list = strip.querySelector('.pg-xgroups'), glider = list?.querySelector('.pg-glider');
+    if (!glider) return;
+    const row = list.querySelector('.pg-step.try') || list.querySelector('.pg-step.running');
+    if (!row) { glider.style.opacity = '0'; gliderAt = null; return; }
+    // Where the step is laid out in the list (not where it is mid-slide).
+    const btn = row.querySelector('.pg-step-btn');
+    let x = 0, y = 0;
+    for (let el = btn; el && el !== list; el = el.offsetParent) { x += el.offsetLeft; y += el.offsetTop; }
+    const to = { screen: route?.screen, x, y, w: btn.offsetWidth, h: btn.offsetHeight };
+    const put = ({ x, y, w, h }) => { glider.style.transform = `translate3d(${x}px, ${y}px, 0)`; glider.style.width = `${w}px`; glider.style.height = `${h}px`; };
+    glider.classList.toggle('trying', row.classList.contains('try'));
+    glider.style.transition = 'opacity 200ms ease';
+    const from = gliderAt?.screen === to.screen ? gliderAt : null;
+    if (from && !still() && (from.x !== to.x || from.w !== to.w)) {
+      put(from);
       glider.style.opacity = '1';
-      gliderAt[key] = to;
+      glider.getBoundingClientRect(); // start from where it was
+      glider.style.transition = `transform 560ms ${SPRING}, width 560ms ${SPRING}, opacity 200ms ease`;
     }
+    put(to);
+    glider.style.opacity = '1';
+    gliderAt = to;
   };
-  let lastLevel = null, hadTrial = false;
-  const hiddenNote = (f) => {
-    const n = f.explorations.length - shownExplorations(f).length;
-    return n ? `<p class="pg-hidden">Nothing on this screen has a star, so its explorations are hidden. <button type="button" class="pg-link" data-all>Show all</button></p>` : '';
+  // Keeps the running step in view, without moving the strip if it already is.
+  const scrollToRunning = (smooth) => {
+    const track = strip.querySelector('.pg-track'), row = track?.querySelector('.pg-step.try') || track?.querySelector('.pg-step.running:not(.main)');
+    if (!row) return;
+    const tb = track.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (r.left >= tb.left + 8 && r.right <= tb.right - 8) return;
+    track.scrollTo({ left: track.scrollLeft + r.left - tb.left - tb.width / 2 + r.width / 2, behavior: smooth && !still() ? 'smooth' : 'auto' });
   };
+  addEventListener('resize', () => { placeGlider(); if (!screensCard.hidden) placeScreens(); });
 
+  let lastScreen = null, hadTrial = false;
   const draw = (force = false) => {
     drawRails();
     drawContext();
-    if (!isOpen(filesPanel)) return;
     const p = hooks.preview();
-    const sig = JSON.stringify([route?.screen, nav.folder, hooks.picks(), p, hooks.local(), nav.starred, playgrounds.map((x) => [x.id, x.versions.length, !!x.starred, x.versions.filter((v) => v.starred).map((v) => v.id).join()])]);
+    const sig = JSON.stringify([route?.screen, hooks.picks(), p, hooks.local(), nav.starred, [...building.keys()], playgrounds.map((x) => [x.id, x.versions.length, x.versions.map((v) => `${v.id}${v.starred ? '*' : ''}${v.name}`).join()])]);
     if (!force && sig === lastSig) return;
     lastSig = sig;
-    const pg = p && byId(p.playground) && trying(byId(p.playground)) ? byId(p.playground) : null;
-    const all = folders();
-    const folder = nav.folder && all.find((f) => f.id === nav.folder);
-    if (nav.folder && !folder) nav.folder = null;
-
-    let body;
-    if (!folder) {
-      const current = route && all.find((f) => f.id === route.screen);
-      // The screen on show is pinned at the top, so it isn't listed again below.
-      const rest = all.filter((f) => f !== current);
-      // With Starred only on, folders with nothing starred are left out.
-      const used = rest.filter((f) => shownExplorations(f).length), empty = nav.starred ? [] : rest.filter((f) => !f.explorations.length);
-      const unstarred = nav.starred ? rest.filter((f) => f.explorations.length && !shownExplorations(f).length).length : 0;
-      const ready = readyRows(), starred = starredRows();
-      body = `
-        ${ready ? `<h4>Ready for main</h4><ul class="pg-folders pg-readies">${ready}</ul>` : ''}
-        ${starred ? `<h4>Starred</h4><ul class="pg-folders pg-starred">${starred}</ul>` : ''}
-        ${current ? `<h4>On screen now</h4><ul class="pg-folders">${folderRow(current)}</ul>` : ''}
-        ${used.length ? `<h4>Explorations</h4><ul class="pg-folders">${used.map(folderRow).join('')}</ul>` : ''}
-        ${empty.length ? `<h4>No explorations yet</h4><ul class="pg-folders">${empty.map(folderRow).join('')}</ul>` : ''}
-        ${nav.starred ? `<p class="pg-hidden">${starred ? 'Only what has a star shows' : 'Nothing has a star yet: star an exploration or a version to keep it here'}${unstarred
-          ? `, so ${unstarred} screen${unstarred === 1 ? '' : 's'} with explorations ${unstarred === 1 ? 'is' : 'are'} hidden` : ''}. <button type="button" class="pg-link" data-all>Show all</button></p>` : ''}`;
-    } else {
-      const onIt = route?.screen === folder.id;
-      body = `
-        <div class="pg-crumbs"><button type="button" class="pg-up" data-up>‹ All screens</button><span>${esc(folder.title)}</span></div>
-        <p class="pg-path"><code>${esc(hooks.data)}/${esc(folder.id)}/</code>
-          ${onIt ? '<span class="pg-chip here">On screen</span>' : `<button type="button" data-show="${esc(folder.id)}">Show this screen</button>`}</p>
-        ${folder.explorations.length ? shownExplorations(folder).map(exploration).join('') + hiddenNote(folder)
-          : `<p class="pg-empty">No explorations of ${esc(folder.title)} yet. ${chat.enabled
-            ? 'Ask Claude on the right to start one.'
-            : `Set up Claude on the right to start one, or run <code>python3 playground/new.py ${esc(folder.id)} "Name"</code>.`}</p>`}`;
-    }
-
-    const level = nav.folder || '';
-    const moved = lastLevel !== null && level !== lastLevel && !still() ? (level ? 'forward' : 'back') : '';
-    lastLevel = level;
-    const trialEnters = !!pg && !hadTrial && !still();
-    hadTrial = !!pg;
-    // A redraw keeps the list where it was scrolled to, unless it moved to another level.
-    const scrolled = moved ? 0 : files.querySelector('.pg-list')?.scrollTop || 0;
-    files.innerHTML = `
-      <div class="pg-head"><h2>Explorations</h2><button type="button" class="pg-locate pg-filter${nav.starred ? ' on' : ''}" data-starred-only aria-pressed="${nav.starred}" aria-label="Starred only" title="${nav.starred ? 'Show everything' : 'Show only what has a star'}">${STAR_ICON}</button><button type="button" class="pg-locate" data-locate aria-label="Show the page on show" title="Go to the page on show">${LOCATE_ICON}</button><button type="button" class="pg-min" data-close aria-label="Minimise Explorations" title="Minimise (P)">‹</button></div>
-      ${hooks.local() ? `<div class="pg-local"><p>Your picks are saved in this browser only, because the server can't write
-        <code>${esc(hooks.data)}/picks.json</code>. Run <code>python3 playground/serve.py</code> to save them there.</p>
-        <button type="button" data-team>Use the saved picks</button></div>` : ''}
-      <div class="pg-list"><div class="pg-pane${moved ? ` enter-${moved}` : ''}">${body}</div></div>
-      ${pg ? `<div class="pg-actions${trialEnters ? ' enter' : ''}" role="group" aria-label="Trying ${esc(versionName(pg, p.version))}">
-          <button type="button" data-back title="Back to ${esc(versionName(pg, picked(pg)))}: drop the trial">Back to ${esc(versionName(pg, picked(pg)))}</button>
-          <button type="button" class="pg-use" data-use>Use this version</button>
-        </div>`
-      : `<div class="pg-foot"><p>Each exploration is a folder: open it to see its iterations. <b>4.0</b> is exploration 4, and <b>4.1</b>, <b>4.2</b> are steps on it.
-        Hover a version to see it, click it to try it, then <b>Use this version</b> to get it ready for main.</p></div>`}`;
-    if (scrolled) files.querySelector('.pg-list').scrollTop = scrolled;
-    hidePeek();
-    placeGliders();
-    drawGraphs();
+    filesView.draw();
+    if (!screensCard.hidden) drawScreens();
+    const folder = route && (folderOf(route.screen) || { id: route.screen, title: route.screen, explorations: [] });
+    const pgs = folder ? shownExplorations(folder) : [];
+    const moved = lastScreen !== null && folder?.id !== lastScreen && !still();
+    lastScreen = folder?.id ?? null;
+    const scrolled = moved ? 0 : strip.querySelector('.pg-track')?.scrollLeft || 0;
+    const groups = pgs.flatMap((pg) => columnsOf(pg).map(([k, l]) => groupEl(pg, k, l)));
+    const hidden = folder ? folder.explorations.reduce((n, pg) => n + pg.versions.length - shownVersions(pg).length, 0) : 0;
+    const mainPg = pgs[0] || folder?.explorations[0];
+    const empty = !folder ? 'The app is starting.'
+      : !folder.explorations.length ? `No explorations of ${esc(folder.title)} yet. ${chat.enabled ? 'Ask Claude on the right to start one.' : `Set up Claude on the right, or run <code>python3 playground/new.py ${esc(folder.id)} "Name"</code>.`}`
+      : !groups.length ? 'Nothing on this screen has a star.' : '';
+    strip.innerHTML = `
+      <button type="button" class="pg-screen-btn" data-screens aria-haspopup="dialog" aria-expanded="${!screensCard.hidden}" title="Every screen, what's ready for main and what's starred">
+        ${FOLDER_ICON}<span class="pg-fname"><b>${esc(folder?.title || 'Explorations')}</b><small>${folder ? folderMeta(folder) : 'Explorations'}</small></span><span class="pg-chevron" aria-hidden="true">›</span>
+      </button>
+      <div class="pg-track${moved ? ' enter' : ''}">
+        <ol class="pg-xgroups"><li class="pg-glider" aria-hidden="true"></li>
+          <li class="pg-xgroup pg-xmain"><div class="pg-xcap"><span class="pg-xname">The app</span></div><ol class="pg-steps">${mainPg ? stepEl(mainPg, versionById(mainPg, 'default') || { id: 'default', name: 'As it is' }) : '<li class="pg-step main running"><span class="pg-step-btn" aria-label="main, the app as it is">main</span></li>'}</ol></li>
+          ${groups.join('')}
+          ${empty ? `<li class="pg-xempty">${empty}</li>` : ''}
+          ${hidden ? `<li class="pg-xempty">${hidden} version${hidden === 1 ? '' : 's'} without a star ${hidden === 1 ? 'is' : 'are'} hidden. <button type="button" class="pg-link" data-all>Show all</button></li>` : ''}
+        </ol>
+      </div>
+      ${stripEnd(pgs)}`;
+    hadTrial = !!(p && byId(p.playground) && trying(byId(p.playground)));
+    const track = strip.querySelector('.pg-track');
+    track.scrollLeft = scrolled;
+    if (peekAt) { const again = strip.querySelector(`.pg-step[data-v="${CSS.escape(peekAt.dataset.v)}"]`); if (again && !peek.hidden) drawPeek(again); else hidePeek(); }
+    placeGlider();
+    scrollToRunning(!moved);
     drawCommitBtn();
   };
+  strip.addEventListener('scroll', () => { if (peekAt) placePeek(peekAt); }, true);
 
-  files.addEventListener('click', (e) => {
+  strip.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t) return;
-    if ('close' in t.dataset) return setOpen('files', false);
+    if ('screens' in t.dataset) return toggleScreens();
     if ('starredOnly' in t.dataset) return setStarredOnly(!nav.starred);
     if ('all' in t.dataset) return setStarredOnly(false);
-    if (t.dataset.more) { if (!opened.delete(t.dataset.more)) opened.add(t.dataset.more); return draw(true); }
-    if (t.dataset.openCol) return toggleFolder(byId(t.dataset.pg), /^\d+$/.test(t.dataset.openCol) ? +t.dataset.openCol : t.dataset.openCol);
-    if ('star' in t.dataset) return starIt(byId(t.dataset.pg), t.dataset.ver);
     if ('delete' in t.dataset) return deleteIt(byId(t.dataset.pg), t.dataset.ver, e.shiftKey, t.dataset.col);
-    if ('locate' in t.dataset) return locate();
-    if (t.dataset.folder) return openFolder(t.dataset.folder);
-    if ('up' in t.dataset) return openFolder(null);
-    if (t.dataset.show) return hooks.show(t.dataset.show);
-    if (t.dataset.v) return run(() => hooks.tryVersion(byId(t.dataset.pg), t.dataset.v));
+    if (t.dataset.v) { if (t.getAttribute('aria-disabled') === 'true') return; return run(() => hooks.tryVersion(byId(t.dataset.pg), t.dataset.v)); }
     if ('back' in t.dataset) return run(() => hooks.endPreview());
     if ('team' in t.dataset) return run(async () => { await hooks.useTeamPicks(); toast(`Running the picks saved in ${hooks.data}/picks.json.`); });
     if ('use' in t.dataset) {
@@ -980,7 +1038,7 @@ export const mountPlayground = (hooks) => {
   const builtLine = (m) => {
     const b = m.built, pg = b.playground && byId(b.playground);
     const what = pg ? `${pg.title} › ${versionName(pg, b.version)}` : b.version ? `${b.playground} ${b.version}` : '';
-    const head = b.state === 'ready' ? `Built <b>${esc(what)}</b>` : b.state === 'done' ? 'Done, with no new version'
+    const head = b.state === 'ready' ? `${b.updated ? 'Updated' : 'Built'} <b>${esc(what)}</b>` : b.state === 'done' ? 'Done, with no new version'
       : b.state === 'stopped' ? 'Stopped' : 'Stopped with an error';
     const gone = b.version && !(pg && pg.versions.some((v) => v.id === b.version));
     return `<li class="pg-msg built ${b.state}"><span class="pg-built-mark" aria-hidden="true"></span><span>${head}${b.took ? ` <small>in ${esc(b.took)}</small>` : ''}${b.warn ? `<small class="warn">${esc(b.warn)}</small>` : ''}</span>
@@ -992,7 +1050,7 @@ export const mountPlayground = (hooks) => {
     const { log } = tab();
     logEl.innerHTML = log.length
       ? log.map(message).join('')
-      : `<li class="pg-msg note">Describe an idea for the screen on show. A new idea becomes a new exploration; a change to what's on show ("make it bigger") becomes its next iteration, 4.1, 4.2 and so on, so every step stays to go back to. Claude builds each one out of sight while you carry on, and the card above the box shows how it's going, with View it when it's ready. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
+      : `<li class="pg-msg note">Describe an idea for the screen on show. A new idea becomes a new exploration; a real change to what's on show ("make it bigger") becomes its next iteration, 4.1, 4.2 and so on, so every step worth keeping stays to go back to; a tiny fix (a few pixels, a word) just updates the version on show. Claude builds each one out of sight while you carry on, and the card above the box shows how it's going, with View it when it's ready. ${chat.max > 1 ? `Press + above to open another chat: up to ${chat.max} can work at the same time, each on versions of its own.` : ''} To point at something, hold ⌥ and drag over it: the capture is added here, with the widgets it covers. Screenshots can be dragged in or pasted too. To leave notes on the app, press N and click the parts to change: they wait here until you send them, all together. Claude can only change files in ${esc(hooks.data)}/.</li>`;
     logEl.scrollTop = logEl.scrollHeight;
   };
   // A new message is added on its own and rises in; the log scrolls to it. It
@@ -1033,10 +1091,10 @@ export const mountPlayground = (hooks) => {
     const text = {
       starting: 'Sending your request…',
       reading: 'Claude is looking at the app…',
-      building: `Building <b>${esc(name || 'a new version')}</b> out of sight · ${b.steps} step${b.steps === 1 ? '' : 's'}`,
+      building: `${b.editing ? 'Updating' : 'Building'} <b>${esc(name || 'a new version')}</b> out of sight · ${b.steps} step${b.steps === 1 ? '' : 's'}`,
       checking: `Checking <b>${esc(name || 'it')}</b> runs…`,
       fixing: `<b>${esc(name || 'It')}</b> hit an error. Claude is fixing it…`,
-      ready: `<b>${full}</b> is ready`,
+      ready: b.updated ? `<b>${full}</b> is updated` : `<b>${full}</b> is ready`,
       done: "Done. Claude didn't make a new version.",
       stopped: 'Stopped.',
       failed: `Stopped with an error${b.error ? `: ${esc(b.error)}` : '.'}`,
@@ -1061,7 +1119,9 @@ export const mountPlayground = (hooks) => {
       b.steps++;
     } else if (event.type === 'changed') {
       const n = (event.new || []).filter((x) => x.version !== 'default').at(-1);
-      if (n) b.version = n;
+      if (n) { b.version = n; b.editing = false; }
+      // Changing a version that was there already: an update in place, unless a new one comes.
+      else if (!b.version && event.version && event.version !== 'default') { b.version = { playground: event.playground, version: event.version }; b.editing = true; }
       if (event.reloaded) b.state = 'checking';
       else if (b.version) b.state = 'building';
     } else if (event.type === 'done') { b.ok = event.ok; b.cost = event.cost; }
@@ -1075,12 +1135,12 @@ export const mountPlayground = (hooks) => {
     const b = t.build;
     if (!b || b.final) return;
     Object.assign(b, { final: true, ended: Date.now() });
-    if (t.ready) b.version = t.ready;
+    if (t.ready) { b.version = t.ready; b.updated = !!t.readyUpdated; }
     b.state = b.stopped ? 'stopped' : b.ok === false || b.error ? 'failed' : t.ready ? 'ready' : 'done';
     if (b.state === 'ready' || b.state === 'done') b.fill = 1; // a stopped bar stays where it stopped
     if (result && !result.ok) b.warn = `${result.message}${result.errors?.length ? ' (see above)' : ''}`;
     const took = [elapsed(b), b.fixes && `${b.fixes} error${b.fixes === 1 ? '' : 's'} fixed`, b.cost != null && `$${Number(b.cost).toFixed(2)}`].filter(Boolean).join(' · ');
-    t.log.push({ who: 'built', built: { state: b.state, playground: b.version?.playground, version: b.version?.version, took, warn: b.warn } });
+    t.log.push({ who: 'built', built: { state: b.state, updated: b.updated, playground: b.version?.playground, version: b.version?.version, took, warn: b.warn } });
     keep();
     if (t.id === active) { drawLog(); drawBuilt(); }
   };
@@ -1230,7 +1290,7 @@ export const mountPlayground = (hooks) => {
   // exploration and version (the one being tried, or the only one in the folder).
   const context = () => {
     const p = hooks.preview();
-    const folder = nav.folder || route?.screen;
+    const folder = route?.screen;
     const inFolder = playgrounds.filter((x) => x.screen === folder);
     const pg = (p && byId(p.playground)) || (inFolder.length === 1 ? inFolder[0] : null);
     const where = hooks.where?.() || {};
@@ -1262,14 +1322,12 @@ export const mountPlayground = (hooks) => {
   const tryNew = async (n) => {
     const pg = byId(n.playground);
     if (!pg) return;
-    nav.folder = pg.screen;
-    store.set(`${hooks.key}.playground.folder`, pg.screen);
     if (pg.versions.some((v) => v.id === n.version)) await hooks.tryVersion(pg, n.version);
   };
   const changed = (event, t, final = false) => {
     pendingNew.push(...(event.new || []).map((n) => ({ ...n, tab: t })));
     if (!final) for (const n of event.new || []) if (n.version !== 'default') building.set(`${n.playground}/${n.version}`, t);
-    if (final) pendingFinal.add(t);
+    if (final) { pendingFinal.add(t); t.updatedNow = (event.updated || []).at(-1) || null; }
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(async () => {
       const fresh = pendingNew.filter((n) => !n.tab.tried.has(`${n.playground}/${n.version}`));
@@ -1287,9 +1345,17 @@ export const mountPlayground = (hooks) => {
         if (ft.made) {
           const n = ft.made, pg = byId(n.playground);
           ft.ready = n;
+          ft.readyUpdated = false;
           ft.made = null;
           toast(`${pg ? `${pg.title} › ${versionName(pg, n.version)}` : n.version} is ready${ft.id === active ? '' : ` in Chat ${tabs.indexOf(ft) + 1}`}.`, { label: 'View it', run: () => showBuilt(ft) });
+        } else if (ft.updatedNow) {
+          // No new version: a small change made to a version in place.
+          const n = ft.updatedNow, pg = byId(n.playground);
+          ft.ready = n;
+          ft.readyUpdated = true;
+          toast(`${pg ? `${pg.title} › ${versionName(pg, n.version)}` : n.version} is updated${ft.id === active ? '' : ` in Chat ${tabs.indexOf(ft) + 1}`}.`, { label: 'View it', run: () => showBuilt(ft) });
         }
+        ft.updatedNow = null;
       }
       let result = null;
       try {
@@ -1325,7 +1391,7 @@ export const mountPlayground = (hooks) => {
     else if (event.type === 'done') {
       if (event.session) t.session = event.session;
       // The request's line in the chat (finishBuild) says how it went.
-      changed({ new: event.new }, t, true);
+      changed({ new: event.new, updated: event.updated }, t, true);
     } else if (event.type === 'notes') { run.notesAnswered = true; answered(event.notes, t); }
     else if (event.type === 'error') sayT('error', event.message);
     keep();
@@ -1613,14 +1679,26 @@ export const mountPlayground = (hooks) => {
     drawPins();
   };
 
+  let inspector = null; // Inspect, below
   const noteMode = (on) => {
     noting = on && chat.enabled;
+    if (noting) inspector?.set(false);
     document.body.classList.toggle('pg-noting', noting);
     noteBtn.setAttribute('aria-pressed', String(noting));
     targetEl.hidden = true;
     if (!tab().running) statusEl.textContent = noting ? 'Click a part of the app, or drag over an area · Esc to stop' : tab().status;
   };
   noteBtn.addEventListener('click', () => noteMode(!noting));
+
+  // ---- Inspect -------------------------------------------------------------------
+  // Hover the app to see which library component each part is (inspect.js).
+  // A click opens its page in the Library, in the panel at the left.
+  inspector = mountInspect({
+    library: libraryView,
+    hooks: { inspect: hooks.inspect, route: () => hooks.route?.(), toast },
+    open: (id) => { setOpen('files', true); setPane('library'); libraryView.open(id); },
+    onStart: () => { if (noting) noteMode(false); },
+  });
   addEventListener('keydown', (e) => {
     if (editable(e.target) || e.metaKey || e.ctrlKey || e.altKey || !chat.enabled) return;
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); noteMode(!noting); }
@@ -1911,10 +1989,6 @@ export const mountPlayground = (hooks) => {
     setOpen('files', hooks.open || startOpen.files !== false);
     setOpen('chat', hooks.open || startOpen.chat !== false);
   }
-  if (hooks.open) {
-    const pg = byId(hooks.preview()?.playground);
-    if (pg) nav.folder = pg.screen;
-  }
 
   // What the app's frame passes on: ⌥ held or let go, P, Esc and pastes.
   const forward = {
@@ -1922,6 +1996,7 @@ export const mountPlayground = (hooks) => {
       if (key === 'Alt') document.body.classList.toggle('pg-alt', down && chat.enabled);
       else if (key === 'Escape') dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
       else if (key === 'n') { if (chat.enabled) noteMode(!noting); }
+      else if (key === 'i') inspector.set(!inspector.on);
       else if (key === 'p') { const open = !isOpen(filesPanel) || !isOpen(chatPanel); setOpen('files', open); setOpen('chat', open); }
     },
     async paste(text, images = []) {
@@ -1941,6 +2016,6 @@ export const mountPlayground = (hooks) => {
   drawStatus();
   drawNotes();
   // A new picture of a version: the preview shows it if it's open on that version.
-  const thumbed = (key) => { if (peekAt && `${peekAt.querySelector('[data-pg]')?.dataset.pg}/${peekAt.dataset.v}` === key) drawPeek(peekAt); };
-  return { update: (r) => { route = r; draw(); drawPins(); }, forward, redraw: () => draw(true), thumbed };
+  const thumbed = (key) => { if (peekAt && !peek.hidden && `${peekAt.querySelector('[data-pg]')?.dataset.pg}/${peekAt.dataset.v}` === key) drawPeek(peekAt); };
+  return { update: (r) => { route = r; draw(); drawPins(); libraryView.onScreen(r.screen); }, forward, redraw: () => draw(true), thumbed };
 };

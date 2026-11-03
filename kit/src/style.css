@@ -178,170 +178,146 @@ body {
 .pg-rail-dot[hidden] { display: none; }
 @keyframes pg-breathe { 50% { box-shadow: 0 0 0 7px rgba(37, 195, 255, 0.05); } }
 
-.pg-files.busy { cursor: progress; }
-.pg-files.busy .pg-list, .pg-files.busy .pg-actions { opacity: 0.6; pointer-events: none; transition: opacity 0.2s ease; }
 .pg-panel code { font-size: 12px; color: var(--page-text); }
 .pg-head { display: flex; align-items: center; gap: 8px; padding: 16px 12px 10px 18px; flex: none; }
 .pg-head h2 { font-size: 15px; font-weight: 600; margin: 0 auto 0 0; letter-spacing: 0.01em; }
 .pg-head button:not(.pg-min) { min-height: 28px; padding: 0 10px; font-size: 12px; }
-.pg-panel .pg-min { width: 28px; min-height: 28px; padding: 0; font-size: 16px; line-height: 1; color: var(--page-muted); }
-
-/* While a version is tried, its actions sit at the foot of Explorations, as the
-   chat box does in Claude: Back on the left, Use on the right. */
-.pg-local { margin: 0 10px 10px; padding: 12px; border-radius: var(--well-radius); flex: none; background: var(--well); }
-.pg-local p { margin: 0 0 10px; font-size: 13px; }
-.pg-actions { display: flex; gap: 8px; margin: 0 10px 10px; padding: 8px; flex: none; background: var(--well); border-radius: var(--well-radius); }
-.pg-actions [data-back] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-actions button { padding-inline: 11px; }
-.pg-actions [data-use] { flex: none; margin-left: auto; }
-.pg-actions.enter { animation: pg-rise 560ms var(--spring) both; }
+.pg-panel .pg-min, .pg-reader .pg-min { width: 28px; min-height: 28px; padding: 0; font-size: 16px; line-height: 1; color: var(--page-muted); }
 @keyframes pg-pop { from { opacity: 0; transform: translateY(-8px) scale(0.97); } }
-
-.pg-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 0 12px; }
-.pg-pane.enter-forward { animation: pg-in-forward 560ms var(--spring) both; }
-.pg-pane.enter-back { animation: pg-in-back 560ms var(--spring) both; }
 @keyframes pg-in-forward { from { opacity: 0; transform: translateX(36px); } 25% { opacity: 0; } }
-@keyframes pg-in-back { from { opacity: 0; transform: translateX(-36px); } 25% { opacity: 0; } }
-.pg-list h4 { margin: 0; padding: 14px 18px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--page-muted); }
 
-/* Folders, one per screen, in a well; the row under the pointer lifts. */
-.pg-folders { list-style: none; margin: 0 10px; padding: 4px; display: grid; gap: 2px; background: var(--well); border-radius: var(--well-radius); }
-.pg-panel .pg-folder {
-  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
-  background: none; box-shadow: none; border-radius: var(--tile-radius); padding: 8px 10px; min-height: 0;
-  transition: background-color 0.2s ease, transform 0.2s ease;
-}
-@media (hover: hover) { .pg-panel .pg-folder:hover { filter: none; background: var(--hover-fill); } }
-.pg-folder-icon { width: 18px; height: 15px; flex: none; fill: var(--accent); opacity: 0.85; transition: transform 0.45s var(--spring); }
-@media (hover: hover) { .pg-folder:hover .pg-folder-icon { transform: scale(1.12); } }
-.pg-folder.empty .pg-folder-icon { fill: none; stroke: var(--page-muted); stroke-width: 1.2; opacity: 1; }
-.pg-fname { flex: 1; min-width: 0; }
-.pg-fname b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-fname small { color: var(--page-muted); font-size: 12px; }
-.pg-folder.empty .pg-fname b { color: var(--page-muted); }
-.pg-chevron { color: var(--page-muted); font-size: 18px; line-height: 1; transition: transform 0.45s var(--spring); }
-@media (hover: hover) { .pg-folder:hover .pg-chevron { transform: translateX(3px); } }
-
-.pg-crumbs { display: flex; align-items: center; gap: 8px; padding: 10px 18px 4px; font-weight: 600; }
-.pg-panel .pg-up { background: none; box-shadow: none; padding: 0 8px 0 4px; min-height: 26px; color: var(--accent); font-weight: 500; }
-@media (hover: hover) { .pg-panel .pg-up:hover { filter: none; background: var(--hover-fill); } }
-.pg-crumbs span::before { content: '/ '; color: var(--page-muted); font-weight: 400; }
-.pg-path { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 0 12px 10px 18px; color: var(--page-muted); }
-.pg-path button { flex: none; min-height: 26px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
-.pg-path code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* An exploration and its versions: the versions sit in a well, and the one
-   running rides on a raised tile (the glider) that springs from version to
-   version. */
-.pg-group { padding: 10px 10px 8px; }
-.pg-group + .pg-group { border-top: 1px solid var(--frame-edge); }
-.pg-group h3 { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; margin: 2px 8px 2px; }
-.pg-branch-icon { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--page-muted); stroke-width: 1.4; stroke-linecap: round; }
-.pg-branch-icon circle { fill: var(--page-muted); stroke: none; }
-.pg-about { margin: 0 8px 8px; color: var(--page-muted); font-size: 12px; }
-.pg-versions { position: relative; list-style: none; margin: 0; padding: 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; background: var(--well); border-radius: var(--well-radius); }
-.pg-glider {
-  position: absolute; top: 0; left: 4px; right: 4px; height: 0;
-  border-radius: var(--tile-radius); background: var(--tile); box-shadow: var(--tile-rim);
-  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
-}
-.pg-version { position: relative; z-index: 1; min-width: 0; }
-/* A version is a tile: its name, and its number and date, on the left; Show
-   more, the star and the bin on the right, centred on it. Its note opens under it. */
-.pg-tile { display: flex; align-items: center; gap: 4px; padding-right: 6px; border-radius: var(--tile-radius); transition: background-color 0.2s ease; }
-@media (hover: hover) { .pg-version:not(.running) .pg-tile:hover { background: var(--hover-fill); } }
-.pg-panel .pg-try {
-  flex: 1; min-width: 0; text-align: left; padding: 8px 4px 8px var(--gutter, 14px); min-height: 0;
-  display: grid; gap: 1px; background: none; box-shadow: none;
-}
-.pg-panel .pg-try:hover { filter: none; }
-.pg-vname { min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-version.running .pg-vname { font-weight: 600; }
-.pg-vmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--page-muted); font-size: 12px; }
 .pg-chip { font-size: 11px; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
 .pg-chip.pick { color: var(--accent); background: rgba(37, 195, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
 .pg-chip.try { color: var(--amber); background: rgba(240, 180, 76, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 180, 76, 0.35); }
 .pg-chip.here { color: var(--page-text); background: var(--well); }
 .pg-chip.building { color: var(--accent); background: rgba(37, 195, 255, 0.08); animation: pg-built-pulse 1.6s ease-in-out infinite; }
-/* A version Claude is still building: locked until its run is done. */
-.pg-version.building .pg-try { cursor: default; opacity: 0.7; }
 @keyframes pg-built-pulse { 50% { opacity: 0.55; } }
-.pg-vwhen { white-space: nowrap; }
-.pg-version.open .pg-vname { white-space: normal; }
-.pg-note { margin: 0; padding: 0 12px 10px var(--gutter, 14px); color: var(--page-muted); font-size: 12px; animation: pg-pop 420ms var(--spring) both; }
-.pg-from { color: var(--page-text); opacity: 0.75; }
-.pg-version.main .pg-vname { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
 
-/* The graph down the left of a screen's list, drawn like a git graph: main's
-   line, a branch into each exploration, its versions down it; the pick's way
-   back to main in blue (dashed into the incoming node at the top), a trial's
-   in amber. */
-.pg-tree { position: relative; padding-left: 34px; }
-.pg-graph { position: absolute; left: 6px; top: 0; z-index: 2; overflow: visible; pointer-events: none; }
-.pg-graph path { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; stroke-linecap: round; }
-.pg-graph path.main { stroke: rgba(201, 204, 210, 0.5); }
-.pg-graph path.pick { stroke: var(--accent); }
-.pg-graph path.try { stroke: var(--amber); }
-.pg-graph path.merge { stroke-dasharray: 2 4; }
-.pg-graph circle { fill: var(--page-muted); stroke: #1d1e23; stroke-width: 3; paint-order: stroke; }
-.pg-graph circle.main { fill: var(--page-text); }
-.pg-graph circle.pick { fill: var(--accent); }
-.pg-graph circle.try { fill: var(--amber); }
-.pg-graph circle.head { filter: drop-shadow(0 0 4px rgba(37, 195, 255, 0.55)); }
-.pg-graph circle.try.head { filter: drop-shadow(0 0 4px rgba(240, 180, 76, 0.55)); }
-.pg-graph circle.incoming { fill: #1d1e23; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 2.5 2.5; paint-order: normal; }
-.pg-graph circle.incoming.try { stroke: var(--amber); }
-
-/* One column. main, then each exploration as a folder, its versions inside it
-   when it's open: N.0, then each iteration, down, joined by a thin line. */
-.pg-mainrow { margin-bottom: 4px; }
-.pg-xtitle { display: flex; align-items: baseline; gap: 6px; margin: 12px 6px 6px; }
-.pg-xtitle small { color: var(--page-muted); font-weight: 500; }
-.pg-xfolders { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.pg-xfolder { border-radius: var(--well-radius); transition: background-color 0.2s ease; }
-.pg-xfolder.open { background: var(--well); padding-bottom: 4px; }
-.pg-xhead { position: relative; display: flex; align-items: center; }
-.pg-panel .pg-xbtn {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 40px 8px 8px; min-height: 0;
-  text-align: left; background: none; box-shadow: none; border-radius: var(--tile-radius);
+/* ---- Explorations: the strip under the bars (playground.js) ---- */
+/* One line across the page, a frosted card like the panels: the screen on
+   show at the left, its explorations' steps across the middle (they scroll
+   sideways), and the trial's actions or the pick at the right. */
+.pg-strip {
+  flex: none; position: relative; z-index: 6;
+  display: flex; align-items: stretch; gap: 8px;
+  margin: 8px 8px 0; padding: 6px;
+  border-radius: var(--panel-radius); background: var(--frame); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
 }
-@media (hover: hover) { .pg-panel .pg-xbtn:hover { filter: none; background: var(--hover-fill); } }
-.pg-xbtn .pg-folder-icon { width: 18px; height: 15px; flex: none; fill: var(--page-muted); opacity: 0.7; }
-.pg-xfolder.open .pg-folder-icon { fill: var(--accent); opacity: 0.9; }
-.pg-xchev { flex: none; width: 10px; color: var(--page-muted); transition: transform 420ms var(--spring); }
-.pg-xfolder.open .pg-xchev { transform: rotate(90deg); color: var(--page-text); }
-.pg-xbtn .pg-fname { flex: 1; min-width: 0; display: grid; gap: 1px; }
-.pg-xbtn .pg-fname b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-xbtn .pg-fname small { color: var(--page-muted); font-size: 11px; }
-.pg-xhead .pg-tools { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
-.pg-xhead:not(:hover) .pg-tools .pg-icon { opacity: 0; }
-@media (hover: none) { .pg-xhead .pg-tools .pg-icon { opacity: 0.8; } }
-.pg-iters { margin: 0 4px 0 8px; padding: 2px 0 0; background: none; gap: 2px; }
-.pg-iters.enter { animation: pg-pop 420ms var(--spring) both; }
-.pg-iters .pg-glider { left: 0; right: 0; }
-/* A version's tile: its number and date, its name under them. The actions sit
-   over its top right corner, shown on hover. */
-.pg-group .pg-tile { position: relative; padding-right: 0; }
-.pg-group .pg-try { padding: 7px 10px 8px 12px; gap: 2px; }
-.pg-group .pg-tile .pg-tools { position: absolute; top: 2px; right: 2px; }
-.pg-group .pg-version:not(:hover) .pg-tile .pg-tools .pg-icon:not(.on) { opacity: 0; }
-@media (hover: none) { .pg-group .pg-version .pg-tile .pg-tools .pg-icon { opacity: 0.8; } }
-.pg-vtop { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-right: 72px; color: var(--page-muted); font-size: 11px; }
-.pg-vnum { flex: none; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pg-version.head .pg-vnum, .pg-version.running .pg-vnum { color: var(--page-text); }
-.pg-group .pg-vname { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.3; font-size: 13px; }
-.pg-group .pg-version.open .pg-vname { -webkit-line-clamp: unset; }
-.pg-group .pg-version.main .pg-vname { font-family: inherit; }
-.pg-group .pg-note { padding: 0 10px 10px 12px; }
+.pg-strip.busy { cursor: progress; }
+.pg-strip.busy .pg-track, .pg-strip.busy .pg-actions { opacity: 0.6; pointer-events: none; transition: opacity 0.2s ease; }
+.pg-strip code { font-size: 12px; color: var(--page-text); }
+.pg-strip button { font: inherit; font-size: 13px; color: var(--page-text); background: var(--tile); border: 0; border-radius: var(--tile-radius); box-shadow: var(--tile-rim); padding: 0 12px; min-height: 32px; cursor: pointer; transition: filter 0.2s ease, transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease; -webkit-tap-highlight-color: transparent; }
+@media (hover: hover) { .pg-strip button:not(:disabled):hover { filter: brightness(1.12); } }
+.pg-strip button:not(:disabled):active { filter: brightness(0.85); transform: scale(0.96); transition-duration: 0s; }
+.pg-strip :focus-visible, .pg-peek :focus-visible, .pg-reader :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* The preview beside the panel: the version's picture and what it is. */
+/* The screen on show: a folder, its name and what it holds; it opens the screens. */
+.pg-strip .pg-screen-btn { flex: 0 1 220px; min-width: 150px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 12px; text-align: left; background: var(--well); box-shadow: none; border-radius: var(--well-radius); }
+@media (hover: hover) { .pg-strip .pg-screen-btn:hover { filter: none; background: var(--hover-fill); } }
+.pg-screen-btn .pg-fname small { display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-screen-btn .pg-chevron { transform: rotate(90deg); }
+.pg-screen-btn[aria-expanded="true"] .pg-chevron { transform: rotate(-90deg); }
+
+/* The steps, in a well that scrolls sideways. Each exploration is a group: its
+   number and name over its steps, joined by a line. The running step rides on
+   a raised tile (the glider) that springs from step to step. The track always
+   keeps room for its scrollbar, so the strip is the same height either way. */
+.pg-track { position: relative; flex: 1; min-width: 0; overflow-x: scroll; overflow-y: hidden; background: var(--well); border-radius: var(--well-radius); scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.14) transparent; overscroll-behavior-x: contain; }
+.pg-track.enter .pg-xgroups { animation: pg-in-forward 560ms var(--spring) both; }
+.pg-xgroups > .pg-glider { position: absolute; top: 0; left: 0; z-index: 0; border-radius: var(--tile-radius); background: var(--tile); box-shadow: var(--tile-rim), 0 0 0 1.5px var(--accent); opacity: 0; pointer-events: none; }
+.pg-xgroups > .pg-glider.trying { box-shadow: var(--tile-rim), 0 0 0 1.5px var(--amber); }
+.pg-xgroups { position: relative; list-style: none; margin: 0; padding: 6px 10px 6px 6px; display: flex; align-items: stretch; gap: 0; width: max-content; min-height: 100%; }
+.pg-xgroup { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 0 8px; min-width: 0; }
+.pg-xgroup + .pg-xgroup::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; border-left: 1px solid var(--frame-edge); }
+.pg-xcap { display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 2px; font-size: 11px; color: var(--page-muted); white-space: nowrap; }
+.pg-xnum { flex: none; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border-radius: 8px; background: var(--hover-fill); color: var(--page-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pg-xgroup.pick .pg-xnum { background: rgba(37, 195, 255, 0.16); color: var(--accent); }
+.pg-xgroup.try .pg-xnum { background: rgba(240, 180, 76, 0.16); color: var(--amber); }
+/* A component exploration's group says which component, in a neutral tag. */
+.pg-xcomp { flex: none; padding: 1px 6px; border-radius: 8px; font-size: 10.5px; font-weight: 600; color: var(--page-text); background: var(--well); box-shadow: inset 0 0 0 1px var(--frame-edge); }
+.pg-xname { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.pg-xgroup.pick .pg-xname, .pg-xgroup.try .pg-xname { color: var(--page-text); }
+.pg-xcap .pg-icon { width: 20px; min-height: 20px; margin-left: auto; opacity: 0; }
+.pg-xcap:hover .pg-icon, .pg-xcap .pg-icon:focus-visible { opacity: 1; }
+@media (hover: none) { .pg-xcap .pg-icon { opacity: 0.8; } }
+.pg-steps { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 14px; }
+.pg-step { position: relative; z-index: 1; flex: none; }
+/* The line from each step to the next. */
+.pg-step + .pg-step::before { content: ''; position: absolute; right: 100%; top: 50%; width: 14px; height: 2px; margin-top: -1px; background: rgba(255, 255, 255, 0.14); }
+.pg-strip .pg-step-btn {
+  position: relative; min-width: 44px; min-height: 30px; padding: 0 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); border-radius: var(--tile-radius);
+  color: var(--page-muted); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+@media (hover: hover) { .pg-strip .pg-step:not(.running) .pg-step-btn:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-step.head .pg-step-btn { color: var(--page-text); }
+.pg-step.running .pg-step-btn { box-shadow: none; color: var(--page-text); }
+.pg-step.pick .pg-step-btn { color: var(--accent); }
+.pg-step.try .pg-step-btn { color: var(--amber); }
+.pg-step.main .pg-step-btn { font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
+.pg-step.building .pg-step-btn { cursor: default; box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.5); color: var(--accent); animation: pg-built-pulse 1.6s ease-in-out infinite; }
+.pg-step-star { position: absolute; top: -6px; right: -6px; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; background: #2a2c31; color: var(--page-text); }
+.pg-step-star svg { width: 10px; height: 10px; fill: currentColor; stroke: none; }
+.pg-xmain .pg-xname { font-weight: 400; }
+.pg-xempty { align-self: center; padding: 0 12px; max-width: 420px; color: var(--page-muted); font-size: 12px; white-space: normal; }
+.pg-strip .pg-link { min-height: 22px; padding: 0 6px; font-size: 12px; background: none; box-shadow: none; color: var(--accent); }
+
+/* At the right: Starred only, and the trial's Back and Use this version, or the pick. */
+.pg-strip-end { flex: none; display: flex; align-items: center; gap: 8px; padding-right: 2px; }
+.pg-strip .pg-filter { width: 32px; padding: 0; display: grid; place-items: center; background: none; box-shadow: none; color: var(--page-muted); }
+@media (hover: hover) { .pg-strip .pg-filter:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-strip .pg-filter.on { color: var(--accent); background: rgba(37, 195, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
+.pg-filter.on .pg-star-icon { fill: currentColor; }
+.pg-strip .pg-local-btn { min-height: 28px; font-size: 12px; color: var(--amber); background: rgba(240, 180, 76, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 180, 76, 0.35); }
+.pg-actions { display: flex; align-items: center; gap: 8px; padding: 4px; background: var(--well); border-radius: var(--well-radius); }
+.pg-actions.enter { animation: pg-rise 560ms var(--spring) both; }
+.pg-trying { padding: 0 6px 0 8px; font-size: 12px; color: var(--page-muted); white-space: nowrap; }
+.pg-trying b { color: var(--amber); font-weight: 600; }
+.pg-strip .pg-use { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.5); }
+@media (hover: hover) { .pg-strip .pg-use:not(:disabled):hover { filter: brightness(0.92); } }
+
+/* The screens: a card under the screen's button, with every screen, what's
+   ready for main and what's starred. */
+/* .pg-popover.pg-screens, so the popover's own width and padding don't win. */
+.pg-popover.pg-screens { width: 400px; max-width: calc(100vw - 16px); padding: 6px 0 10px; overflow-x: hidden; overflow-y: auto; }
+.pg-screens h4 { margin: 0; padding: 12px 14px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--page-muted); }
+.pg-screens .pg-folders { margin: 0 6px; }
+.pg-sub { margin: 6px 14px 0; color: var(--page-muted); font-size: 12px; }
+.pg-dotmark { flex: none; width: 8px; height: 8px; margin: 0 5px; border-radius: 4px; background: var(--page-muted); }
+.pg-dotmark.pick { background: var(--accent); box-shadow: 0 0 0 4px rgba(37, 195, 255, 0.15); }
+.pg-folder.here { background: var(--hover-fill); }
+
+/* Folders, one per screen, in a well; the row under the pointer lifts. The
+   column can shrink, so a long name ends in an ellipsis instead of widening it. */
+.pg-folders { list-style: none; margin: 0 10px; padding: 4px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; background: var(--well); border-radius: var(--well-radius); }
+.pg-popover .pg-folder {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+  background: none; box-shadow: none; border-radius: var(--tile-radius); padding: 8px 10px; min-height: 0;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+@media (hover: hover) { .pg-popover .pg-folder:hover { filter: none; background: var(--hover-fill); } }
+.pg-folder-icon { width: 18px; height: 15px; flex: none; fill: var(--accent); opacity: 0.85; transition: transform 0.45s var(--spring); }
+@media (hover: hover) { .pg-folder:hover .pg-folder-icon { transform: scale(1.12); } }
+.pg-folder.empty .pg-folder-icon, .pg-screen-btn .pg-folder-icon { fill: none; stroke: var(--page-muted); stroke-width: 1.2; opacity: 1; }
+.pg-fname { flex: 1; min-width: 0; }
+.pg-fname b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-fname small { color: var(--page-muted); font-size: 12px; }
+.pg-folder.empty .pg-fname b { color: var(--page-muted); }
+.pg-readies .pg-fname small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-chevron { color: var(--page-muted); font-size: 18px; line-height: 1; transition: transform 0.45s var(--spring); }
+@media (hover: hover) { .pg-folder:hover .pg-chevron { transform: translateX(3px); } }
+
+/* The preview under a step: the version's picture and what it is, with its
+   star and bin. It stays while the pointer is on it. */
 .pg-peek {
-  position: fixed; z-index: 40; width: 340px; max-width: calc(100vw - 360px); pointer-events: none;
+  position: fixed; z-index: 40; width: 340px; max-width: calc(100vw - 16px);
   border-radius: var(--panel-radius); background: var(--frame); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge);
   -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
   overflow: hidden; animation: pg-peek 260ms var(--spring) both;
 }
-@keyframes pg-peek { from { opacity: 0; transform: translateX(-6px) scale(0.98); } }
+@keyframes pg-peek { from { opacity: 0; transform: translateY(-6px) scale(0.98); } }
 .pg-peek-shot { background: #000; display: grid; place-items: center; min-height: 72px; }
 .pg-peek-shot img { display: block; width: 100%; height: auto; }
 .pg-peek-shot p { margin: 0; padding: 18px 16px; color: var(--page-muted); font-size: 12px; text-align: center; }
@@ -349,36 +325,230 @@ body {
 .pg-peek-text b { font-size: 13px; font-weight: 600; }
 .pg-peek-text small { color: var(--page-muted); font-size: 11px; }
 .pg-peek-text p { margin: 4px 0 0; font-size: 12px; color: var(--page-text); opacity: 0.85; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
-@media (prefers-reduced-motion: reduce) { .pg-peek, .pg-iters.enter { animation: none; } }
-.pg-group > .pg-merge { margin: 0 0 10px; border-radius: var(--well-radius); background: var(--well); }
+.pg-peek-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 24px; }
+.pg-peek-foot .pg-tools { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { .pg-peek, .pg-track.enter .pg-xgroups, .pg-reader.enter { animation: none; } }
 
-/* The little graph by each pick in Ready for main: main's line, and the pick's
-   dashed line into it. */
-.pg-ready-graph path { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; stroke-linecap: round; }
-.pg-ready-graph path.main { stroke: rgba(201, 204, 210, 0.5); }
-.pg-ready-graph path.pick { stroke: var(--accent); stroke-dasharray: 2 4; }
-.pg-ready-graph circle { fill: var(--page-muted); stroke: #1d1e23; stroke-width: 3; paint-order: stroke; }
-.pg-ready-graph circle.pick { fill: var(--accent); }
-.pg-ready-graph circle.incoming { fill: #1d1e23; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 2.5 2.5; paint-order: normal; }
-.pg-merge { position: relative; z-index: 1; padding: 9px 10px 10px var(--gutter, 14px); display: grid; gap: 2px; font-size: 13px; }
-.pg-merge b { font-weight: 600; color: var(--accent); }
-.pg-merge.trying b { color: var(--amber); }
-.pg-merge small { color: var(--page-muted); font-size: 12px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.pg-merge .pg-changes { color: var(--page-text); opacity: 0.8; }
-.pg-panel .pg-ready { overflow: hidden; width: 100%; text-align: left; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0; min-height: 46px; background: none; box-shadow: none; }
-@media (hover: hover) { .pg-panel .pg-ready:hover { filter: none; background: var(--hover-fill); } }
-.pg-ready-graph { width: 30px; height: 46px; flex: none; overflow: visible; }
-.pg-readies { gap: 0; grid-template-columns: minmax(0, 1fr); }
-.pg-readies .pg-fname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-ready-head { display: flex; align-items: center; gap: 6px; padding-right: 10px; font-size: 13px; }
-.pg-ready-head .pg-ready-graph { height: 40px; }
-.pg-ready-head span { display: grid; min-width: 0; padding: 6px 0; }
-.pg-ready-head b { color: var(--accent); font-weight: 600; }
-.pg-ready-head small { color: var(--page-muted); font-size: 12px; }
-.pg-readies .pg-fname small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-empty { padding: 12px 18px 0; color: var(--page-muted); margin: 0; }
-.pg-foot { padding: 12px 18px 16px; flex: none; box-shadow: inset 0 1px 0 var(--frame-edge); }
-.pg-foot p { margin: 0; color: var(--page-muted); font-size: 12px; }
+/* ---- Files: the panel at the left (files.js), after VS Code's explorer ---- */
+.pg-files .pg-body { height: 100%; }
+.pg-panel .pg-head .pg-locate { width: 28px; min-height: 28px; padding: 0; display: grid; place-items: center; color: var(--page-muted); background: none; box-shadow: none; }
+@media (hover: hover) { .pg-panel .pg-head .pg-locate:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-panel .pg-locate svg { display: block; width: 15px; height: 15px; }
+.f-root { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 14px 8px 18px; font-size: 11px; color: var(--page-muted); flex: none; }
+.f-root .f-name { font-weight: 700; color: var(--page-text); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; max-width: 60%; }
+.f-root .f-branch { font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.pg-panel .f-changes { flex: none; margin-left: auto; min-height: 22px; padding: 0 8px; font-size: 11px; color: var(--amber); background: rgba(240, 180, 76, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 180, 76, 0.3); }
+/* Which files: a switch in a well, a raised tile springing under the one on. */
+.pg-seg { position: relative; display: flex; gap: 2px; margin: 0 10px 8px; padding: 3px; flex: none; background: var(--well); border-radius: var(--well-radius); }
+.pg-seg-glider { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: var(--tile-radius); background: var(--tile); box-shadow: var(--tile-rim); transition: transform 480ms var(--spring), width 480ms var(--spring), opacity 0.2s ease; pointer-events: none; }
+.pg-panel .pg-seg button { position: relative; z-index: 1; flex: 1; min-height: 28px; padding: 0 6px; font-size: 12.5px; background: none; box-shadow: none; color: var(--page-muted); }
+.pg-panel .pg-seg button.on { color: var(--page-text); font-weight: 500; }
+.pg-panel .pg-seg button:active { transform: none; }
+.pg-seg.finding .pg-seg-glider { opacity: 0.35; }
+.f-tools { display: flex; gap: 4px; align-items: center; padding: 0 10px 6px; flex: none; }
+.f-tools input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; color: var(--page-text); padding: 6px 10px; border: 0; border-radius: var(--tile-radius); background: var(--well); box-shadow: inset 0 0 0 1px var(--frame-edge); }
+.f-tools input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+.f-summary { padding: 0 18px 6px; font-size: 11.5px; color: var(--page-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+.f-summary[hidden] { display: none; }
+.f-tree { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 14px; --guide: rgba(255, 255, 255, 0.05); }
+.f-tree:hover { --guide: rgba(255, 255, 255, 0.1); }
+.frow { position: relative; display: flex; align-items: center; height: 24px; padding: 0 8px 0 4px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--page-text); white-space: nowrap; transition: background-color 0.2s ease; }
+@media (hover: hover) { .frow:hover { background: var(--hover-fill); } }
+.frow.sel { background: rgba(37, 195, 255, 0.13); color: #f4f4f5; }
+.frow:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
+.frow .indent { flex: none; align-self: stretch; background-image: repeating-linear-gradient(90deg, transparent 0 7px, var(--guide) 7px 8px, transparent 8px 12px); }
+.frow .chev { flex: none; width: 16px; height: 16px; display: grid; place-items: center; color: var(--page-muted); }
+.frow .chev svg { width: 12px; height: 12px; transition: transform 0.3s var(--spring); }
+.frow.open .chev svg { transform: rotate(90deg); }
+.ficon { flex: none; width: 16px; height: 16px; margin: 0 6px 0 2px; display: grid; place-items: center; color: var(--page-muted); }
+.ficon svg { width: 15px; height: 15px; }
+.ficon.glyph { font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.04em; }
+.ficon.folder { color: #7d838e; }
+.t-blue { color: #6cb4ee; } .t-amber { color: var(--amber); } .t-yellow { color: #e5cd52; } .t-teal { color: #3fc1c9; }
+.t-orange { color: #e8834e; } .t-purple { color: #b99be0; } .t-red { color: #ff8a8a; } .t-green { color: #6fd08c; }
+.t-accent { color: var(--accent); } .t-muted { color: var(--page-muted); }
+.frow .name { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.frow .desc { min-width: 0; flex: 1 1 0; margin-left: 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--page-muted); }
+.frow .mk { flex: none; margin-left: auto; padding-left: 8px; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.frow.m-amber .name, .frow.m-amber .mk { color: var(--amber); }
+.frow.m-green .name, .frow.m-green .mk { color: #6fd08c; }
+.frow.m-red .name, .frow.m-red .mk { color: #ff8a8a; }
+.frow.ignored .name, .frow.ignored .ficon, .frow.ignored .desc { opacity: 0.45; }
+.frow mark { background: rgba(37, 195, 255, 0.22); color: #f4f4f5; border-radius: 2px; }
+.frow.note { height: auto; min-height: 24px; padding-top: 4px; padding-bottom: 4px; white-space: normal; font-size: 12px; color: var(--page-muted); cursor: default; }
+.frow.note:hover { background: none; }
+/* A file that has just changed, and the folders above it, glow for a moment. */
+.frow.fresh { background: rgba(37, 195, 255, 0.1); }
+.frow.fresh::before { content: ''; position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px; border-radius: 2px; background: var(--accent); animation: pg-built-pulse 1.2s ease-in-out infinite; }
+.pg-files .pg-rail-dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(37, 195, 255, 0.15); animation: pg-breathe 1.6s ease-in-out infinite; }
+
+/* ---- Library: the second pane of the panel at the left (library.js) ---- */
+/* The two panes share the panel; the tabs in their heads switch them. */
+.pg-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pg-pane[hidden] { display: none; }
+.pg-ptabs { display: flex; gap: 2px; margin: -4px auto -4px -8px; }
+.pg-panel .pg-head .pg-ptabs button { min-height: 28px; padding: 0 8px; font-size: 15px; font-weight: 600; letter-spacing: 0.01em; background: none; box-shadow: none; color: var(--page-muted); }
+.pg-panel .pg-head .pg-ptabs button.on { color: var(--page-text); }
+@media (hover: hover) { .pg-panel .pg-head .pg-ptabs button:not(.on):hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-panel .pg-locate.spin svg { animation: pg-spin 0.9s linear infinite; }
+@keyframes pg-spin { to { transform: rotate(360deg); } }
+
+/* The list: a well per group, as the screens card has, a row per component. */
+.l-list { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 14px; }
+.l-list h4 { margin: 0; padding: 12px 10px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--page-muted); }
+.l-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 4px; background: var(--well); border-radius: var(--well-radius); }
+.pg-panel .l-row { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; min-height: 0; padding: 7px 10px; font-size: 13px; background: none; box-shadow: none; border-radius: var(--tile-radius); }
+@media (hover: hover) { .pg-panel .l-row:hover { filter: none; background: var(--hover-fill); } }
+.pg-panel .l-row.sel { background: rgba(37, 195, 255, 0.13); }
+.l-name { flex: 1; min-width: 0; }
+.l-name b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-name small { display: block; color: var(--page-muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-dot { flex: none; width: 8px; height: 8px; border-radius: 4px; background: var(--page-muted); }
+.l-dot.s-approved { background: #6fd08c; }
+.l-dot.s-pending { background: var(--amber); }
+.l-dot.s-draft { background: var(--accent); }
+.l-dot.none { background: none; box-shadow: inset 0 0 0 1px var(--page-muted); }
+.l-dot.s-proposed { background: none; box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* A version's library check, in its card in the strip. */
+.pg-peek-check { display: grid; gap: 2px; margin-top: 6px; font-size: 11.5px; }
+.pg-peek-check small { color: var(--page-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-check.ok { color: #6fd08c; }
+.pg-check.out { color: var(--amber); }
+.pg-check.wait { color: var(--page-muted); }
+.l-flag { flex: none; padding: 1px 7px; border-radius: 10px; font-size: 11px; white-space: nowrap; background: var(--hover-fill); color: var(--page-muted); }
+.l-flag.amber { color: var(--amber); background: rgba(240, 180, 76, 0.1); }
+/* Each row's picture: the component as the app draws it, fitted in a small
+   dark tile, with its status as a dot in the corner. */
+.l-thumb { position: relative; flex: none; width: 64px; height: 46px; display: grid; place-items: center; overflow: hidden; border-radius: 6px; background: #0b0c0e; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.l-thumb img { display: block; max-width: calc(100% - 6px); max-height: calc(100% - 6px); object-fit: contain; }
+.l-thumb .l-dot { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; box-shadow: 0 0 0 2px #0b0c0e; }
+.l-pics { display: flex; align-items: center; gap: 8px; padding: 0 18px 8px; font-size: 11.5px; color: var(--page-muted); flex: none; }
+.l-pics[hidden] { display: none; }
+.pg-panel .l-pics .l-go { min-height: 0; padding: 0; background: none; box-shadow: none; color: var(--accent); font-size: 11.5px; }
+@media (hover: hover) { .pg-panel .l-pics .l-go:hover { filter: none; text-decoration: underline; } }
+/* The page's picture, large, on the app's own dark. */
+.l-hero { margin: 16px 28px 4px; max-width: 804px; }
+.l-hero-img { display: grid; place-items: center; min-height: 120px; max-height: 260px; padding: 16px; border-radius: var(--well-radius); background: #0b0c0e; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); overflow: hidden; }
+.l-hero-img img { display: block; max-width: 100%; max-height: 228px; object-fit: contain; }
+.l-hero.empty .l-hero-img span { color: var(--page-muted); font-size: 12.5px; }
+.l-hero figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 11.5px; color: var(--page-muted); }
+.pg-reader .l-hero .l-go { font-size: 11.5px; }
+.l-kind { flex: none; font: 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--page-muted); }
+.l-swatch { flex: none; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
+.l-prims { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0 10px; font-size: 12px; color: var(--page-text); }
+.l-prims small { color: var(--page-muted); }
+.l-note { margin: 8px 10px; font-size: 12.5px; color: var(--page-muted); }
+
+/* A component's page, where Files' reader opens. */
+.l-body { padding: 4px 28px 40px; max-width: 860px; font-size: 13.5px; line-height: 1.55; color: var(--page-text); }
+.l-body h3 { margin: 20px 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--page-muted); }
+.l-body p { margin: 6px 0; }
+.l-body ul { margin: 6px 0; padding-left: 20px; }
+.l-body li { margin: 3px 0; }
+.l-body code { background: var(--well); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+.l-body small { color: var(--page-muted); font-size: 11.5px; }
+.l-not { color: var(--page-muted); }
+.l-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.l-table td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--page-line); vertical-align: top; }
+.l-table td:first-child { width: 160px; color: var(--page-muted); }
+.l-table tr:last-child td { border-bottom: 0; }
+.l-look { margin-top: 2px; color: var(--page-muted); font-size: 11.5px; }
+.l-diff { margin-top: 2px; color: var(--amber); font-size: 11.5px; }
+.pg-reader .l-go, .pg-reader .l-file { min-height: 0; padding: 0; background: none; box-shadow: none; color: var(--accent); font-size: 12.5px; text-align: left; }
+.pg-reader .l-file { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+@media (hover: hover) { .pg-reader .l-go:hover, .pg-reader .l-file:hover { filter: none; text-decoration: underline; } }
+.l-page .r-head .l-dot { margin-right: 2px; }
+.r-chip.s-approved { color: #6fd08c; }
+.r-chip.s-pending { color: var(--amber); }
+.r-chip.s-draft { color: var(--accent); }
+
+/* Specimens: the component as the app sets it up, side by side. */
+.l-specs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 8px; }
+.l-spec { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.l-spec-img { display: grid; place-items: center; height: 150px; padding: 10px; border-radius: 10px; background: #0b0c0e; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); overflow: hidden; transition: box-shadow 0.2s ease; }
+.l-spec-img img { display: block; max-width: 100%; max-height: 130px; object-fit: contain; }
+.l-spec-img span { color: var(--page-muted); font-size: 11.5px; text-align: center; }
+.l-spec-img .l-wait { animation: pg-built-pulse 1.6s ease-in-out infinite; }
+.l-spec.wide { grid-column: 1 / -1; }
+.l-spec.wide .l-spec-img { height: auto; min-height: 64px; }
+.l-spec.wide .l-spec-img img { max-height: 110px; }
+.l-spec.go { cursor: pointer; }
+@media (hover: hover) { .l-spec.go:hover .l-spec-img { box-shadow: inset 0 0 0 1px var(--accent); } }
+.l-spec figcaption { display: grid; gap: 1px; min-width: 0; }
+.l-spec figcaption b { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-spec figcaption small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The ring the Library puts round a component in the app, for a moment. */
+.pg-ring { position: fixed; z-index: 1002; pointer-events: none; border-radius: 6px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 7px rgba(37, 195, 255, 0.22); animation: pg-ring 2.6s ease both; }
+@keyframes pg-ring { 0% { opacity: 0; transform: scale(1.06); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pg-ring { animation: none; } }
+
+/* The reader: a file between the two panels, over the canvas, as Studio's
+   reader sits. Markdown reads as a document at a comfortable measure; code as
+   numbered lines, prose wrapped. */
+.pg-reader {
+  position: absolute; z-index: 7; top: 8px; bottom: 8px; left: 336px; right: 404px;
+  display: flex; flex-direction: column; min-width: 280px; overflow: hidden; outline: none;
+  border-radius: var(--panel-radius); background: var(--frame); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+}
+.pg-reader[hidden] { display: none; }
+.pg-reader.enter { animation: pg-reader 420ms var(--spring) both; }
+@keyframes pg-reader { from { opacity: 0; transform: translateX(-12px) scale(0.99); } }
+.workspace:has(> .pg-files.min) .pg-reader { left: 60px; }
+.workspace:has(> .pg-claude.min) .pg-reader { right: 68px; }
+.pg-reader button, .pg-reader a { font: inherit; font-size: 12px; color: var(--page-text); background: var(--tile); border: 0; border-radius: var(--tile-radius); box-shadow: var(--tile-rim); padding: 0 10px; min-height: 28px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; flex: none; }
+.pg-reader a svg { width: 13px; height: 13px; }
+@media (hover: hover) { .pg-reader button:hover, .pg-reader a:hover { filter: brightness(1.12); } }
+.pg-reader .pg-min { background: none; box-shadow: none; justify-content: center; width: 28px; padding: 0; font-size: 18px; }
+.r-head { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 12px 12px 8px 16px; flex: none; }
+.r-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.r-title b { flex: 0 1 auto; min-width: 0; font-size: 14px; font-weight: 600; color: var(--page-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-title small { flex: 0 1 auto; min-width: 0; font: 11.5px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--page-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 38px; padding: 0 16px 8px; flex: none; font-size: 11.5px; color: var(--page-muted); border-bottom: 1px solid var(--page-line); }
+.r-meta .grow { flex: 1; }
+.r-chip { padding: 2px 8px; border-radius: 999px; background: var(--well); color: var(--page-muted); font-size: 11px; }
+.r-chip.m-amber { color: var(--amber); }
+.r-chip.m-green { color: #6fd08c; }
+.r-chip.m-red { color: #ff8a8a; }
+.r-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--tile-radius); background: var(--well); }
+.pg-reader .r-seg button { min-height: 24px; padding: 0 10px; font-size: 11.5px; background: none; box-shadow: none; color: var(--page-muted); }
+.pg-reader .r-seg button.on { background: var(--tile); box-shadow: var(--tile-rim); color: var(--page-text); }
+.r-body { flex: 1; min-height: 0; overflow: auto; }
+.r-fm { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 14px; margin: 18px 28px 0; padding: 10px 14px; max-width: 804px; border-radius: var(--well-radius); background: var(--well); font-size: 12.5px; color: var(--page-text); }
+.r-fm .k { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--page-muted); }
+.r-md { padding: 14px 28px 40px; max-width: 860px; font-size: 13.5px; line-height: 1.55; color: var(--page-text); }
+.r-md h1 { font-size: 20px; margin: 18px 0 8px; }
+.r-md h2 { font-size: 16px; margin: 18px 0 6px; }
+.r-md h3 { font-size: 14px; margin: 14px 0 4px; }
+.r-md h4 { font-size: 13.5px; margin: 12px 0 4px; }
+.r-md p, .r-md ul, .r-md ol { margin: 8px 0; }
+.r-md ul, .r-md ol { padding-left: 22px; }
+.r-md li { margin: 3px 0; }
+.r-md strong { color: #e6e8ec; }
+.r-md table { border-collapse: collapse; font-size: 12.5px; margin: 10px 0; display: block; overflow-x: auto; }
+.r-md th, .r-md td { border-bottom: 1px solid var(--page-line); padding: 5px 9px; text-align: left; vertical-align: top; }
+.r-md th { color: var(--page-muted); font-weight: 600; }
+.r-md code { background: var(--well); padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+.r-md pre { background: var(--well); padding: 10px; border-radius: 8px; overflow: auto; }
+.r-md pre code { background: none; padding: 0; }
+.r-md a, .r-md .link[data-href] { color: var(--accent); cursor: pointer; text-decoration: none; }
+.r-md a:hover, .r-md .link[data-href]:hover { text-decoration: underline; }
+.r-md .md-fig { display: block; margin: 10px 0 14px; }
+.r-md .md-fig img { display: block; max-width: 100%; max-height: 420px; border-radius: 10px; }
+.r-md .md-fig .md-cap { display: block; margin-top: 6px; font-size: 12.5px; }
+.r-md .md-fig .md-cap small { display: block; color: var(--page-muted); font-size: 11.5px; }
+.r-text { margin: 0; padding: 12px 0 28px; min-width: max-content; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--page-text); counter-reset: ln; tab-size: 2; }
+.r-text > span { display: grid; grid-template-columns: 6ch max-content; column-gap: 18px; padding-right: 24px; white-space: pre; }
+.r-text > span::before { counter-increment: ln; content: counter(ln); text-align: right; color: #4a4e57; user-select: none; }
+.r-text > span:hover { background: rgba(255, 255, 255, 0.025); }
+.r-text.wrap { min-width: 0; }
+.r-text.wrap > span { grid-template-columns: 6ch minmax(0, 1fr); white-space: pre-wrap; overflow-wrap: anywhere; }
+.r-note { margin: 0; padding: 10px 28px 24px; font-size: 12px; color: var(--amber); }
+.r-empty { margin: 0; padding: 40px 28px; color: var(--page-muted); font-size: 13px; }
+.r-image { display: grid; place-items: center; padding: 24px; min-height: 100%; background: repeating-conic-gradient(rgba(255,255,255,0.04) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.r-image img { max-width: 100%; max-height: calc(100vh - 220px); box-shadow: 0 0 0 1px var(--page-line); }
+@media (max-width: 760px) { .pg-reader, .workspace:has(> .pg-files.min) .pg-reader, .workspace:has(> .pg-claude.min) .pg-reader { left: 8px; right: 8px; min-width: 0; z-index: 9; } }
 
 /* Claude: the chat, the panel's full height. New messages rise in. */
 /* Chats, after the Stepper's header: the open chats as equal segments in a
@@ -510,6 +680,36 @@ body.pg-alt, body.pg-alt *, body.pg-aiming, body.pg-aiming * { cursor: crosshair
    app, with a crosshair, and the widget under it is outlined with its type and
    file; a drag outlines an area. */
 body.pg-noting .pg-shield { display: block; cursor: crosshair; }
+/* Inspect (inspect.js): the shield takes the pointer; the component under it
+   is outlined, and a card beside it says what it is. */
+body.pg-inspecting .pg-shield { display: block; cursor: default; }
+.subbar .pg-inspect-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.pg-ibox { position: fixed; z-index: 900; pointer-events: none; border-radius: 3px; box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4px rgba(37, 195, 255, 0.18); transition: left 120ms ease, top 120ms ease, width 120ms ease, height 120ms ease; }
+.pg-ibox[hidden], .pg-icard[hidden] { display: none; }
+.pg-ibox.k-override, .pg-ibox.k-copy, .pg-ibox.k-look-alike { box-shadow: 0 0 0 1.5px var(--amber), 0 0 0 4px rgba(240, 180, 76, 0.18); }
+.pg-ibox.k-primitive, .pg-ibox.k-unknown { box-shadow: 0 0 0 1px var(--page-muted); }
+.pg-icard { position: fixed; z-index: 1001; width: 300px; padding: 10px 12px; pointer-events: none; display: grid; gap: 6px;
+  border-radius: 14px; background: var(--frame); color: var(--page-text); font-size: 12.5px;
+  box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight), var(--frame-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); }
+.pg-ihead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pg-iname { min-width: 0; }
+.pg-iname b { display: block; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-iname small { color: var(--page-muted); font-size: 11.5px; }
+.pg-istatus.s-approved { color: #6fd08c; }
+.pg-istatus.s-pending { color: var(--amber); }
+.pg-istatus.s-draft { color: var(--accent); }
+.pg-ifor { margin: 0; color: var(--page-text); opacity: 0.85; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.pg-irow { font-size: 11.5px; overflow-wrap: anywhere; }
+.pg-irow b { color: var(--accent); font-weight: 600; }
+.pg-irow.dim { color: var(--page-muted); }
+.pg-icard code { font-size: 11px; color: var(--page-text); }
+.pg-itokens, .pg-iraw { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--page-muted); }
+.pg-itokens span, .pg-iraw span { display: inline-flex; align-items: center; gap: 5px; }
+.pg-itokens i, .pg-iraw i { width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.pg-iraw { color: var(--amber); }
+.pg-ihint { color: var(--page-muted); font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .pg-ibox { transition: none; } }
 body.pg-noting .pg-tool[data-notes] { background: var(--accent); color: var(--accent-ink); }
 .pg-target { position: fixed; z-index: 900; pointer-events: none; border-radius: 3px;
   box-shadow: 0 0 0 1.5px var(--amber), inset 0 0 0 999px rgba(240, 180, 76, 0.08); transition: left 120ms var(--settle), top 120ms var(--settle), width 120ms var(--settle), height 120ms var(--settle); }
@@ -599,9 +799,9 @@ body.pg-noting .pg-tool[data-notes] { background: var(--accent); color: var(--ac
 .pg-ask.enter { animation: pg-rise 560ms var(--spring) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pg-panel, .pg-panel *, .subbar .sim input::after, .pg-pin, .pg-popover, .pg-target { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .pg-panel, .pg-panel *, .pg-strip, .pg-strip *, .subbar .sim input::after, .pg-pin, .pg-popover, .pg-target { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
-.bare .pg-panel, .bare .subbar { display: none; }
+.bare .pg-panel, .bare .subbar, .bare .pg-strip, .bare .pg-reader { display: none; }
 .bare .workspace { padding: 0; }
 
 /* ---- The canvas, with the app on it ---- */
@@ -703,10 +903,6 @@ body.pg-alt .pg-shield, body.pg-aiming .pg-shield, body.pg-space .pg-shield { di
 @media (prefers-reduced-motion: reduce) { .board.glide, .zoom { transition: none; } }
 
 
-/* Show the page on show: the crosshair beside Explorations' minimise button. */
-.pg-panel .pg-head .pg-locate { width: 28px; min-height: 28px; padding: 0; display: grid; place-items: center; color: var(--page-muted); }
-.pg-panel .pg-locate svg { display: block; }
-
 /* ---- Commit to main: the header's Commit button and its dialog (playground.js) ---- */
 /* The button sits at the top right of the header. Blue once a pick is ready for main, with how many. */
 .toolbar .pg-commit-btn { display: inline-flex; align-items: center; gap: 8px; margin-left: 4px; }
@@ -777,36 +973,19 @@ body.pg-alt .pg-shield, body.pg-aiming .pg-shield, body.pg-space .pg-shield { di
 .pg-cdone code { color: var(--accent); margin-right: 6px; }
 @media (prefers-reduced-motion: reduce) { .pg-modal[open], .pg-csteps li { animation: none; } }
 
-/* ---- Stars and deletes in Explorations (playground.js) ---- */
-/* A star and a bin beside each exploration's title and each version. They show
-   on hover or focus; a star that's on stays, filled. */
+/* ---- Stars and deletes (playground.js) ---- */
+/* A version's star and bin are in its preview; an exploration's bin is by its
+   name in the strip. A star that's on stays filled. */
 .pg-star-icon { flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.pg-panel .pg-icon { width: 24px; min-height: 24px; padding: 0; display: grid; place-items: center; background: none; box-shadow: none; color: var(--page-muted); border-radius: var(--tile-radius); }
-@media (hover: hover) { .pg-panel .pg-icon:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
-.pg-panel .pg-icon svg { display: block; }
-.pg-panel .pg-star.on { color: var(--page-text); }
+.pg-icon { width: 24px; min-height: 24px; padding: 0; display: grid; place-items: center; font: inherit; border: 0; cursor: pointer; background: none; box-shadow: none; color: var(--page-muted); border-radius: var(--tile-radius); transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease; }
+.pg-strip .pg-icon { min-height: 20px; padding: 0; background: none; box-shadow: none; color: var(--page-muted); }
+@media (hover: hover) { .pg-icon:hover, .pg-strip .pg-icon:hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+.pg-icon svg { display: block; }
+.pg-star.on { color: var(--page-text); }
 .pg-star.on .pg-star-icon { fill: currentColor; }
-@media (hover: hover) { .pg-panel .pg-bin:hover { color: #ff9b9b; } }
-/* The actions are always there, quiet until the pointer is on the tile; a star
-   that's on stays lit. */
-.pg-tools { display: flex; align-items: center; gap: 0; }
-.pg-tools .pg-icon { opacity: 0.5; transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease; }
-.pg-group h3:hover .pg-icon, .pg-version:hover .pg-icon, .pg-tools .pg-icon:focus-visible, .pg-tools .pg-star.on, .pg-tools .pg-more.on { opacity: 1; }
-@media (hover: none) { .pg-tools .pg-icon { opacity: 0.8; } }
-.pg-group h3 .pg-gtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-group h3 .pg-tools { margin: -4px -2px -4px auto; }
-.pg-group h3 + .pg-versions { margin-top: 8px; }
-.pg-version .pg-tools { flex: none; position: relative; z-index: 3; }
-.pg-more-icon { transition: transform 0.45s var(--spring); }
-.pg-more.on .pg-more-icon { transform: rotate(180deg); }
-.pg-about { animation: pg-pop 420ms var(--spring) both; }
-/* Starred only: the star by the crosshair, lit while it's on. */
-.pg-panel .pg-head .pg-filter.on { color: var(--accent); background: rgba(37, 195, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.35); }
-.pg-filter.on .pg-star-icon { fill: currentColor; }
+@media (hover: hover) { .pg-bin:hover, .pg-strip .pg-bin:hover { color: #ff9b9b; } }
+.pg-tools { display: flex; align-items: center; gap: 2px; }
 .pg-starred .pg-star-icon { width: 18px; height: 15px; fill: var(--page-text); stroke: none; }
-.pg-hidden { margin: 8px 8px 0; color: var(--page-muted); font-size: 12px; }
-.pg-list > .pg-pane > .pg-hidden, .pg-pane > .pg-hidden { margin: 12px 18px 0; }
-.pg-panel .pg-link { min-height: 22px; padding: 0 6px; font-size: 12px; background: none; box-shadow: none; color: var(--accent); }
 /* The question before a delete, and the toast's Undo. */
 .pg-ask-modal { width: min(440px, calc(100vw - 32px)); }
 .pg-modal .pg-danger { background: #d94a4a; color: #fff; font-weight: 600; }

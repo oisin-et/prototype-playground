@@ -69,7 +69,8 @@ let route = { screen: Object.keys(SCREENS)[0], params: {} };
 const versionOf = (pg) => (preview?.playground === pg.id ? preview.version : picks[pg.id]) || 'default';
 const running = () => playgrounds.map((pg) => [pg, versionOf(pg)]).filter(([, v]) => v !== 'default');
 const touches = (pg, v) => registry[`${pg.id}/${v}`] || [pg.screen];
-const onPlayground = (pg, screen) => screen === pg.start || screen === pg.screen || pg.versions.some((v) => v.id !== 'default' && touches(pg, v.id).includes(screen));
+// A component exploration's pg.on is every screen the component is on.
+const onPlayground = (pg, screen) => screen === pg.start || screen === pg.screen || !!pg.on?.includes(screen) || pg.versions.some((v) => v.id !== 'default' && touches(pg, v.id).includes(screen));
 // The app may name what's on show itself (`title` in its where message);
 // otherwise it's the screen's title and its parameters' values.
 const titleOf = (r) => {
@@ -357,7 +358,7 @@ addEventListener('message', (e) => {
   } else if (m.type === 'errors') {
     setStatus('error', 'A version stopped with an error');
     showErrors({ ok: false, message: 'A version stopped with an error, so the screen under it is shown instead.', errors: m.errors || [] });
-  } else if (m.type === 'captured' || m.type === 'inspected') {
+  } else if (m.type === 'captured' || m.type === 'inspected' || m.type === 'located' || m.type === 'pictured' || m.type === 'drawn') {
     pendingShots.get(m.id)?.(m);
   } else if (m.type === 'wheel') {
     // A pinch or ⌘-scroll over the app: x and y are in the app's pixels.
@@ -408,7 +409,7 @@ const between = () => {
   const sb = stage.getBoundingClientRect();
   let l = 0, r = sb.width;
   if (!matchMedia('(max-width: 760px)').matches) {
-    const files = document.getElementById('explorations')?.getBoundingClientRect();
+    const files = document.getElementById('files')?.getBoundingClientRect();
     const chat = document.getElementById('claude')?.getBoundingClientRect();
     if (files) l = Math.max(l, files.right - sb.left);
     if (chat) r = Math.min(r, chat.left - sb.left);
@@ -483,7 +484,7 @@ if (view.auto) centre(); else draw();
 const follow = new ResizeObserver(() => { if (view.auto) centre(); else draw(); });
 follow.observe(stage);
 const watchPanels = () => {
-  for (const id of ['explorations', 'claude']) { const el = document.getElementById(id); if (el) follow.observe(el); }
+  for (const id of ['files', 'claude']) { const el = document.getElementById(id); if (el) follow.observe(el); }
 };
 
 // Scrolling pans; pinch, or ⌘ or Ctrl with the wheel, zooms around the pointer.
@@ -492,10 +493,22 @@ const wheel = (dx, dy, zoom, cx, cy) => {
   if (zoom) zoomAt(Math.exp(-dy * 0.01), cx - sb.left, cy - sb.top);
   else { view.x -= dx; view.y -= dy; view.auto = false; draw(); }
 };
+// A pinch over the panels or the bars would zoom the page itself, pushing the
+// panels and the zoom pill off screen, and a pinch back out over the canvas
+// would zoom the canvas, not the page: no way back. So the page never zooms,
+// and if it already has, pinches go to the page until it's back at 100%.
+const pageZoomed = () => (window.visualViewport?.scale ?? 1) > 1.01;
 stage.addEventListener('wheel', (e) => {
+  if (e.ctrlKey && pageZoomed()) return;
   e.preventDefault();
   wheel(e.deltaX, e.deltaY, e.ctrlKey || e.metaKey, e.clientX, e.clientY);
 }, { passive: false });
+addEventListener('wheel', (e) => {
+  if (e.ctrlKey && !pageZoomed() && !stage.contains(e.target)) e.preventDefault();
+}, { passive: false });
+for (const type of ['gesturestart', 'gesturechange']) { // Safari's pinch
+  addEventListener(type, (e) => { if (!pageZoomed()) e.preventDefault(); });
+}
 
 // Dragging the canvas around the app pans it; with Space held, so does a drag
 // over the app (a shield covers it, as for a capture).
@@ -594,11 +607,11 @@ const capture = async (rect) => {
 // The app names the widget at a point (its type, the file and line that built
 // it, and its text), for the Claude panel's notes. Points and boxes go between
 // the page's pixels and the app's logical ones.
-const askInspect = (x, y) => new Promise((ok, fail) => {
+const askInspect = (x, y, library = false) => new Promise((ok, fail) => {
   const id = Math.random().toString(36).slice(2);
   const timer = setTimeout(() => { pendingShots.delete(id); fail(new Error('The app took too long to answer.')); }, 4000);
   pendingShots.set(id, (m) => { clearTimeout(timer); pendingShots.delete(id); ok(m); });
-  send({ type: 'inspect', id, x, y });
+  send({ type: 'inspect', id, x, y, library });
 });
 const toApp = (r) => {
   const fb = frame.getBoundingClientRect();
@@ -609,13 +622,80 @@ const toClient = ([x, y, w, h]) => {
   return { left: fb.left + x * viewScale, top: fb.top + y * viewScale, width: w * viewScale, height: h * viewScale,
     right: fb.left + (x + w) * viewScale, bottom: fb.top + (y + h) * viewScale };
 };
-const inspect = async (cx, cy) => {
+// With library (Inspect), also the components around the point, innermost
+// first, each with its box on the page (rect).
+const inspect = async (cx, cy, library = false) => {
   if (!booted) return null;
   const fb = frame.getBoundingClientRect();
-  const m = await askInspect((cx - fb.left) / viewScale, (cy - fb.top) / viewScale);
-  if (!m.box) return null;
+  const m = await askInspect((cx - fb.left) / viewScale, (cy - fb.top) / viewScale, library);
+  const chain = (m.chain || []).map((c) => ({ ...c, rect: toClient(c.box) }));
+  if (!m.box) return library ? { chain } : null;
   const area = m.box.map(Math.round);
-  return { area, rect: toClient(m.box), widget: m.widget, location: m.location, text: m.text || '' };
+  return { area, rect: toClient(m.box), widget: m.widget, location: m.location, text: m.text || '', chain };
+};
+
+// ---- Finding a component ------------------------------------------------------------
+// The Library's "show me": open the screen if it isn't on show, ask the app
+// where the nodes (their ids) or components (their names) are on it, and ring
+// each for a moment. Resolves to how many were found, or -1 when the app
+// didn't go to the screen; rejects when the app doesn't answer (a bridge
+// without locate).
+const askLocate = (nodes, components) => new Promise((ok, fail) => {
+  const id = Math.random().toString(36).slice(2);
+  const timer = setTimeout(() => { pendingShots.delete(id); fail(new Error('The app didn’t answer.')); }, 3000);
+  pendingShots.set(id, (m) => { clearTimeout(timer); pendingShots.delete(id); ok(m); });
+  send({ type: 'locate', id, nodes, components });
+});
+const reached = (screen) => new Promise((ok) => {
+  const t0 = performance.now();
+  const tick = () => (route.screen === screen ? requestAnimationFrame(() => requestAnimationFrame(() => ok(true)))
+    : performance.now() - t0 > 4000 ? ok(false) : setTimeout(tick, 60));
+  tick();
+});
+const ring = (rects) => {
+  for (const r of rects) {
+    const el = document.createElement('div');
+    el.className = 'pg-ring';
+    Object.assign(el.style, { left: `${r.left - 3}px`, top: `${r.top - 3}px`, width: `${r.width + 6}px`, height: `${r.height + 6}px` });
+    document.body.append(el);
+    setTimeout(() => el.remove(), 2600);
+  }
+};
+// Opens a screen and waits until it's drawn; false when the app didn't go there.
+const visit = async (screen) => {
+  if (!booted) return false;
+  if (route.screen === screen) return true;
+  send({ type: 'show', screen });
+  return reached(screen);
+};
+// Pictures of components on the screen on show, for the Library:
+// {key: png}, cut by the app's bridge from one drawing of the page.
+const picture = (items, size = 320) => new Promise((ok, fail) => {
+  if (!booted) { fail(new Error('The app hasn’t started yet.')); return; }
+  const id = Math.random().toString(36).slice(2);
+  const timer = setTimeout(() => { pendingShots.delete(id); fail(new Error('The app didn’t answer.')); }, 20000);
+  pendingShots.set(id, (m) => { clearTimeout(timer); pendingShots.delete(id); if (m.error) fail(new Error(m.error)); else ok(m.shots || {}); });
+  send({ type: 'picture', id, items, size });
+});
+// The Library's specimens, each drawn on its own by the app (its draw()):
+// {shots: {key: png}, failed: {key: why}}.
+const drawSpecimens = (specimens, scale = 1) => new Promise((ok, fail) => {
+  if (!booted) { fail(new Error('The app hasn’t started yet.')); return; }
+  const id = Math.random().toString(36).slice(2);
+  const timer = setTimeout(() => { pendingShots.delete(id); fail(new Error('The app didn’t answer.')); }, 30000);
+  pendingShots.set(id, (m) => { clearTimeout(timer); pendingShots.delete(id); if (m.error) fail(new Error(m.error)); else ok({ shots: m.shots || {}, failed: m.failed || {} }); });
+  send({ type: 'draw', id, specimens, scale });
+});
+const locate = async ({ screen, nodes = [], components = [] }) => {
+  if (!booted) throw new Error('The app hasn’t started yet.');
+  if (screen && route.screen !== screen) {
+    send({ type: 'show', screen });
+    if (!await reached(screen)) return -1;
+  }
+  const m = await askLocate(nodes, components);
+  const boxes = m.boxes || [];
+  ring(boxes.map(toClient));
+  return boxes.length;
 };
 
 // ---- The panels -------------------------------------------------------------------
@@ -721,7 +801,7 @@ const panel = mountPlayground({
   refresh,
   route: () => route,
   where,
-  screens: () => Object.entries(SCREENS).map(([id, s]) => ({ id, title: s.title })),
+  screens: () => Object.entries(SCREENS).map(([id, s]) => ({ id, title: s.title, file: s.file })),
   show(screen) { send({ type: 'show', screen }); },
   async useTeamPicks() {
     localPicks = null;
@@ -732,6 +812,10 @@ const panel = mountPlayground({
   },
   capture,
   inspect,
+  locate,
+  visit,
+  picture,
+  draw: drawSpecimens,
   toApp,
   toClient,
 });

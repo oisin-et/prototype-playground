@@ -204,7 +204,11 @@ def relocated(source, from_file, to_dir):
 
 def screen_meta(screen):
     """The screen's versions.json, started (with main) and added to index.json
-    the first time."""
+    the first time. A component exploration's (component_meta started it) is
+    found by its folder too."""
+    existing = DATA / screen / "versions.json"
+    if existing.is_file() and screen not in screens():
+        return existing, read_json(existing)
     if screen not in screens():
         sys.exit(f"No screen called {screen!r}. The screens are: {', '.join(screens())}")
     path = DATA / screen / "versions.json"
@@ -223,6 +227,70 @@ def screen_meta(screen):
             index["playgrounds"].append(screen)
             write_json(INDEX, index)
     return path, read_json(path)
+
+
+COMPONENT_PREFIX = "component-"
+
+
+def component_meta(cid):
+    """A component exploration's versions.json, in <data>/component-<id>/,
+    started (with main) and added to index.json the first time. <id> is a
+    component in the library (library.py): an entry's id, or the name of
+    one drawn without an entry yet."""
+    import library  # here only: it imports this module
+    lib = library.library()
+    item = next((x for x in lib["entries"] + lib["unlisted"] if x["id"] == cid), None)
+    if not item:
+        names = ", ".join(x["id"] for x in lib["entries"]) or "none"
+        sys.exit(f"No component {cid!r} in the library. Its entries are: {names}; "
+                 "python3 playground/library.py lists the rest.")
+    pg = COMPONENT_PREFIX + cid
+    path = DATA / pg / "versions.json"
+    if not path.exists():
+        known = [s for s in item["screens"] if s in screens()]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, {
+            "title": item["name"],
+            "component": cid,
+            "start": known[0] if known else next(iter(screens()), ""),
+            "versions": [{
+                "id": "default", "name": "As it is", "date": time.strftime("%Y-%m-%d"),
+                "note": f"{item['name']} as the app draws it.",
+            }],
+        })
+        index = read_json(INDEX, {"playgrounds": []})
+        if pg not in index.setdefault("playgrounds", []):
+            index["playgrounds"].append(pg)
+            write_json(INDEX, index)
+    return pg, path, read_json(path), item
+
+
+def version_from_component(pg, new, name, meta, dest):
+    """A component exploration's first version from main: a builder for each
+    name that draws it, each leaving it as it is until it's changed."""
+    import library
+    item = next((x for x in (lambda l: l["entries"] + l["unlisted"])(library.library()) if x["id"] == meta["component"]), None)
+    if not item:
+        sys.exit(f"{meta['component']!r} isn't in the library any more.")
+    template = HERE / "templates" / ("component" + Path(VERSION_FILE).suffix)
+    if ADAPTER == "flutter" or not template.is_file():
+        sys.exit(f"No {rel(template)}: component explorations need the web adapter's template (run the skill's setup --update).")
+    parts = {m["part"] for m in item["main"]}
+    # The names this app draws it by: its entry's web implementation if it
+    # has one (not another platform's widget), else every name it has.
+    impl = (item.get("entry") or {}).get("implementations") or {}
+    web = [i.get("renderer") or i.get("part") for k, i in impl.items() if k == "web" and isinstance(i, dict)]
+    names = [n for n in web if n] or item["names"]
+    line = lambda n: f"    {json.dumps(n)}: (ctx) => ctx.below,\n"
+    # Its look-alikes, ready to be drawn by it instead (merging them is what
+    # a component exploration is often for).
+    looks = "".join(f"    // {json.dumps(l['name'])}: (ctx) => ..., (a look-alike, {l['uses']} uses)\n" for l in item.get("lookalikes", []))
+    dest.mkdir()
+    (dest / VERSION_FILE).write_text(template.read_text().format(
+        title=meta["title"], name=name or new, id=new, pg=pg,
+        components="".join(line(n) for n in names if n not in parts) + looks,
+        parts="".join(line(n) for n in names if n in parts),
+    ))
 
 
 def find_version(meta, screen, which):
@@ -287,7 +355,9 @@ def make_version(screen, source, new, name, meta_path, meta):
     dest = here / new
     if dest.exists():
         sys.exit(f"{rel(dest)} exists already.")
-    if source == "default":
+    if source == "default" and meta.get("component"):
+        version_from_component(screen, new, name, meta, dest)
+    elif source == "default":
         version_from_default(screen, new, name, meta, dest)
     else:
         shutil.copytree(here / source, dest, symlinks=True)  # a link stays a link: same depth, so it still points right

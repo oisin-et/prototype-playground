@@ -1,8 +1,10 @@
 # Prototype playground
 
-A Claude Code skill that puts a playground around your own app. The app runs in the browser, on a canvas between two panels:
+A Claude Code skill that puts a playground around your own app. The app runs in the browser, on a canvas under a strip of its versions and between two panels:
 
-- **Explorations**, on the left, holds versions of each screen. Click one to try it live: the app keeps its state. **Use this version** picks it.
+- **Explorations**, the strip across the top, lays out the versions of the screen on show step by step: each exploration (4.0) and its iterations (4.1, 4.2 …) side by side. Hover a step to see a snapshot of it, and click it to try it live: the app keeps its state. **Use this version** picks it.
+- **Files**, on the left, is your project's folder as VS Code shows it, live: what's behind the screen on show, what's changed, or everything, with a glow on whatever has just changed, so you can watch Claude work.
+- **Library**, beside Files, is your app's component library: each component with its picture, side-by-side specimens and everywhere it's used, including copies and look-alikes that have drifted. **Inspect** (I) names the component under the pointer. Claude designs from the library, proposes a component when nothing fits, and each version is checked against it.
 - **Claude**, on the right, is a chat that makes new versions while you watch. Up to four chats can run at once, and you can capture parts of the app and pin notes to them.
 
 The skill comes with no project. Open your project, ask for a playground, and the skill sets one up around it. It works with **Flutter** apps and **web** apps (React, Vite, Next, Vue, Svelte or plain HTML).

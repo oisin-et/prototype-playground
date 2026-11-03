@@ -34,7 +34,7 @@ from pathlib import Path
 SKILL = Path(__file__).resolve().parent.parent
 KIT = SKILL / "kit"
 ADAPTERS = SKILL / "adapters"
-KIT_FILES = ["serve.py", "pglib.py", "new.py", "iterate.py", "migrate.py", "reload.py", "index.html", "README.md", "src"]
+KIT_FILES = ["serve.py", "pglib.py", "new.py", "iterate.py", "migrate.py", "reload.py", "library.py", "index.html", "README.md", "src"]
 OLD_KIT_FILES = ["duplicate.py"]  # gone from the kit: --update takes them out
 DEFAULT_DATA = {"flutter": "lib/playground", "web": "src/playground"}
 LAUNCHER = """#!/bin/zsh

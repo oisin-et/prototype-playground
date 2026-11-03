@@ -62,3 +62,9 @@ Vue, Svelte and plain JS work the same way. Call `attach` once, call `page(id, o
 ## Naming parts for notes
 
 Notes and captures name the element under them by its `data-pg` attribute if it has one (`<section data-pg="Plan card">`), otherwise by tag, id and classes. Put `data-pg` on the parts people will comment on. Add `data-source="src/pages/Settings.jsx:42"` too if you want Claude to see the line.
+
+The Library rings a component in the app by the same attributes: `data-component="Fader"` on an element says which of the library's components it draws (the name in its entry's `implementations`), and `data-pg` gives a shared part's node id. For component explorations, look a component up through the bridge where the app picks what draws it: `component(name, renderer)` returns the renderer with every running version that changes it laid over it, and `part(name, tree)` does the same for a shared part. Both are cheap to call for every node (they're kept until the versions change), and return what they're given outside the playground.
+
+For the Library's side-by-side specimens, give `attach` a `draw(node, [w, h])` too: it draws one component on its own, as the app would (`node` is as your screens place it, its frame at 0, 0), and returns an element or HTML. The bridge draws each in a layer nobody sees, so your styles and tokens apply, pictures it and takes it away. Without it, a component's page has no specimens.
+
+The same attributes give each component its picture in the Library, and tell Inspect what's under the pointer (the tokens it lists are the `var(--…)` in the element's and its children's `style`, `fill` and `stroke`). Without them, **Show on screen** finds nothing and nothing is pictured.

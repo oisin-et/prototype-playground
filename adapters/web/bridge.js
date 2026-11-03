@@ -14,24 +14,34 @@
 //               {type: 'capture', id, rect, scale} draw part of the app
 //               {type: 'capture', id, selector, width} draw the element
 //               (else the whole app) width pixels wide: a version's picture
-//               {type: 'inspect', id, x, y}        the element at a point, for a note
-//   app → host  {type: 'hello', versions: {id: [screens]}, errors: [text]}
+//               {type: 'inspect', id, x, y, library?}   the element at a point, for a
+//               note; with library, the components around it too, for Inspect
+//               {type: 'locate', id, nodes, components}   where these are, for the Library
+//               {type: 'picture', id, items: [{key, nodes, components}], size}
+//               a picture of the first of each in view, for the Library
+//               {type: 'draw', id, specimens: [{key, node, size}], scale}
+//               each drawn on its own by the app's draw(), for the Library
+//   app → host  {type: 'hello', versions: {id: [screens]}, components: {id: [names]}, errors: [text]}
 //               the versions in the registry, sent when the app starts, and
 //               any that didn't load
 //               {type: 'errors', errors: [text]}   a version's builder failed
 //               {type: 'where', screen, params, title?}   the screen on show
 //               {type: 'captured', id, png, note}  a capture's PNG (base64)
-//               {type: 'inspected', id, box, widget, location, text}
+//               {type: 'inspected', id, box, widget, location, text, chain?}
+//               {type: 'located', id, boxes: [[x, y, w, h]]}
+//               {type: 'pictured', id, shots: {key: png}}   (base64)
+//               {type: 'drawn', id, shots: {key: png}, failed: {key: text}}
 //
 // It also passes on what the playground needs while the app has the focus:
-// ⌥ (to capture), P (the panels), N (notes), Esc, Space (to pan the canvas),
+// ⌥ (to capture), P (the panels), N (notes), I (Inspect), Esc, Space (to pan the canvas),
 // the canvas's zoom (⌘+, ⌘−, ⌘0, ⇧1, pinch and ⌘-scroll), and pastes and ⌘V
 // outside the app's own text fields, which go to the Claude panel's chat box.
 //
 // Where a note or capture says what's under it, the element is named from its
 // data-pg attribute if it has one (put data-pg="Card" on the parts worth
 // naming), else from its tag, id and classes; data-source="src/x.jsx:12" adds
-// where it was built.
+// where it was built. For the Library, data-component="Fader" says which of
+// the library's components an element draws, and data-pg its node's id.
 
 import * as built from './registry.js';
 
@@ -47,20 +57,24 @@ export const embedded = origin !== null;
 let layers = [];
 let stamp = 0; // changes whenever the layers do, for useSyncExternalStore and the like
 const listeners = new Set();
-let hooks = { show: null, where: null };
+let hooks = { show: null, where: null, draw: null };
 
 const post = (m) => { if (embedded) window.parent.postMessage(JSON.stringify(m), origin); };
 
 /**
  * Called once by the app. show(screen) opens a screen by id; where() says
- * which is on show, as {screen, params, title?}.
+ * which is on show, as {screen, params, title?}. draw(node, [w, h]), if the
+ * app has it, draws one component on its own, as the app would, for the
+ * Library's specimens: node is as the app's screens place it (its frame at
+ * 0, 0), and it returns an element or HTML.
  */
-export function attach({ show, where }) {
-  hooks = { show, where };
+export function attach({ show, where, draw = null }) {
+  hooks = { show, where, draw };
   if (!embedded) return;
   post({
     type: 'hello',
     versions: Object.fromEntries(Object.entries(registry).map(([id, v]) => [id, Object.keys(v?.pages || {})])),
+    components: Object.fromEntries(Object.entries(registry).map(([id, v]) => [id, [...Object.keys(v?.components || {}), ...Object.keys(v?.parts || {})]]).filter(([, n]) => n.length)),
     errors: built.errors || [],
   });
   report();
@@ -86,6 +100,34 @@ export function page(screen, original, ctx = {}) {
     // A builder that throws is passed over, and the playground's bar says why.
     try { out = build({ ...ctx, below: out, app: original }); } catch (e) { fail(`${id} (${screen}): ${e?.message || e}`); }
   }
+  return out;
+}
+
+/**
+ * A component's renderer, with every running version that changes it laid
+ * over it ("components" in a version: name → builder), for a component
+ * exploration: it changes the component wherever the app draws it. Each
+ * builder gets {below, app}: the renderer under it and the app's own, and
+ * returns a renderer of the same kind. part() does the same for a shared part
+ * ("parts"). Both are kept until the versions to run change, so the app can
+ * call them for every node it draws.
+ */
+export function component(name, original) { return layered('components', name, original); }
+export function part(name, original) { return layered('parts', name, original); }
+const memo = new Map();
+let memoStamp = -1;
+function layered(kind, name, original) {
+  if (!embedded || !layers.length) return original;
+  if (memoStamp !== stamp) { memo.clear(); memoStamp = stamp; }
+  const key = `${kind}:${name}`;
+  if (memo.has(key)) return memo.get(key);
+  let out = original;
+  for (const id of layers) {
+    const build = registry[id]?.[kind]?.[name];
+    if (!build) continue;
+    try { out = build({ below: out, app: original }) ?? out; } catch (e) { fail(`${id} (${name}): ${e?.message || e}`); }
+  }
+  memo.set(key, out);
   return out;
 }
 
@@ -126,6 +168,12 @@ addEventListener('message', (e) => {
     capture(m);
   } else if (m.type === 'inspect') {
     inspect(m);
+  } else if (m.type === 'locate') {
+    locate(m);
+  } else if (m.type === 'picture') {
+    picture(m);
+  } else if (m.type === 'draw') {
+    drawSpecimens(m);
   }
 });
 
@@ -152,7 +200,85 @@ function inspect(m) {
     type: 'inspected', id: m.id,
     ...(el && el !== document.documentElement && el !== document.body
       ? { box: boxOf(el), widget: nameOf(el), location: locationOf(el), text: textOf(el) } : {}),
+    ...(m.library ? { chain: chainAt(at) } : {}),
   });
+}
+
+// For Inspect: the library's components around a point, innermost first,
+// each an element with data-component: its name, node id (data-pg), box, and
+// what its drawing uses: the tokens (var(--…) in its and its children's
+// style, fill and stroke, with their values here) and any colour written out
+// instead of a token.
+const RAW_COLOUR = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g;
+function looksOf(el) {
+  const tokens = new Map(), raw = new Set();
+  for (const e of [el, ...el.querySelectorAll('*')].slice(0, 200)) {
+    for (const a of ['style', 'fill', 'stroke']) {
+      const v = e.getAttribute?.(a);
+      if (!v) continue;
+      for (const t of v.matchAll(/var\(\s*(--[\w-]+)/g)) if (!tokens.has(t[1])) tokens.set(t[1], getComputedStyle(el).getPropertyValue(t[1]).trim());
+      for (const c of v.replace(/var\([^)]*\)/g, '').matchAll(RAW_COLOUR)) raw.add(c[0]);
+    }
+  }
+  return { tokens: [...tokens].slice(0, 12).map(([name, value]) => ({ name, value })), raw: [...raw].slice(0, 8) };
+}
+function chainAt(at) {
+  const out = [];
+  for (let el = at?.closest?.('[data-component]'); el && out.length < 8; el = el.parentElement?.closest('[data-component]')) {
+    out.push({ component: el.dataset.component, pg: el.dataset.pg || null, box: boxOf(el), ...looksOf(el) });
+  }
+  return out;
+}
+
+// Where nodes or components are on show, for the Library: elements whose
+// data-pg is one of the nodes ("{c}" in a node's id stands for any value, as
+// in a repeated template's) or whose data-component is one of the components.
+// Only what's in view, and not one inside another that's already found.
+const pattern = (id) => new RegExp(`^${String(id).split(/\{\w+\}/).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*?')}$`);
+function findAll({ nodes = [], components = [] }, max = 300) {
+  const res = nodes.map(pattern), comps = new Set(components);
+  const hits = [];
+  for (const el of document.querySelectorAll('[data-pg], [data-component]')) {
+    if (hits.length >= max) break;
+    if (el.closest('[data-pg-specimens]')) continue;
+    const { pg, component } = el.dataset;
+    if (!(comps.has(component) || (pg && res.some((re) => re.test(pg))))) continue;
+    if (hits.some((h) => h.contains(el))) continue;
+    const [x, y, w, h] = boxOf(el);
+    if (w && h && x < innerWidth && y < innerHeight && x + w > 0 && y + h > 0) hits.push(el);
+  }
+  return hits;
+}
+function locate(m) {
+  post({ type: 'located', id: m.id, boxes: findAll(m).map(boxOf) });
+}
+
+// Pictures of components, for the Library: for each item ({key, nodes,
+// components}), the first one in view, cut from one drawing of the page and
+// at most `size` px on its longer side.
+async function picture(m) {
+  try {
+    const found = (m.items || []).map((it) => [it.key, findAll(it, 1)[0]]).filter(([, el]) => el);
+    const shots = {};
+    if (found.length) {
+      const { domToCanvas } = await import(/* @vite-ignore */ `${origin}/playground/src/vendor/modern-screenshot.mjs`);
+      const scale = Math.min(2, 4096 / Math.max(innerWidth, innerHeight));
+      const whole = await domToCanvas(document.documentElement, { scale, width: innerWidth, height: innerHeight, style: { margin: '0' } });
+      const size = m.size || 320;
+      for (const [key, el] of found) {
+        const [x, y, w, h] = boxOf(el);
+        const k = Math.min(scale, size / Math.max(w, h));
+        const out = document.createElement('canvas');
+        out.width = Math.max(1, Math.round(w * k));
+        out.height = Math.max(1, Math.round(h * k));
+        out.getContext('2d').drawImage(whole, x * scale, y * scale, w * scale, h * scale, 0, 0, out.width, out.height);
+        shots[key] = out.toDataURL('image/png').split(',')[1];
+      }
+    }
+    post({ type: 'pictured', id: m.id, shots });
+  } catch (e) {
+    post({ type: 'pictured', id: m.id, error: String(e?.message || e) });
+  }
 }
 
 // What an area covers: the outermost named elements inside it (data-pg, or
@@ -203,6 +329,43 @@ async function capture(m) {
   }
 }
 
+// The Library's specimens: each drawn by the app's draw() in a layer the
+// person can't see (so the app's own styles and tokens apply), pictured on
+// its own, and taken away again.
+async function drawSpecimens(m) {
+  if (!hooks.draw) { post({ type: 'drawn', id: m.id, error: 'The app has no draw() in its playground hook.' }); return; }
+  const layer = document.createElement('div');
+  layer.dataset.pgSpecimens = '';
+  layer.style.cssText = 'position:fixed;left:0;top:0;opacity:0;pointer-events:none;z-index:-1;';
+  document.body.append(layer);
+  const shots = {}, failed = {};
+  try {
+    const { domToCanvas } = await import(/* @vite-ignore */ `${origin}/playground/src/vendor/modern-screenshot.mjs`);
+    for (const s of m.specimens || []) {
+      const [w, h] = s.size;
+      const box = document.createElement('div');
+      box.style.cssText = `position:relative;width:${w}px;height:${h}px;`;
+      try {
+        const drawn = hooks.draw(s.node, [w, h]);
+        if (typeof drawn === 'string') box.innerHTML = drawn; else if (drawn) box.append(drawn);
+        if (!box.firstChild) { failed[s.key] = 'Not drawn in this state'; continue; }
+        layer.append(box);
+        const canvas = await domToCanvas(box, { scale: m.scale || 1, width: w, height: h });
+        shots[s.key] = canvas.toDataURL('image/png').split(',')[1];
+      } catch (e) {
+        failed[s.key] = String(e?.message || e);
+      } finally {
+        box.remove();
+      }
+    }
+    post({ type: 'drawn', id: m.id, shots, failed });
+  } catch (e) {
+    post({ type: 'drawn', id: m.id, error: String(e?.message || e) });
+  } finally {
+    layer.remove();
+  }
+}
+
 // ---- Keys, zoom and pastes for the playground ---------------------------------------
 if (embedded) {
   const send = (m) => post({ ...m, from: 'page' });
@@ -219,6 +382,7 @@ if (embedded) {
     else if (e.key === 'Escape') send({ type: 'key', key: 'Escape', down: true });
     else if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'p', down: true });
     else if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'n', down: true });
+    else if ((e.key === 'i' || e.key === 'I') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'i', down: true });
     else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v' && !editable(e.target)) catchPaste();
   }, true);
   addEventListener('keyup', (e) => {

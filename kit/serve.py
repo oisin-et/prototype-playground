@@ -12,7 +12,7 @@ Part of the prototype-playground kit: the same in every project. Everything
 about this project is in playground/playground.json (and its rules for
 Claude in playground/RULES.md); don't change this file for one project.
 
-It's `python3 -m http.server` over the project with five additions:
+It's `python3 -m http.server` over the project with these additions:
 
 - The app. It runs the app on --app-port ("app.port" in playground.json) and
   keeps it, so the playground page can show it in a frame and reload it when
@@ -24,7 +24,7 @@ It's `python3 -m http.server` over the project with five additions:
   every reload the registry, the list of versions the app compiles in, is
   written again.
 
-- Picks. The Explorations panel's "Use this version" posts the picks here,
+- Picks. The Explorations strip's "Use this version" posts the picks here,
   and they're written to <data>/picks.json, one per screen. Only picks that
   name a screen in <data>/index.json and one of its versions are kept.
 
@@ -51,6 +51,15 @@ It's `python3 -m http.server` over the project with five additions:
 - Pictures (GET and POST /playground/thumbs): the page sends a picture of each
   version once it has been on screen, kept in playground/thumbs/<screen>/
   <version>.png (git ignores it), for the preview on hover in Explorations.
+
+- Files (GET /playground/files/…), for the Files panel: the project's
+  folder as it is on disk, git's marks on it, a file's contents for the
+  reader, and every file's path to find one by name. Read only, and only
+  inside the project.
+
+- The library (GET /playground/library), for the Library panel: each
+  component's entry and every use, found by library.py's scan of the app's
+  files ("library" in playground.json). Read only.
 
 - Stars and deletes (POST /playground/explorations), from the star and bin
   buttons in Explorations. A star is kept in the screen's versions.json.
@@ -94,6 +103,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 from functools import partial
@@ -140,10 +150,63 @@ VERSION_RULES = {
 }
 
 
+# Design guides: skills whose craft rules the chat follows whenever it designs a
+# version, after the project's own rules. "guides" in playground.json lists them,
+# [{"path", "about", "read": [files in it, read first]}]; "guides": [] turns them off.
+# Left out, the playground uses the Stageshow skill (Benji Taylor's) if it's installed:
+# in the project's .claude/skills, ~/.claude/skills or ~/.agents/skills.
+STAGESHOW = {
+    "name": "Stageshow",
+    "about": "a guide to product UI that reads as a real, finished product. Follow its craft "
+             "rules, not its kit: the one idea and how hard to press (SKILL.md), restraint, type, "
+             "spacing, icons, colour and density (references/craft.md), and the reviewer's eye "
+             "(references/review.md). Its React kit, stage, framing and crops for marketing "
+             "pages, cursors and filming are for product shots, not for this app: leave them.",
+    "read": ["SKILL.md", "references/craft.md", "references/review.md"],
+}
+
+
+def guides():
+    """The design guides the chat follows: [(folder, about, [files])], each folder real."""
+    listed = CONFIG.get("guides")
+    if listed is None:
+        for place in (ROOT / ".claude/skills/stageshow", Path.home() / ".claude/skills/stageshow", Path.home() / ".agents/skills/stageshow"):
+            if (place / "SKILL.md").is_file():
+                listed = [{**STAGESHOW, "path": str(place)}]
+                break
+        else:
+            return []
+    found = []
+    for item in listed:
+        item = {"path": item} if isinstance(item, str) else item
+        path = (ROOT / os.path.expanduser(str(item.get("path", "")))).resolve()
+        if path.is_dir() and item.get("path"):
+            found.append((path, str(item.get("about", "")).strip(), [str(f) for f in item.get("read", [])], str(item.get("name", path.name))))
+        else:
+            print(f"playground.json \"guides\": {item.get('path')!r} isn't a folder, so Claude can't follow it.", file=sys.stderr)
+    return found
+
+
+def guide_rules():
+    """The guides, for the chat's rules: what to read before designing, and how to use it."""
+    found = guides()
+    if not found:
+        return ""
+    out = "\nDesign guides. Before you design a version, read these (once a conversation is enough),\n" \
+          "and follow them wherever this project's rules and its CLAUDE.md are silent; where they\n" \
+          "disagree, the project wins. Build with the project's own components and tokens, never a\n" \
+          "guide's. Before you reload, look at your version as the guide's reviewer would, and fix\n" \
+          "what they'd send back. In the version's note, name the rule behind a choice where it helps.\n"
+    for path, about, read, name in found:
+        out += f"- {name}, in {path}" + (f": {about}" if about else "") + "\n"
+        out += "".join(f"  Read {path / f}\n" for f in read)
+    return out
+
+
 def references():
     """The folders outside the project that Claude may read: "read" in playground.json,
-    [{"path": <from the project's top, or absolute>, "about": <what's there>}]. Those that
-    aren't there are left out, with a warning."""
+    [{"path": <from the project's top, or absolute>, "about": <what's there>}], and the
+    design guides (see guides()). Those that aren't there are left out, with a warning."""
     found = []
     for item in CONFIG.get("read", []):
         item = {"path": item} if isinstance(item, str) else item
@@ -152,7 +215,7 @@ def references():
             found.append((path, str(item.get("about", "")).strip()))
         else:
             print(f"playground.json \"read\": {item.get('path')!r} isn't a folder, so Claude can't read it.", file=sys.stderr)
-    return found
+    return found + [(path, "") for path, *_ in guides() if path not in [p for p, _ in found]]
 
 
 def reference_flags():
@@ -164,11 +227,40 @@ def reference_flags():
 
 def reference_rules():
     """The references, for the rules: where each is and what it's for."""
-    refs = references()
+    mine = {p for p, *_ in guides()}
+    refs = [(p, a) for p, a in references() if p not in mine]
     if not refs:
         return ""
     return "\nOther folders you can read (only read: never change them, and don't run anything there):\n" + \
         "".join(f"- {path}" + (f": {about}" if about else "") + "\n" for path, about in refs)
+
+
+def library_rules():
+    """Designing with the library, for the rules, when the project has one."""
+    if not CONFIG.get("library"):
+        return ""
+    lib = CONFIG["library"].get("dir", "library")
+    return f"""
+Designing with the library (the project's components: {lib}/, and playground/README.md's
+"The component library"):
+- Before you build, run python3 playground/library.py --brief: the components the app is
+  built from, what each is for and what draws it. Look in this order:
+  1. The project's own library. Use a component as it is: place its renderer, or a
+     shared part with "use". Never draw another that does the same job, never copy a
+     shared part's tree (place it), and never draw a look-alike of one: draw it with
+     the component it looks like. Read an entry in {lib}/ for its rules and states.
+  2. The folders you may read (below), for a component to adapt to this project.
+  3. References (products, pictures, the guides) for ideas only.
+  Colours, sizes and type come from the project's tokens, never written out.
+- When nothing in the library fits, propose a new component: write its entry, in the
+  format of the entries in {lib}/ (read one), with "status": "proposed", what it's for,
+  what it's not for and its rules, and "lineage" (what it's adapted from or inspired
+  by), to <the version's folder>/library/<id>.json, and draw it under the one name its
+  "implementations" give. One proposal per new component, never one per screen.
+- After python3 playground/reload.py, run python3 playground/library.py --check
+  <screen> <version> and fix what it says is out of step before you finish. If you
+  leave one, say why in your answer. The person sees the check on the version too.
+"""
 
 
 def chat_rules():
@@ -189,7 +281,8 @@ Rules:
   where it has tokens).
 - Work only in {DATA_REL}/ (and, to answer notes, the notes.json you're sent). You can't
   change anything else, and the only commands you can run are python3 playground/new.py,
-  python3 playground/iterate.py and python3 playground/reload.py.
+  python3 playground/iterate.py, python3 playground/reload.py and python3
+  playground/library.py (which only reads).
 - Each screen's explorations are kept in {DATA_REL}/<screen>/, where <screen> is an id
   in {DATA_REL}/screens.json, with their list in its versions.json. Explorations go
   across and iterations go down, like columns on a board:
@@ -199,46 +292,85 @@ Rules:
     its column, each copied from the one it builds on ("from" in versions.json).
   - The person may say "exploration 4", "version 4", "route 4" or "4" for the
     column, and "4.2" or "v4.2" for one iteration. main ("default") is the app as it is.
-- Work out which the message is before you touch a file:
-  - Feedback on what's on show, or a change to it ("make the meters thinner", "move
-    that left", "now add a label", a note pinned to it) is an iteration. Build on the
-    version on show:
-    python3 playground/iterate.py <screen> <version on show> "<short name>"
-    That makes the next iteration of its column (on show 4.2, with 4.3 already
-    made, it makes 4.4 from 4.2). If the version on show is main, there's nothing
-    to iterate on: start an exploration instead.
-  - A different idea, another way to do it, an alternative or "a new exploration"
-    is a new column:
-    python3 playground/new.py <screen> "<short name>"
-    which starts v<N>.0 from main. To take a version in a new direction ("try 2.3
-    another way"), add --from <version>.
-  - "Go back to 2" means iterate on exploration 2's latest version (2.0 if it has
-    no iterations yet), and "carry on from 2.1" on 2.1, not on the one on show.
-  - If you can't tell whether it's a step on what's shown or a new direction, it's
-    a step (an iteration). Never make a new exploration for a small change.
-- Every message that changes the design makes a new version, so each step stays in
-  the column to go back to: a follow-up in this conversation iterates on the
-  version you made last (or the one on show, if the person has moved to another).
-  Change a version in place only to fix it (a reload error, something that didn't
-  work as asked), and only one you made in this conversation.
-- Start every version from its copy: change only the new version's folder.
+- Before you touch a file, decide which of three things the message asks for. This
+  decides how the board reads, so judge it every time, by what the change means for
+  the design, not by how many files or lines it takes:
+
+  1. An update, in place. A small change that doesn't alter the design's idea or how
+     it reads: a few pixels of spacing or alignment, a typo or a word, the right
+     token for a colour, a size brought in line with its neighbours, a bug, or
+     anything that makes the version do what it already meant to do. Nobody would
+     want to compare before and after, or go back to before. Change the version on
+     show in place, with no new number, and add one short line about it to the end
+     of its note. Only update a version that the person isn't keeping as it is: if
+     it's starred, picked, merged, or another version was copied from it, make an
+     iteration instead.
+  2. An iteration: the next step down the column. A change someone could look at
+     side by side with what was there and prefer either: something moved, resized
+     or restyled enough to read differently, a control added, removed or changed in
+     how it works, a new hierarchy or emphasis, a batch of notes that together
+     change the look. It's still the same idea for the screen.
+     python3 playground/iterate.py <screen> <version on show> "<short name>"
+     That makes the next iteration of its column (on show 4.2, with 4.3 already
+     made, it makes 4.4 from 4.2). If the version on show is main, there's nothing
+     to iterate on or update: start an exploration instead.
+  3. An exploration: a new column. A different answer to what the screen is for: a
+     different layout or structure, a different focal point or way of working, a
+     change that throws away the exploration's core idea, or anything asked for as
+     "another way", "an alternative", "try something different" or "a new
+     exploration".
+     python3 playground/new.py <screen> "<short name>"
+     which starts v<N>.0 from main. To take a version in a new direction ("try 2.3
+     another way"), add --from <version>.
+
+  Tests, in order: Would anyone want to go back to the version as it was? No: an
+  update. Is it still the same idea for the screen? Yes: an iteration. No: an
+  exploration. Several small changes in one message add up: if together they change
+  how the screen reads, it's an iteration. When you're torn between an update and
+  an iteration, make the iteration; between an iteration and an exploration, make
+  the iteration. Never make a new exploration for a small change, and never
+  iterate on a typo. If the person names one ("a new iteration", "just tweak it",
+  "a new exploration"), do what they name.
+- A component exploration changes one of the library's components wherever the app
+  draws it, on every screen at once. Its folder is {DATA_REL}/component-<id>/ (its
+  versions.json has "component"), and its explorations show beside each screen's own on
+  every screen the component is on. When the message is about a component rather than a
+  screen ("a thicker knob everywhere", "make the two knobs one"), work there:
+  python3 playground/new.py --component <id> "<short name>"
+  starts one (python3 playground/library.py lists the components, what draws each, and
+  where it's used), and python3 playground/iterate.py component-<id> <version> "<name>"
+  iterates. Its version file exports {{ components: {{ <renderer>: (ctx) => ... }},
+  parts: {{ <part>: (ctx) => ... }} }} instead of pages: ctx.below is what draws it under
+  this version and ctx.app the app's own, and a builder returns one of the same kind.
+  The same three-way judgment applies.
+- The person may say "exploration 4", "version 4", "route 4" or "4" for a column,
+  and "4.2" or "v4.2" for one iteration. main ("default") is the app as it is.
+  "Go back to 2" means work on exploration 2's latest version (2.0 if it has no
+  iterations yet), and "carry on from 2.1" on 2.1, not on the one on show.
+- A follow-up in this conversation works on the version you made or updated last
+  (or the one on show, if the person has moved to another), by the same three-way
+  judgment. Fixing your own mistake (a reload error, something that didn't work as
+  asked) is always an update to the version you made.
+- Start every new version from its copy: change only that version's folder. An update
+  changes only the folder of the version it updates.
 - After changing a version, run python3 playground/reload.py. It reloads the app
   and prints any errors: fix them before you finish. A reload error about a
   version you didn't touch is still yours to report, not to fix.
-- Never change a version you didn't make in this conversation unless the person asks
-  for exactly that: iterate on it instead.
+- Only update a version in place under rule 1 above, or when the person asks for exactly
+  that. Never change a version you weren't asked about.
 - Write what the version changes in its "note" in versions.json, in one or two
   plain sentences: for an iteration, what changed since the version it's from.
   Leave "starred" as it is: the person stars versions, and deletes them, in the
-  Explorations panel. Never delete one yourself. Keep the JSON style: short arrays and objects on one line.
+  Explorations strip. Never delete one yourself. Keep the JSON style: short arrays and objects on one line.
 - Other chats may be working in {DATA_REL}/ at the same time as you, in their own
   versions, so the next number may not be the one you expect: use the one the
   script prints. Change versions.json and index.json only with the Edit tool (never Write
   them whole), so you don't wipe out a version another chat has just added, and
   leave versions you didn't make alone. A reload error in a version another chat is
   making may show up in your reload too: report it, don't fix it.
-- Finish with one or two sentences saying what you made and which version it is,
-  by its number ("4.3, an iteration of exploration 4" or "exploration 6, new").
+- Finish with one or two sentences saying what you did and to which version, by its
+  number, and which of the three it was: "updated 4.3 in place", "4.4, an iteration
+  of exploration 4" or "exploration 6, new".
 - The person may attach screenshots: captures of part of the app, with a note naming
   the screen and the parts of it the capture covers, or images of their own. Read
   each one with the Read tool before you answer. Don't change or delete files in
@@ -246,10 +378,11 @@ Rules:
 - The person may send notes: several at once, each pinned to a part or an area of a
   screen, with a picture of it. They're listed in the prompt (with where the part was
   built, when the app can say) and saved in a notes.json under playground/notes/. Read
-  each note's picture. Work through them as one batch: notes on the same screen go
-  into one new iteration of the version the notes were made on (or, as a follow-up,
-  the version you made in this conversation); notes made on main start an
-  exploration, as above. A "question" note asks something: answer it, and
+  each note's picture. Work through them as one batch: notes on the same screen are
+  judged together by the three-way rule above, on the version the notes were made on
+  (or, as a follow-up, the version you made in this conversation). Small fixes are
+  one update; changes that together read differently are one new iteration; notes
+  made on main start an exploration. A "question" note asks something: answer it, and
   change nothing unless it asks you to. Reload and fix errors before you answer.
   As you finish each note, set its "status" and "reply" in that notes.json, changing
   nothing else in the file: "done" with one plain sentence saying what you changed and
@@ -258,7 +391,7 @@ Rules:
   sees the reply on the note's pin. Don't delete the file or its pictures.
 - If the person asks to use, keep or pick a version, or to "make it the real thing",
   don't edit {DATA_REL}/picks.json and don't make a new version. Tell them to press
-  "Use this version" at the foot of the Explorations panel on the left, which makes it
+  "Use this version" at the right of the Explorations strip across the top, which makes it
   what the playground runs. If it's already picked, say so. Moving a version into the
   app for good is done in Claude Code outside this chat (the prototype-playground
   skill), so say that too.
@@ -267,7 +400,7 @@ Rules:
   screen as `below`, and a whole copy hides it. So
   change only what the idea needs, and wrap `below` where you can rather than copying
   the whole screen.
-""" + reference_rules()
+""" + library_rules() + reference_rules() + guide_rules()
     if own:
         rules += "\nThis project's own rules (playground/RULES.md):\n\n" + own + "\n"
     return rules
@@ -789,7 +922,7 @@ class Chat:
             "--tools", "Read,Glob,Grep,Edit,Write,Bash",
             "--allowedTools", "Read(./**)", f"Edit({DATA_REL}/**)", f"Write({DATA_REL}/**)", "Edit(playground/notes/**)",
             "Bash(python3 playground/iterate.py:*)", "Bash(python3 playground/new.py:*)",
-            "Bash(python3 playground/reload.py:*)",
+            "Bash(python3 playground/reload.py:*)", "Bash(python3 playground/library.py:*)",
             *reference_flags(),
             "--append-system-prompt", chat_rules(),
         ]
@@ -825,7 +958,7 @@ class Chat:
                 shown += ", drawn from " + " with ".join(str(f) for f in body["files"][:4])
             context.append(shown + ".")
         if body.get("folder"):
-            context.append(f"The Explorations panel has the \"{body['folder']}\" screen's folder open.")
+            context.append(f"The Explorations strip shows the \"{body['folder']}\" screen's versions.")
         if body.get("playground"):
             v = body.get("version") or "default"
             m = re.match(r"v(\d+)\.(\d+)$", v)
@@ -868,6 +1001,9 @@ class Chat:
         done = False
         new_ones = lambda now: [{"playground": p, "version": v} for p, ids in now.items() for v in ids
                                 if v not in before.get(p, []) and (p, v) in mine]
+        # Versions that were there before the run and that it changed: updated in place.
+        edited = []
+        updated = lambda: [{"playground": p, "version": v} for p, v in edited if v in before.get(p, []) and v != "default"]
         for line in proc.stdout:
             try:
                 event = json.loads(line)
@@ -906,12 +1042,15 @@ class Chat:
                             mine.update(made_by(result_text(part.get("content"))))
                         elif pg and version:
                             mine.add((pg, version))
+                            if (pg, version) not in edited:
+                                edited.append((pg, version))
                         emit({"type": "changed", "playground": pg, "version": version, "new": new_ones(known_versions()), "reloaded": reloaded})
             elif kind == "result":
                 new = new_ones(known_versions())
                 emit({
                     "type": "done", "ok": not event.get("is_error"), "session": event.get("session_id"),
-                    "summary": event.get("result") or "", "new": new, "cost": event.get("total_cost_usd"),
+                    "summary": event.get("result") or "", "new": new, "updated": [] if new else updated(),
+                    "cost": event.get("total_cost_usd"),
                     "refused": len(event.get("permission_denials") or []),
                 })
                 done = True
@@ -940,6 +1079,11 @@ playground/README.md, done for them.
   files, so the app on its own (every pick back to main) looks and works as it did with
   the picks running. The app's own file for a screen is the one <data>/screens.json names.
   Where two picks change the same screen, the later one is laid over the earlier one.
+- A pick from a component exploration (its versions.json has "component") changes one
+  component wherever the app draws it: move it into that component's own code (its
+  renderer, or the shared part), once, not into each screen, so every screen gets it. If
+  it draws a look-alike as the component, point the look-alike's uses at the component
+  and remove the look-alike once nothing uses it.
 - Don't change the version folders, index.json, picks.json, versions.json or anything under
   playground/. Don't run git: the playground commits when you're done.
 - Move the design, not the version's baggage. A version is built to be tried, not kept,
@@ -953,7 +1097,11 @@ playground/README.md, done for them.
   - no file over {max_mb} MB: Commit refuses one (playground.json's "commit":
     {{"maxFileMB": …}} sets the limit). If a file can't be made smaller, say why in your
     summary, so the person can decide to raise the limit.
-- If playground.json has "commit": {"build": [...]}, the playground runs those commands
+- A version's library/ folder holds the components it proposes, an entry each. Move each
+  into the project's library folder (playground.json's "library" "dir") with "status":
+  "draft", its "implementations" pointing at where its code now lives, and leave the
+  person to review it there. Name the moved code after what it is, not the version.
+- If playground.json has "commit": {{"build": [...]}}, the playground runs those commands
   after you finish, to write the app's generated files: change their sources, and run
   them yourself too to check your work.
 - When the files are moved, run python3 playground/reload.py and fix any errors it prints.
@@ -1394,6 +1542,108 @@ def restore(stamp):
         return 200, {"picks": picks}
 
 
+# ---- Files ------------------------------------------------------------------------
+# The Files panel: the project's folder, one for one, as VS Code's explorer
+# shows it. Read only, and never outside the project (a link inside it is
+# shown, but not followed out). The page asks again every few seconds, so it
+# follows the folder whoever changes it, Claude included.
+
+FILES_HIDDEN = {".git", ".DS_Store"}
+FILES_READ_MAX = 1024 * 1024
+FILES_FIND_MAX = 20000
+IMAGE_FILE = re.compile(r"\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$", re.I)
+
+
+def inside(relpath=""):
+    """The absolute path of `relpath` in the project, or ValueError. Links
+    aren't followed, so a path is judged by where it's written."""
+    root = os.path.abspath(ROOT)
+    p = os.path.abspath(os.path.join(root, relpath or ""))
+    if p != root and not p.startswith(root + os.sep):
+        raise ValueError("outside the project")
+    return p
+
+
+def natural(name):
+    return [int(s) if s.isdigit() else s.casefold() for s in re.split(r"(\d+)", name)]
+
+
+def list_folder(relpath=""):
+    """One folder's entries, folders first: [{name, path, dir, mtime}]."""
+    folder = inside(relpath)
+    out = []
+    with os.scandir(folder) as it:
+        for e in it:
+            if e.name in FILES_HIDDEN:
+                continue
+            try:
+                is_dir = e.is_dir()  # follows a link, to say what it points at
+                mtime = int(e.stat().st_mtime * 1000)
+            except OSError:
+                is_dir, mtime = False, 0
+            out.append({"name": e.name, "path": f"{relpath}/{e.name}" if relpath else e.name, "dir": is_dir, "mtime": mtime})
+    return sorted(out, key=lambda e: (not e["dir"], natural(e["name"])))
+
+
+def file_marks():
+    """git's marks: each changed path with its two-letter status code (" M",
+    "A ", "??" …), the paths git ignores, and the branch. A folder git reports
+    whole ends in "/". --no-optional-locks keeps git from touching its index."""
+    r = git("--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored")
+    if r.returncode != 0:
+        return {"repo": False, "branch": None, "changes": {}, "ignored": []}
+    parts, changes, ignored, i = r.stdout.split("\0"), {}, [], 0
+    while i < len(parts):
+        p = parts[i]
+        i += 1
+        if len(p) < 4:
+            continue
+        code, path = p[:2], p[3:]
+        if code[0] in "RC":
+            i += 1  # the old name follows
+        if code == "!!":
+            ignored.append(path)
+        else:
+            changes[path] = code
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip() or None
+    return {"repo": True, "branch": None if branch == "HEAD" else branch, "changes": changes, "ignored": ignored}
+
+
+def all_files():
+    """Every file git doesn't ignore (every file, if it isn't a git repo), to
+    find one by name."""
+    r = git("--no-optional-locks", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    if r.returncode == 0:
+        files = sorted(set(filter(None, r.stdout.split("\0"))))
+    else:
+        files = []
+        for top, dirs, names in os.walk(ROOT):
+            dirs[:] = [d for d in dirs if d not in FILES_HIDDEN]
+            files += [os.path.relpath(os.path.join(top, n), ROOT).replace(os.sep, "/") for n in names if n not in FILES_HIDDEN]
+            if len(files) > FILES_FIND_MAX:
+                break
+    files = [f for f in files if os.path.exists(os.path.join(ROOT, f))]  # not the ones deleted since
+    return {"files": files[:FILES_FIND_MAX], "more": max(0, len(files) - FILES_FIND_MAX)}
+
+
+def read_file(relpath):
+    """A file for the reader: {kind: "text", text, truncated}, {kind: "image",
+    url} (served as any file here is) or {kind: "binary"}, with its size and
+    when it last changed."""
+    p = inside(relpath)
+    st = os.stat(p)
+    base = {"path": relpath, "size": st.st_size, "mtime": int(st.st_mtime * 1000)}
+    if os.path.isdir(p):
+        return {**base, "kind": "folder"}
+    if IMAGE_FILE.search(relpath):
+        return {**base, "kind": "image", "url": "/" + urllib.parse.quote(relpath) + f"?v={base['mtime']}"}
+    with open(p, "rb") as f:
+        data = f.read(FILES_READ_MAX)
+    if b"\0" in data[:8000]:
+        return {**base, "kind": "binary"}
+    return {**base, "kind": "text", "text": data.decode("utf-8", "replace"), "truncated": st.st_size > FILES_READ_MAX}
+
+
 class Handler(SimpleHTTPRequestHandler):
     chat = None  # a Chat, or None with --no-chat
     commit = None  # the Commit button's Commit
@@ -1441,7 +1691,65 @@ class Handler(SimpleHTTPRequestHandler):
             self.json(200, {f"{p.parent.name}/{p.stem}": int(p.stat().st_mtime * 1000)
                             for p in THUMBS.glob("*/*.png")} if THUMBS.is_dir() else {})
             return
+        if path.startswith("/playground/files"):
+            self.files(path, urllib.parse.parse_qs(query, keep_blank_values=True))
+            return
+        if path == "/playground/library/check":
+            q = urllib.parse.parse_qs(query)
+            self.json(*self.library_check(q.get("pg", [""])[0], q.get("v", [""])[0]))
+            return
+        if path == "/playground/library":
+            import library  # the scan, here only when the panel asks
+            try:
+                self.json(200, library.library())
+            except (OSError, ValueError, re.error) as e:
+                self.json(500, {"error": f"The library couldn't be scanned: {e}"})
+            return
         super().do_GET()
+
+    # A version's library check, kept while nothing it reads has changed.
+    CHECKS = {}
+
+    def library_check(self, pg, v):
+        import library
+        folder = DATA / pg / v
+        if not re.fullmatch(r"[\w.-]+", pg or "") or not re.fullmatch(r"v\d+\.\d+", v or "") or not folder.is_dir():
+            return 404, {"error": "No such version."}
+        def newest(paths):
+            return max((p.stat().st_mtime for p in paths if p.is_file()), default=0)
+        lib_dir = ROOT / CONFIG.get("library", {}).get("dir", "library")
+        stamp = (newest(folder.rglob("*")), newest(lib_dir.glob("*.json")) if lib_dir.is_dir() else 0, int(time.time() // 30))
+        hit = self.CHECKS.get((pg, v))
+        if hit and hit[0] == stamp:
+            return 200, hit[1]
+        try:
+            result = library.check(pg, v)
+        except (ValueError, SystemExit, OSError, re.error) as e:
+            return 200, {"version": f"{pg}/{v}", "error": str(e), "findings": [], "proposed": []}
+        self.CHECKS[(pg, v)] = (stamp, result)
+        return 200, result
+
+    def files(self, path, q):
+        """The Files panel's reads. /playground/files/poll?d=<folder>&d=… is
+        git's marks with the listing of each folder named (the open ones), which
+        the page asks for every few seconds."""
+        try:
+            if path == "/playground/files/poll":
+                dirs = {}
+                for d in q.get("d", [])[:400]:
+                    with contextlib.suppress(OSError):
+                        dirs[d] = list_folder(d)
+                self.json(200, {"root": str(ROOT), "marks": file_marks(), "dirs": dirs})
+            elif path == "/playground/files/all":
+                self.json(200, all_files())
+            elif path == "/playground/files/read":
+                self.json(200, read_file(q.get("path", [""])[0]))
+            else:
+                self.send_error(404)
+        except ValueError:
+            self.send_error(403, "Outside the project")
+        except OSError as e:
+            self.json(404, {"error": str(e)})
 
     def read_json(self, limit=64 * 1024 * 1024):
         size = int(self.headers.get("Content-Length", 0))
@@ -1528,9 +1836,15 @@ class Handler(SimpleHTTPRequestHandler):
 
     def save_thumb(self):
         """A version's picture, from the page: {"screen", "version", "png"} (base64),
-        kept in playground/thumbs/<screen>/<version>.png for Explorations' preview."""
+        kept in playground/thumbs/<screen>/<version>.png for Explorations' preview.
+        Or a component's, for the Library: {"component", "screen", "png"}, kept in
+        playground/thumbs/_library/<component>.png, with the screen it was taken
+        on in _library/where.json."""
         try:
             body = self.read_json(8 * 1024 * 1024)
+            if isinstance(body, dict) and "component" in body:
+                self.save_component_thumb(body)
+                return
             screen, version = str(body["screen"]), str(body["version"])
             assert re.fullmatch(r"[\w-]+", screen) and re.fullmatch(r"default|v\d+\.\d+|[a-z0-9]+", version)
             data = base64.b64decode(str(body["png"]), validate=True)
@@ -1540,6 +1854,24 @@ class Handler(SimpleHTTPRequestHandler):
             return
         (THUMBS / screen).mkdir(parents=True, exist_ok=True)
         (THUMBS / screen / f"{version}.png").write_bytes(data)
+        self.send_response(204)
+        self.end_headers()
+
+    def save_component_thumb(self, body):
+        component, screen = str(body["component"]), str(body.get("screen", ""))
+        if not re.fullmatch(r"[\w.-]+", component) or component.startswith(".") or not re.fullmatch(r"[\w-]*", screen):
+            raise ValueError("bad name")
+        data = base64.b64decode(str(body["png"]), validate=True)
+        if not data.startswith(b"\x89PNG"):
+            raise ValueError("not a PNG")
+        folder = THUMBS / "_library"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{component}.png").write_bytes(data)
+        where = folder / "where.json"
+        with playground_lock():
+            known = json.loads(where.read_text()) if where.is_file() else {}
+            known[component] = screen
+            where.write_text(json.dumps(known, indent=1, sort_keys=True) + "\n")
         self.send_response(204)
         self.end_headers()
 
