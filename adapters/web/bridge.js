@@ -47,7 +47,18 @@ import * as built from './registry.js';
 
 const registry = built.default || {};
 
-const hostParam = new URLSearchParams(location.search).get('playground');
+// The playground's address comes in ?playground=. A full page load inside the
+// frame that drops it (a sign-in that sets location, a server redirect) would
+// leave the app out of the playground, so the frame keeps it for its session.
+const HOST_KEY = 'playground.host';
+const hostParam = (() => {
+  const fromUrl = new URLSearchParams(location.search).get('playground');
+  try {
+    if (fromUrl) sessionStorage.setItem(HOST_KEY, fromUrl);
+    else if (window.parent !== window) return sessionStorage.getItem(HOST_KEY);
+  } catch {}
+  return fromUrl;
+})();
 let origin = null;
 try { if (hostParam && window.parent !== window) origin = new URL(hostParam).origin; } catch {}
 
@@ -390,6 +401,12 @@ if (embedded) {
     if (e.code === 'Space') send({ type: 'key', key: 'Space', down: false });
   }, true);
   addEventListener('blur', () => { send({ type: 'key', key: 'Alt', down: false }); send({ type: 'key', key: 'Space', down: false }); });
+  // The page is going away (a dev server's full refresh, a sign-in redirect): until
+  // the next one has a bridge, a frame with the focus swallows every key, a
+  // dictation's ⌘V too. The playground takes the focus back meanwhile.
+  const leaving = () => send({ type: 'leaving' });
+  addEventListener('beforeunload', leaving);
+  addEventListener('pagehide', leaving);
   // A pinch (Chrome sends it as a wheel with Ctrl) or ⌘-scroll zooms the
   // canvas, around the pointer; a plain scroll stays the app's.
   addEventListener('wheel', (e) => {

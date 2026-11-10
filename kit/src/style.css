@@ -97,6 +97,15 @@ body {
   background-repeat: no-repeat; background-position: right 12px center, 0 0;
 }
 
+/* The window size as a switch (named sizes): a well with a raised tile under
+   the one on show. */
+.toolbar .pg-sizes { display: flex; gap: 2px; padding: 2px; background: var(--well); border-radius: var(--tile-radius); }
+.toolbar .pg-sizes button { min-height: 28px; padding: 0 12px; background: none; box-shadow: none; color: var(--page-muted); transition: color 150ms var(--settle), background 150ms var(--settle); }
+.toolbar .pg-sizes button.on { background: var(--tile); box-shadow: var(--tile-rim); color: var(--page-text); }
+@media (hover: hover) { .toolbar .pg-sizes button:not(.on):hover { filter: none; background: var(--hover-fill); color: var(--page-text); } }
+@media (prefers-reduced-motion: reduce) { .toolbar .pg-sizes button { transition: none; } }
+.toolbar select[hidden] { display: none; }
+
 /* The bar under the header: this prototype's own controls, quieter, in a well. */
 .subbar {
   flex: none;

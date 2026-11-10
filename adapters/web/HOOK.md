@@ -4,7 +4,7 @@
 
 ## The dev server
 
-`app.command` in `playground/playground.json` starts the app. `{port}` and `{host}` are filled in. The server must listen on exactly that host and port (so not `localhost`, which can resolve to IPv6). It must also serve the app at `app.path` (`/` by default) and keep the query string, because the bridge reads `?playground=` from it.
+`app.command` in `playground/playground.json` starts the app. `{port}` and `{host}` are filled in. The server must listen on exactly that host and port (so not `localhost`, which can resolve to IPv6). It must also serve the app at `app.path` (`/` by default) and keep the query string, because the bridge reads `?playground=` from it. A full page load in the frame that drops the query (a sign-in that sets `location`, a server redirect) is covered: the bridge keeps the playground's address in `sessionStorage` (`playground.host`) for the frame's session. If the app loads the bridge only when the URL has `?playground=`, check that key too while the app is in a frame (`window.parent !== window`).
 
 | Stack | `app.command` |
 |---|---|

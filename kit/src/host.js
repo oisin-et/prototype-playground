@@ -35,7 +35,11 @@ const KEY = CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const DATA = new URL(`/${CFG.data}/`, location.href);
 const PICKS_KEY = `${KEY}.playground.picks`;
 const SIZE_KEY = `${KEY}.playground.size`;
-const SIZES = CFG.sizes?.length ? CFG.sizes : ['1280x800', '1440x900', '1920x1080'];
+// A size is "WxH", or {"name": "Mobile", "size": "390x844"}. Named sizes show
+// as a switch in the header (Mobile · Tablet · Desktop) instead of a list.
+const SIZES = (CFG.sizes?.length ? CFG.sizes : ['1280x800', '1440x900', '1920x1080'])
+  .map((s) => (typeof s === 'string' ? { size: s } : s)).filter((s) => /^\d+x\d+$/.test(s?.size || ''));
+const NAMED_SIZES = SIZES.length > 1 && SIZES.every((s) => s.name);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 const loadPlaygrounds = async () => {
@@ -189,9 +193,12 @@ let loadedRegistry = null;
 // stale: a quiet refresh (a chat at work) left the frame on the registry it
 // loaded, so the app on show isn't reset while Claude builds out of sight. The
 // frame catches up when a version it doesn't have is put on (catchUp).
-let helloWaiters = [], stale = false;
+// restarting: the frame was loaded again by this page (not by the app itself, as a
+// sign-in that sets location does), so its hello is sent back to the screen you were on.
+let helloWaiters = [], stale = false, restarting = false;
 const reloadFrame = async () => {
   stale = false;
+  restarting = true;
   loadedRegistry = await registryNow();
   const back = new Promise((ok) => { helloWaiters.push(ok); setTimeout(ok, 15000); });
   // Until the app is back and listening, a frame with the focus swallows
@@ -322,9 +329,12 @@ const jump = document.getElementById('jump');
 jump.innerHTML = Object.entries(SCREENS).map(([id, s]) => `<option value="${esc(id)}">${esc(s.title)}</option>`).join('');
 jump.addEventListener('change', () => send({ type: 'show', screen: jump.value }));
 addEventListener('message', (e) => {
-  if (!appPort || e.source !== frame.contentWindow || e.origin !== appOrigin()) return;
+  if (!appPort || e.origin !== appOrigin()) return;
   let m;
   try { m = JSON.parse(e.data); } catch { return; }
+  // A page that's unloading is no longer the frame's window, so `leaving` is
+  // only checked by its origin. Everything else must come from the frame.
+  if (e.source !== frame.contentWindow && m?.type !== 'leaving') return;
   if (m.type === 'hello') {
     registry = m.versions || {};
     const first = !booted;
@@ -342,10 +352,12 @@ addEventListener('message', (e) => {
       const start = hash && SCREENS[hash] ? hash : pg ? pg.start || pg.screen : null;
       if (start && start !== route.screen) send({ type: 'show', screen: start });
       warnClashes();
-    } else if (route.screen) {
+    } else if (restarting && route.screen) {
       // A restart starts the app on its first screen: go back to the one you were on.
+      // A load the app made itself stays where it went, and says where with `where`.
       send({ type: 'show', screen: route.screen });
     }
+    restarting = false;
     panel.redraw();
     for (const ok of helloWaiters.splice(0)) ok();
   } else if (m.type === 'where') {
@@ -374,6 +386,10 @@ addEventListener('message', (e) => {
     panel.forward.paste(m.text, m.images);
   } else if (m.type === 'pastekey') {
     panel.forward.pasteKey();
+  } else if (m.type === 'leaving') {
+    // The app is loading a new page and has no bridge until it's up: a ⌘V
+    // meanwhile would be lost in the frame, so the page takes the focus.
+    if (document.activeElement === frame) frame.blur();
   }
 });
 
@@ -395,9 +411,33 @@ const VIEW_KEY = `${KEY}.playground.view`;
 // `fit`: while it's centred, the window is zoomed to fit between the panels
 // (playground.json's "zoom": "fit" opens it that way; the zoom pill's Fit too).
 const view = { z: 1, x: 0, y: 0, auto: true, fit: CFG.zoom === 'fit', ...store.get(VIEW_KEY, {}) };
-sizeSel.innerHTML = SIZES.map((s) => `<option value="${esc(s)}">${esc(s.replace('x', ' × '))}</option>`).join('');
-sizeSel.value = store.get(SIZE_KEY, CFG.size || SIZES[0]);
-if (!sizeSel.value) sizeSel.value = CFG.size || SIZES[0];
+const sizeText = (s) => s.size.replace('x', ' × ');
+sizeSel.innerHTML = SIZES.map((s) => `<option value="${esc(s.size)}">${esc(s.name ? `${s.name} · ${sizeText(s)}` : sizeText(s))}</option>`).join('');
+const firstSize = SIZES.find((s) => s.size === CFG.size || s.name === CFG.size)?.size || SIZES[0].size;
+sizeSel.value = store.get(SIZE_KEY, firstSize);
+if (!sizeSel.value) sizeSel.value = firstSize;
+// The switch: one button per named size, the select kept (hidden) as the value.
+const sizeSeg = NAMED_SIZES ? document.createElement('div') : null;
+if (sizeSeg) {
+  sizeSeg.className = 'pg-sizes';
+  sizeSeg.setAttribute('role', 'group');
+  sizeSeg.setAttribute('aria-label', 'Window size');
+  sizeSeg.innerHTML = SIZES.map((s) => `<button type="button" data-size="${esc(s.size)}" title="${esc(`${s.name}: ${sizeText(s)}`)}">${esc(s.name)}</button>`).join('');
+  sizeSel.hidden = true;
+  sizeSel.after(sizeSeg);
+  sizeSeg.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-size]');
+    if (!b || sizeSel.value === b.dataset.size) return;
+    sizeSel.value = b.dataset.size;
+    sizeSel.dispatchEvent(new Event('change'));
+  });
+}
+const markSize = () => sizeSeg?.querySelectorAll('[data-size]').forEach((b) => {
+  const on = b.dataset.size === sizeSel.value;
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+});
+markSize();
 let viewScale = view.z;
 const ZMIN = 0.1, ZMAX = 4;
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -477,7 +517,7 @@ const sizeWindow = () => {
   const [w, h] = windowSize();
   Object.assign(win.style, { width: `${w}px`, height: `${h}px` });
 };
-sizeSel.addEventListener('change', () => { store.set(SIZE_KEY, sizeSel.value); sizeWindow(); if (view.auto) centre(true); });
+sizeSel.addEventListener('change', () => { store.set(SIZE_KEY, sizeSel.value); markSize(); sizeWindow(); if (view.auto) centre(true); });
 sizeWindow();
 if (view.auto) centre(); else draw();
 // While it's centred, it follows the panels (their spring, frame by frame) and the window.

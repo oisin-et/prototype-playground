@@ -22,6 +22,7 @@ The playground page (`kit/src/host.js`) runs the app in an iframe at `<app origi
 | `{type: 'captured', id, png, note}` or `{type: 'captured', id, error}` | A capture: base64 PNG, and a note naming what it covers. |
 | `{type: 'inspected', id, box: [x, y, w, h], widget, location, text}` | What's at the point: its name, where it was built (`lib/x.dart:12`, or what the app knows), and its text. Just `{type, id}` if nothing is there. |
 | `{type: 'key', key, down}`, `{type: 'zoomkey', key}`, `{type: 'wheel', x, y, dx, dy}`, `{type: 'paste', text, images}`, `{type: 'pastekey'}` | Keys, zoom and pastes the app's frame swallowed, passed on to the playground. Each carries `from: 'page'`. A ⌘V outside the app's text fields must become a `paste` (the web bridge focuses a hidden box so it does). `pastekey` is only for a bridge that can't do that (Flutter): the playground then reads the clipboard, unless a `paste` follows within 120 ms. |
+| `{type: 'leaving'}` | The app's page is unloading (a dev server's full refresh, a redirect). The playground takes the focus from the frame, so keys and pastes reach it until the next page's bridge is up. Carries `from: 'page'`. |
 
 ## Server endpoints (`kit/serve.py`)
 

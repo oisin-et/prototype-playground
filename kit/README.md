@@ -39,7 +39,7 @@ Both panels are open at first. Each minimises to a strip at its edge, and <kbd>P
 - **Use this version** makes it the pick, saved to `<data>/picks.json`.
 - **Links:** `?playground=<screen>&v=v4.2` opens trying that version, and `#/<screen>` opens on a screen.
 
-**The header** has the screen picker, the window size (the sizes in `playground.json`; `"zoom": "fit"` there opens the window fitted between the panels instead of at 100%), **Reset**, which starts the app again, and, at the top right, **Commit** (see "Commit to main"). **The bar** under it has **Reload app**, the app's status, **Inspect** (see the Library), any errors from the last reload, and **Open the app alone ↗**.
+**The header** has the screen picker, the window size (the sizes in `playground.json`, each `"1440x900"` or `{"name": "Desktop", "size": "1440x900"}`; when every size has a name they show as a switch, such as Mobile · Tablet · Desktop; `"zoom": "fit"` there opens the window fitted between the panels instead of at 100%), **Reset**, which starts the app again, and, at the top right, **Commit** (see "Commit to main"). **The bar** under it has **Reload app**, the app's status, **Inspect** (see the Library), any errors from the last reload, and **Open the app alone ↗**.
 
 **The look and motion** are the kit's, after React Bits' Stepper: frosted cards, raised tiles, recessed wells, and spring motion. New parts use the variables in `src/style.css` (`--frame`, `--tile`, `--well`, `--spring`). With reduced motion set, everything just appears.
 
