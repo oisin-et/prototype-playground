@@ -1,0 +1,154 @@
+/* The canvas version of the playground (src/canvas.js). Part of the
+   prototype-playground kit. Same colours and materials as src/style.css. */
+
+:root {
+  --page: #141518;
+  --page-text: #c9ccd2;
+  --page-muted: #7c818b;
+  --page-line: #2a2c31;
+  --accent: #25c3ff;
+  --amber: #f0b44c;
+  --frame: rgba(30, 31, 36, 0.78);
+  --frame-edge: rgba(255, 255, 255, 0.08);
+  --tile: linear-gradient(180deg, #2d2f35 0%, #212328 100%);
+  --tile-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 4px 10px -4px rgba(0, 0, 0, 0.7);
+  --settle: cubic-bezier(0.22, 1, 0.36, 1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--page); color: var(--page-text);
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
+button, select, a.cv-link {
+  font: inherit; font-size: 13px; color: var(--page-text);
+  background: var(--tile); border: 0; border-radius: 8px; box-shadow: var(--tile-rim);
+  padding: 0 12px; min-height: 30px; cursor: pointer;
+}
+button:hover, select:hover { filter: brightness(1.2); }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- The bar: one thin line ---- */
+.cv-bar {
+  position: fixed; inset: 0 0 auto 0; height: 48px; z-index: 10;
+  display: flex; align-items: center; gap: 12px; padding: 0 16px;
+  background: linear-gradient(var(--page), rgba(20, 21, 24, 0.85));
+  border-bottom: 1px solid var(--page-line);
+}
+.cv-bar h1 { font-size: 14px; font-weight: 600; margin: 0; color: #fff; }
+.cv-spacer { flex: 1; }
+.cv-status { font-size: 12px; color: var(--page-muted); }
+.cv-status[data-state=busy]::before, .cv-status[data-state=ready]::before, .cv-status[data-state=error]::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+}
+.cv-status[data-state=busy]::before { background: var(--amber); }
+.cv-status[data-state=ready]::before { background: #5fd08a; }
+.cv-status[data-state=error]::before { background: #ff5a6e; }
+.cv-zoom { font-size: 12px; color: var(--page-muted); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+#classic { font-size: 12px; color: var(--page-muted); text-decoration: none; }
+#classic:hover { color: var(--page-text); }
+
+/* ---- The canvas ---- */
+.cv-stage {
+  position: fixed; inset: 48px 0 0 0; overflow: hidden;
+  background-color: var(--page);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+  touch-action: none;
+}
+.cv-stage.grab, .cv-stage.grab * { cursor: grab !important; }
+.cv-shield { position: absolute; inset: 0; z-index: 5; }
+.cv-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; --inv: 8; }
+.cv-world.glide { transition: transform 0.45s var(--settle); }
+
+/* Labels and frame chrome keep their size on screen at any zoom (--inv = 1 / zoom). */
+.cv-group {
+  position: absolute; white-space: nowrap; transform: translateX(-100%); text-align: right;
+  font-size: calc(15px * var(--inv)); font-weight: 600; color: var(--page-muted);
+  letter-spacing: 0.02em;
+}
+
+.cv-frame { position: absolute; }
+.cv-body {
+  position: absolute; inset: 0; overflow: hidden;
+  background: #0b0b0d;
+  border-radius: calc(6px * var(--inv));
+  box-shadow: 0 0 0 calc(1px * var(--inv)) var(--frame-edge), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, 0.5);
+}
+.cv-frame.selected .cv-body { box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, 0.5); }
+.cv-frame.main .cv-body { box-shadow: 0 0 0 calc(1.5px * var(--inv)) rgba(240, 180, 76, 0.55), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, 0.5); }
+.cv-frame.main.selected .cv-body { box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent); }
+.cv-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.3s; user-select: none; }
+.has-poster .cv-poster { opacity: 1; }
+.cv-empty {
+  position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: calc(var(--fw) * 0.01);
+  padding: 0 8%; font-size: calc(var(--fw) * 0.022); color: var(--page-muted);
+}
+.cv-empty b { color: var(--page-text); font-size: calc(var(--fw) * 0.032); }
+.has-poster .cv-empty { display: none; }
+.cv-cover { position: absolute; inset: 0; cursor: pointer; }
+.cv-cover:hover { background: rgba(37, 195, 255, 0.05); }
+.cv-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0b0b0d; }
+.cv-frame.live .cv-cover, .cv-frame.live .cv-poster, .cv-frame.live .cv-empty { display: none; }
+.cv-frame.live.loading .cv-poster { display: block; }
+.cv-frame.live.loading iframe { opacity: 0; }
+
+.cv-head, .cv-foot {
+  position: absolute; left: 0; right: 0; display: flex; align-items: center;
+  font-size: calc(12px * var(--inv)); gap: calc(8px * var(--inv)); white-space: nowrap;
+}
+.cv-head { overflow: hidden; }
+.cv-head { bottom: 100%; padding-bottom: calc(6px * var(--inv)); }
+.cv-foot { top: 100%; padding-top: calc(6px * var(--inv)); color: var(--page-muted); overflow: hidden; }
+.cv-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--page-text); }
+.cv-title b { color: #fff; margin-right: calc(4px * var(--inv)); }
+.cv-frame.main .cv-title b { color: var(--amber); }
+.cv-head button, .cv-head select {
+  font-size: calc(12px * var(--inv)); min-height: calc(24px * var(--inv)); padding: 0 calc(8px * var(--inv));
+  border-radius: calc(6px * var(--inv));
+}
+.cv-head select { max-width: calc(220px * var(--inv)); }
+.cv-steps { display: flex; gap: calc(3px * var(--inv)); }
+.cv-foot > * { overflow: hidden; text-overflow: ellipsis; }
+.cv-iter { color: var(--page-text); min-width: 0; }
+.cv-iter b { color: #fff; }
+.cv-from.jump { color: var(--accent); }
+.cv-merged { color: #5fd08a; }
+.cv-warn { color: var(--amber); }
+.cv-date { margin-left: auto; flex: none; }
+
+/* Zoomed out: names only; further out, nothing but the frames. */
+.small .cv-steps, .small .cv-full, .small .cv-foot { display: none; }
+.tiny .cv-head { display: none; }
+
+/* ⤢: the focused frame alone, the others dimmed. */
+.cv-stage.focusing .cv-frame:not(.focused), .cv-stage.focusing .cv-group { opacity: 0.08; transition: opacity 0.3s; }
+
+/* ---- The composer: floats at the bottom, names its target ---- */
+.cv-composer {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
+  width: min(720px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px;
+  background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
+}
+.cv-target { font-size: 12px; color: var(--page-muted); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+.cv-target b { color: var(--accent); font-weight: 600; }
+.cv-composer input {
+  flex: 1; min-width: 0; font: inherit; color: var(--page-text); background: rgba(255, 255, 255, 0.04);
+  border: 0; border-radius: 10px; padding: 9px 12px;
+}
+.cv-composer input:disabled { opacity: 0.6; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 84px; transform: translate(-50%, 12px); z-index: 11;
+  background: var(--frame); backdrop-filter: blur(16px); padding: 10px 14px; border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--frame-edge); font-size: 13px; opacity: 0; pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s var(--settle); max-width: min(560px, calc(100vw - 32px));
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-world.glide, #toast, .cv-poster { transition: none; }
+}

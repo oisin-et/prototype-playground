@@ -1674,7 +1674,8 @@ class Handler(SimpleHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         if path == "/":
             self.send_response(302)  # keeping ?playground=…&v=…, which opens on a version
-            self.send_header("Location", "/playground/" + (f"?{query}" if query else ""))
+            page = f"/{HERE.name}/canvas.html" if (HERE / "canvas.html").exists() and CONFIG.get("canvas", {}).get("home", True) else f"/{HERE.name}/"
+            self.send_header("Location", page + (f"?{query}" if query else ""))
             self.end_headers()
             return
         if path == "/playground/chat":

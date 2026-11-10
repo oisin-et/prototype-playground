@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playground Canvas</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="src/canvas.css">
+</head>
+<body>
+  <!-- The canvas version of the playground (branch "canvas"). Main and every
+       exploration are frames on one canvas; each frame is the app itself,
+       running its own layers. See src/canvas.js. -->
+  <header class="cv-bar">
+    <h1 id="name">Playground</h1>
+    <span class="cv-status" id="status" data-state="busy">Starting the app…</span>
+    <span class="cv-spacer"></span>
+    <button type="button" id="btn-fit" title="Show every frame (⇧1)">Fit all</button>
+    <span class="cv-zoom" id="zoom-label">100%</span>
+    <a id="classic" target="_blank" rel="noopener" title="The playground as it was, with the strip and panels">Classic ↗</a>
+  </header>
+
+  <main class="cv-stage" id="stage" aria-label="Canvas">
+    <div class="cv-world" id="world"></div>
+    <div class="cv-shield" id="shield" hidden></div>
+  </main>
+
+  <div class="cv-composer" id="composer">
+    <span class="cv-target" id="target">Select a frame</span>
+    <input id="prompt" type="text" placeholder="Ask Claude for an iteration of the selected frame… (comes in step 6)" disabled>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="src/canvas.js"></script>
+</body>
+</html>
