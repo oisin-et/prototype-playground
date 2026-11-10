@@ -110,6 +110,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import frozen
 from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, known_versions, playground_lock, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
@@ -1688,6 +1689,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/playground/commit":
             self.json(200, self.commit.plan())
             return
+        if path == "/playground/frozen":
+            self.json(200, frozen.listing())
+            return
         if path == "/playground/thumbs":
             self.json(200, {f"{p.parent.name}/{p.stem}": int(p.stat().st_mtime * 1000)
                             for p in THUMBS.glob("*/*.png")} if THUMBS.is_dir() else {})
@@ -1786,6 +1790,21 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 body = {}
             self.json(200, self.app.reload(restart=bool(isinstance(body, dict) and body.get("restart"))))
+        elif path in ("/playground/frozen/sync", "/playground/frozen/open"):
+            # The canvas's frozen copies (frozen.py): freeze what isn't yet, or
+            # serve one on a port of its own.
+            if not self.from_panel(("frozen",)):
+                self.send_error(403)
+                return
+            if path.endswith("/sync"):
+                self.json(200, {"enabled": frozen.enabled(), "versions": frozen.sync()})
+                return
+            try:
+                body = self.read_json() or {}
+            except ValueError:
+                body = {}
+            port = frozen.open_copy(str(body.get("key", "")) if isinstance(body, dict) else "")
+            self.json(200 if port else 404, {"port": port})
         elif path == "/playground/thumbs":
             if not self.from_panel(("thumbs",)):
                 self.send_error(403)

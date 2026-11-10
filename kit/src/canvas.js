@@ -56,6 +56,11 @@ const { playgrounds: IDS = [] } = await loadOptional('index.json', DATA, {});
 const playgrounds = (await Promise.all(IDS.map((id) => load(`${id}/versions.json`, DATA)
   .then((pg) => ({ ...pg, id, screen: id.split('/')[0] })).catch(() => null)))).filter(Boolean);
 
+// Frozen copies (frozen.py), filled in once the app is up: see syncFrozen().
+let frozen = {}; // '<screen>/<version>' → { label, commit, date, made }
+const frozenOf = (f) => (f.kind === 'exp' && !f.onMain ? frozen[`${f.pg.id}/${f.v}`] : null);
+// What a frame runs: the live app, or one frozen copy. A change means a reload.
+const sourceOf = (f) => (frozenOf(f) ? `frozen:${f.pg.id}/${f.v}` : 'live');
 const chosen = store.get(`${KEY}.iteration`, {}); // frame id → the iteration on show
 const frames = [];
 const main = {
@@ -130,6 +135,7 @@ for (const f of frames) {
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select>
         <button type="button" data-step="1" aria-label="Later iteration">›</button>
       </span>` : ''}
+      ${f.kind === 'exp' ? '<button type="button" class="cv-mode" hidden>Frozen</button>' : ''}
       <button type="button" class="cv-full" title="Fill the window (F)" aria-label="Fill the window">⤢</button>
     </header>
     <div class="cv-body">
@@ -150,6 +156,7 @@ for (const f of frames) {
     f.select.addEventListener('change', () => setIteration(f, f.select.value));
     el.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => step(f, +b.dataset.step)));
   }
+  el.querySelector('.cv-mode')?.addEventListener('click', () => toggleMode(f));
   el.querySelector('.cv-full').addEventListener('click', () => { selectFrame(f); focusFrame(f); });
   el.querySelector('.cv-head').addEventListener('pointerdown', () => selectFrame(f));
   world.append(el);
@@ -158,7 +165,8 @@ for (const f of frames) {
 }
 
 function drawPoster(f) {
-  if (f.shots?.[f.v ?? 'main']) f.poster.src = f.shots[f.v ?? 'main'];
+  const shot = f.shots?.[`${f.kind === 'exp' ? sourceOf(f) : 'live'}|${f.v ?? 'main'}`];
+  if (shot) f.poster.src = shot;
   else f.poster.src = `${thumbUrl(f)}?t=${Date.now() >> 16}`;
 }
 function drawFoot(f) {
@@ -176,11 +184,16 @@ function drawFoot(f) {
     from = `<span class="cv-from${plain ? '' : ' jump'}">${plain ? 'from' : '← from'} ${esc(it.from.slice(1))}${fm !== f.major ? ' (another exploration)' : ''}</span>`;
   }
   const built = !f.registry || f.registry[`${f.pg.id}/${f.v}`];
-  f.foot.innerHTML = `<span class="cv-iter"><b>${esc(it.id.slice(1))}</b> ${esc(it.name)}</span>${from}${it.merged ? `<span class="cv-merged">✓ in main ${esc(it.merged)}</span>` : ''}${built ? '' : '<span class="cv-warn">not in the app yet: reload it</span>'}<span class="cv-date">${esc(it.date || '')}</span>`;
+  const fz = frozen[`${f.pg.id}/${f.v}`];
+  const when = (d) => (d ? new Date(`${d}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '');
+  const mode = f.onMain || !fz ? "on today's main"
+    : fz.label === 'frozen' ? `frozen ${when(fz.made?.slice(0, 10))}`
+    : fz.label === 'rebuilt' ? `rebuilt on main of ${when(fz.date)}` : "on today's main (no older main in git)";
+  f.foot.innerHTML = `<span class="cv-iter"><b>${esc(it.id.slice(1))}</b> ${esc(it.name)}</span>${from}${it.merged ? `<span class="cv-merged">✓ in main ${esc(it.merged)}</span>` : ''}${built ? '' : '<span class="cv-warn">not in the app yet: reload it</span>'}<span class="cv-mode-label${f.onMain || !fz ? ' on-main' : ''}">${esc(mode)}</span><span class="cv-date">${esc(it.date || '')}</span>`;
   f.foot.title = it.note || '';
 }
 
-// ---- The app: one server, many frames --------------------------------------
+// ---- The app: one server for main and the live frames, one for each frozen copy
 let app = null; // { origin, path }
 const statusEl = document.getElementById('status');
 const setStatus = (state, text) => { statusEl.dataset.state = state; statusEl.textContent = text; };
@@ -191,6 +204,7 @@ const watchApp = async () => {
     const first = !app;
     app = { origin: `http://${s.host || '127.0.0.1'}:${s.port}`, path: s.path || '/' };
     if (first) {
+      await syncFrozen();
       setStatus('ready', 'App ready');
       const sel = frames.find((f) => f.id === store.get(`${KEY}.selected`));
       if (sel) { selectFrame(sel); }
@@ -198,25 +212,52 @@ const watchApp = async () => {
   } else if (s.state === 'starting') setStatus('busy', 'Building the app…');
   else setStatus('error', "The app isn't running");
 };
+
+// Frozen copies (frozen.py): every iteration as it was the day it was made.
+// An exploration frame shows its frozen copy unless it's switched to "On main"
+// (the iteration laid over today's main, as the classic playground does).
+let freezing = false;
+const post = (url, kind, body = {}) => fetch(url, {
+  method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': kind }, body: JSON.stringify(body),
+}).then((r) => r.json()).catch(() => null);
+async function syncFrozen() {
+  if (freezing) return;
+  freezing = true;
+  setStatus('busy', 'Freezing new versions…');
+  const r = await post('/playground/frozen/sync', 'frozen');
+  freezing = false;
+  if (!r?.enabled) return;
+  const before = Object.keys(frozen).length;
+  frozen = r.versions || {};
+  for (const f of frames) if (f.kind === 'exp') { drawMode(f); drawFoot(f); }
+  const added = Object.keys(frozen).length - before;
+  if (before && added > 0) toast(`${added === 1 ? 'A new version is' : `${added} new versions are`} frozen.`);
+}
+setInterval(() => { if (!document.hidden && app) syncFrozen().then(() => setStatus('ready', 'App ready')); }, 60000);
 watchApp();
 setInterval(() => { if (!document.hidden) watchApp(); }, 3000);
 
-const appUrl = () => {
-  const u = new URL(app.path, app.origin);
-  u.searchParams.set('playground', location.origin);
-  return u.href;
-};
-const send = (f, m) => { if (f.iframe && app) f.iframe.contentWindow?.postMessage(JSON.stringify(m), app.origin); };
+const send = (f, m) => { if (f.iframe && f.origin) f.iframe.contentWindow?.postMessage(JSON.stringify(m), f.origin); };
 const layersOf = (f) => (f.kind === 'main' ? [] : [`${f.pg.id}/${f.v}`]);
 
 const liveOrder = [];
-function wake(f) {
+async function wake(f) {
   if (!app) { toast('The app is still starting.'); return; }
   if (f.iframe) { liveOrder.splice(liveOrder.indexOf(f), 1); liveOrder.push(f); return; }
+  const source = sourceOf(f);
+  let origin = app.origin;
+  if (source !== 'live') {
+    const r = await post('/playground/frozen/open', 'frozen', { key: source.slice(7) });
+    if (!r?.port) { toast(`The frozen copy of ${f.v.slice(1)} isn't there: it runs on today's main.`); f.onMain = true; drawMode(f); }
+    else origin = `http://127.0.0.1:${r.port}`;
+  }
+  if (f.iframe) return; // woken twice while waiting
   const iframe = document.createElement('iframe');
   iframe.title = f.kind === 'main' ? 'Main' : `${f.group} ${f.major}: ${f.title}`;
-  iframe.src = appUrl();
-  f.iframe = iframe; f.ready = false;
+  const u = new URL(app.path, origin);
+  u.searchParams.set('playground', location.origin);
+  iframe.src = u.href;
+  f.iframe = iframe; f.ready = false; f.origin = origin; f.source = sourceOf(f);
   f.body.append(iframe);
   f.el.classList.add('live', 'loading');
   liveOrder.push(f);
@@ -226,20 +267,33 @@ function wake(f) {
     sleep(old);
   }
 }
-async function sleep(f) {
+async function sleep(f, picture = true) {
   const i = liveOrder.indexOf(f);
   if (i >= 0) liveOrder.splice(i, 1);
-  if (f.ready) {
+  if (f.ready && picture) {
     // A picture of it as it was, so the frame looks the same asleep.
+    const v = f.v ?? 'main', src = f.source;
     try {
       const shot = await ask(f, { type: 'capture', width: 960 });
-      (f.shots ??= {})[f.v ?? 'main'] = `data:image/png;base64,${shot.png}`;
-      drawPoster(f);
+      (f.shots ??= {})[`${src}|${v}`] = `data:image/png;base64,${shot.png}`;
     } catch {}
   }
   f.iframe?.remove();
-  f.iframe = null; f.ready = false;
+  f.iframe = null; f.ready = false; f.origin = null;
   f.el.classList.remove('live', 'loading');
+  drawPoster(f);
+}
+// Runs the frame again from what it should run now (another frozen copy, or live).
+let reloadTimers = new Map();
+function rerun(f) {
+  f.el.classList.add('loading');
+  drawPoster(f);
+  clearTimeout(reloadTimers.get(f));
+  reloadTimers.set(f, setTimeout(async () => {
+    const wasLive = !!f.iframe;
+    if (wasLive) await sleep(f, false);
+    if (wasLive || f === selected || f === focused) wake(f);
+  }, 250));
 }
 
 const pending = new Map();
@@ -252,9 +306,8 @@ const ask = (f, m) => new Promise((ok, fail) => {
 });
 
 addEventListener('message', (e) => {
-  if (!app || e.origin !== app.origin) return;
   const f = frames.find((x) => x.iframe && x.iframe.contentWindow === e.source);
-  if (!f) return;
+  if (!f || e.origin !== f.origin) return;
   let m;
   try { m = JSON.parse(e.data); } catch { return; }
   if (m.type === 'hello') {
@@ -264,7 +317,6 @@ addEventListener('message', (e) => {
     send(f, { type: 'layers', layers: layersOf(f) });
     if (f.screen) send(f, { type: 'show', screen: f.screen });
     drawFoot(f);
-    if (m.errors?.length) toast(`${m.errors.length === 1 ? 'A version' : `${m.errors.length} versions`} didn't load in ${f.title}.`);
   } else if (m.type === 'where') {
     f.where = m.title || SCREENS[m.screen]?.title || m.screen;
     if (f.kind === 'main') drawFoot(f);
@@ -292,12 +344,30 @@ function setIteration(f, id) {
   chosen[f.id] = id;
   store.set(`${KEY}.iteration`, chosen);
   if (f.select) f.select.value = id;
-  if (f.ready) {
+  if (f.iframe && sourceOf(f) !== f.source) rerun(f);
+  else if (f.ready) {
     send(f, { type: 'layers', layers: layersOf(f) });
     if (f.screen) send(f, { type: 'show', screen: f.screen });
   } else drawPoster(f);
+  drawMode(f);
   drawFoot(f);
   if (f === selected) drawTarget();
+}
+// The switch in an exploration's head: its frozen copy, or on today's main.
+function drawMode(f) {
+  const b = f.el.querySelector('.cv-mode');
+  if (!b) return;
+  const fz = frozen[`${f.pg.id}/${f.v}`];
+  b.hidden = !fz;
+  b.textContent = f.onMain ? 'On main' : 'Frozen';
+  b.classList.toggle('on-main', !!f.onMain);
+  b.title = f.onMain ? "Laid over today's main. Click for the frozen copy." : `As it was ${fz?.date || ''}. Click to lay it over today's main.`;
+}
+function toggleMode(f) {
+  f.onMain = !f.onMain;
+  drawMode(f);
+  drawFoot(f);
+  if (f.iframe) rerun(f);
 }
 const step = (f, d) => {
   const i = f.iters.findIndex((x) => x.id === f.v);

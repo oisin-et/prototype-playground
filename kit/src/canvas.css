@@ -152,3 +152,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 @media (prefers-reduced-motion: reduce) {
   .cv-world.glide, #toast, .cv-poster { transition: none; }
 }
+
+/* Frozen or on today's main: the switch in an exploration's head, and its word in the foot. */
+.cv-head .cv-mode { color: #8fd8ff; }
+.cv-head .cv-mode.on-main { color: var(--amber); }
+.cv-mode-label { flex: none; color: #8fd8ff; }
+.cv-mode-label.on-main { color: var(--amber); }
+.small .cv-mode { display: none; }
