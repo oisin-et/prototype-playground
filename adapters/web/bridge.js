@@ -28,6 +28,7 @@
 //               {type: 'where', screen, params, title?}   the screen on show
 //               {type: 'captured', id, png, note}  a capture's PNG (base64)
 //               {type: 'inspected', id, box, widget, location, text, chain?}
+//               {type: 'xrayed', id, elements: [{box, parent, s, pad, name}]}  (X-ray)
 //               {type: 'located', id, boxes: [[x, y, w, h]]}
 //               {type: 'pictured', id, shots: {key: png}}   (base64)
 //               {type: 'drawn', id, shots: {key: png}, failed: {key: text}}
@@ -185,6 +186,8 @@ addEventListener('message', (e) => {
     picture(m);
   } else if (m.type === 'draw') {
     drawSpecimens(m);
+  } else if (m.type === 'xray') {
+    xray(m);
   }
 });
 
@@ -377,6 +380,47 @@ async function drawSpecimens(m) {
   }
 }
 
+// For X-ray: every element drawn in an area (m.rect, in page pixels), in
+// document order. Each says its box, the nearest element around it that's
+// listed too (parent, or -1), its padding and its scale (page pixels to its
+// own CSS pixels, below any transform), so the playground can measure sizes,
+// padding and gaps in the app's own units. A wrapper the same size as the
+// element around it stands in for that element, so it isn't listed twice.
+function xray(m) {
+  const { x = 0, y = 0, w = 0, h = 0 } = m.rect || {};
+  const elements = [], index = new Map();
+  const skip = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'TEMPLATE', 'BR', 'NOSCRIPT']);
+  for (const el of document.body.querySelectorAll('*')) {
+    if (elements.length >= 400) break;
+    if (skip.has(el.tagName) || (el.closest('svg') && el.tagName.toLowerCase() !== 'svg')) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || r.right <= x || r.left >= x + w || r.bottom <= y || r.top >= y + h) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+    let parent = -1;
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      if (index.has(p)) { parent = index.get(p); break; }
+    }
+    if (parent >= 0) {
+      const b = elements[parent].box;
+      if (Math.abs(b[0] - r.left) < 0.5 && Math.abs(b[1] - r.top) < 0.5 && Math.abs(b[2] - r.width) < 0.5 && Math.abs(b[3] - r.height) < 0.5) {
+        index.set(el, parent);
+        continue;
+      }
+    }
+    const own = el.offsetWidth;
+    const s = own ? r.width / own : parent >= 0 ? elements[parent].s : 1;
+    index.set(el, elements.length);
+    elements.push({
+      box: [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10),
+      parent, s: Math.round(s * 1000) / 1000,
+      pad: ['Top', 'Right', 'Bottom', 'Left'].map((k) => parseFloat(cs[`padding${k}`]) || 0),
+      name: nameOf(el),
+    });
+  }
+  post({ type: 'xrayed', id: m.id, elements });
+}
+
 // ---- Keys, zoom and pastes for the playground ---------------------------------------
 if (embedded) {
   const send = (m) => post({ ...m, from: 'page' });
@@ -390,6 +434,7 @@ if (embedded) {
       e.preventDefault(); e.stopPropagation(); if (!e.repeat) send({ type: 'key', key: 'Space', down: true }); return;
     }
     if (e.key === 'Alt') send({ type: 'key', key: 'Alt', down: true });
+    else if (e.key === 'Shift') { if (!e.repeat) send({ type: 'key', key: 'Shift', down: true }); } // X-ray: ⇧-drag
     else if (e.key === 'Escape') send({ type: 'key', key: 'Escape', down: true });
     else if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'p', down: true });
     else if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'n', down: true });
@@ -398,9 +443,10 @@ if (embedded) {
   }, true);
   addEventListener('keyup', (e) => {
     if (e.key === 'Alt') send({ type: 'key', key: 'Alt', down: false });
+    if (e.key === 'Shift') send({ type: 'key', key: 'Shift', down: false });
     if (e.code === 'Space') send({ type: 'key', key: 'Space', down: false });
   }, true);
-  addEventListener('blur', () => { send({ type: 'key', key: 'Alt', down: false }); send({ type: 'key', key: 'Space', down: false }); });
+  addEventListener('blur', () => { send({ type: 'key', key: 'Alt', down: false }); send({ type: 'key', key: 'Space', down: false }); send({ type: 'key', key: 'Shift', down: false }); });
   // The page is going away (a dev server's full refresh, a sign-in redirect): until
   // the next one has a bridge, a frame with the focus swallows every key, a
   // dictation's ⌘V too. The playground takes the focus back meanwhile.

@@ -18,6 +18,7 @@ import { mountNotes } from './notes.js';
 import { mountPanels } from './panels.js';
 import { mountCommit } from './commit.js';
 import { ICON } from './icons.js';
+import { mountXray } from './xray.js';
 
 const load = (path, base) => fetch(new URL(path, base), { cache: 'no-store' }).then((r) => {
   if (!r.ok) throw new Error(`Couldn't load ${path} (${r.status})`);
@@ -32,7 +33,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 const CFG = await load('../playground.json', import.meta.url);
 // Mounted at the end (composer.js, notes.js, panels.js, commit.js); the frames use them once they're there.
-let composer = null, notes = null, panels = null, commit = null;
+let composer = null, notes = null, panels = null, commit = null, xray = null;
 let selected = null; // the frame Claude works on (selectFrame)
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
@@ -353,7 +354,7 @@ addEventListener('message', (e) => {
     if (f.kind === 'main') drawFoot(f);
     notes?.drawPins(f);
     panels?.changed(f);
-  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn'].includes(m.type)) {
+  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed'].includes(m.type)) {
     const p = pending.get(m.id);
     if (p) { pending.delete(m.id); m.error ? p.fail(new Error(m.error)) : p.ok(m); }
   } else if (m.type === 'errors') {
@@ -365,12 +366,17 @@ addEventListener('message', (e) => {
   } else if (m.type === 'key') {
     if (m.key === 'Space') setSpace(m.down);
     else if (m.key === 'Alt') setSnap(m.down);
+    else if (m.key === 'Shift') xray?.shift(m.down);
     else if (m.key === 'n') notes.key('n');
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
     else if (m.key === 'p') panels.toggle();
     else if (m.key === 'Escape' && m.down !== false) {
-      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else escape();
+      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape()) escape();
     }
+  } else if (m.type === 'leaving') {
+    // The frame's page is going away (a reload): until the next one has a
+    // bridge, a frame with the focus would swallow every key, a dictation's ⌘V too.
+    if (document.activeElement === f.iframe) { f.iframe.blur(); window.focus(); }
   } else if (m.type === 'paste') {
     composer.paste(m.text, m.images);
   } else if (m.type === 'pastekey') {
@@ -453,6 +459,7 @@ const tools = document.getElementById('tools');
 const TOOLS = [
   ['note', 'Notes: click a part to pin a note (N)', ICON.note],
   ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
+  ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
   ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
   '|',
   ['frozen', '', ICON.frozen, 'exp'],
@@ -472,6 +479,7 @@ tools.addEventListener('click', (e) => {
   const t = b.dataset.tool;
   if (t === 'note') notes.set(!notes.on);
   else if (t === 'inspect') panels.inspector.set(!panels.inspector.on);
+  else if (t === 'xray') xray.arm(!xray.armed);
   else if (t === 'shot') { aiming = !aiming; setSnap(aiming); }
   else if (t === 'frozen') toggleMode(f);
   else if (t === 'pick') commit?.pick(f.pg.id, f.v);
@@ -492,6 +500,7 @@ function drawTools() {
   for (const b of tools.querySelectorAll('[data-only]')) b.hidden = b.dataset.only !== f.kind;
   set('note', notes?.on);
   set('inspect', panels?.inspector.on);
+  set('xray', xray?.armed);
   set('shot', snapping);
   set('fill', focused === f);
   if (f.kind === 'exp') {
@@ -833,6 +842,11 @@ commit = await mountCommit({
   done: () => location.reload(),
 });
 panels.start();
+xray = mountXray({
+  stage, frames, W, ask, toast,
+  shield: (on) => { shield.hidden = !on && !snapping && !space && !pan; },
+  changed: () => drawTools(),
+});
 
 // Properties: what the selected frame is.
 function properties(f) {

@@ -15,6 +15,9 @@ no room for what git has already:
 - set: the playground's data folder (the versions, the registry, the bridge),
   which git ignores, kept the same way. Versions frozen together share a set.
 - Anything else (a file git ignores, such as a licensed font) comes from disk.
+- The bridge (the data folder's bridge.js) always comes from disk too: it's the
+  playground's plumbing, not the design, so every copy talks to the playground
+  as it is now (a new message, such as X-ray's, works on old copies too).
 
 A version is frozen the first time the canvas sees it (sync()):
 
@@ -55,6 +58,7 @@ SETTINGS = CONFIG.get("canvas", {}).get("freeze")
 APP_PATH = CONFIG.get("app", {}).get("path", "/")
 KEY = re.compile(r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*/v\d+\.\d+$")
 POOL_MAX = 6
+LIVE = {(DATA / "bridge.js").relative_to(ROOT).as_posix()}  # served from disk in every copy
 STILL_MAKING = 300  # seconds: a version folder changed more recently is still being made
 
 TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".css": "text/css",
@@ -255,6 +259,9 @@ class Snapshot:
 
     def get(self, rel):
         """(etag, bytes) or None."""
+        if rel in LIVE and (ROOT / rel).is_file():
+            st = (ROOT / rel).stat()
+            return f"{st.st_mtime_ns}-{st.st_size}", (ROOT / rel).read_bytes()
         sha = self.files.get(rel)
         if sha and blob_path(sha).exists():
             return sha, blob_path(sha).read_bytes()
