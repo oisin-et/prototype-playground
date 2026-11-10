@@ -7,8 +7,9 @@
 // with their numbers: a container's padding (from its edge to what it holds)
 // and the gaps between neighbours. Every number is in the app's own pixels
 // (its CSS pixels, below any scale), and counts up to its value. The drawing
-// is in the frame's pixels, so it pans and zooms with the frame. It stays
-// until Esc, a click on the canvas, or the next drag.
+// is in the frame's pixels, so it pans and zooms with the frame. It's a
+// passing view: it shows only while the drag goes on, and goes the moment the
+// pointer lets go.
 //
 // No label covers another: each goes where it has room on screen, in order
 // (the area's size, then padding, then gaps, then sizes, the largest first),
@@ -63,12 +64,10 @@ export function mountXray(o) {
   const up = (e) => {
     if (!drag) return;
     e.stopImmediatePropagation();
-    const d = drag;
     drag = null;
+    again = null;
+    clear();
     set();
-    const r = rectOf(d);
-    if (r.w < 4 || r.h < 4) { clear(); return; }
-    measure(d.f, r);
   };
   o.stage.addEventListener('pointerup', up, true);
   o.stage.addEventListener('pointercancel', up, true);
@@ -80,7 +79,7 @@ export function mountXray(o) {
     asking = true;
     try {
       const m = await o.ask(f, { type: 'xray', rect: r }, 3000);
-      draw(f, r, m.elements || []);
+      if (drag?.f === f) draw(f, r, m.elements || []); // let go meanwhile: nothing to show
     } catch {
       o.toast("X-ray needs the playground's newer bridge in the app: run setup.py --update.");
     }
