@@ -17,6 +17,7 @@ import { mountComposer } from './composer.js';
 import { mountNotes } from './notes.js';
 import { mountPanels } from './panels.js';
 import { mountCommit } from './commit.js';
+import { ICON } from './icons.js';
 
 const load = (path, base) => fetch(new URL(path, base), { cache: 'no-store' }).then((r) => {
   if (!r.ok) throw new Error(`Couldn't load ${path} (${r.status})`);
@@ -32,6 +33,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const CFG = await load('../playground.json', import.meta.url);
 // Mounted at the end (composer.js, notes.js, panels.js, commit.js); the frames use them once they're there.
 let composer = null, notes = null, panels = null, commit = null;
+let selected = null; // the frame Claude works on (selectFrame)
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
 const DATA = new URL(`/${CFG.data}/`, location.href);
@@ -46,6 +48,26 @@ document.getElementById('name').textContent = NAME;
 document.title = `${NAME} · Canvas`;
 const classic = document.getElementById('classic');
 if (CFG.canvas?.classic) classic.href = CFG.canvas.classic; else classic.hidden = true;
+classic.innerHTML = ICON.external;
+document.getElementById('btn-fit').innerHTML = ICON.fit;
+document.getElementById('btn-left').innerHTML = ICON.left;
+document.getElementById('btn-right').innerHTML = ICON.right;
+document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
+
+// The side panels: the chat at the left, Properties and Files at the right.
+// Closing one gives the canvas its room.
+const sides = { left: true, right: true, ...store.get(`${KEY}.sides`, {}) };
+function showSide(side, on) {
+  sides[side] = on;
+  document.body.classList.toggle(`no-${side}`, !on);
+  document.getElementById(`btn-${side}`).setAttribute('aria-pressed', String(on));
+  store.set(`${KEY}.sides`, sides);
+  requestAnimationFrame(() => dispatchEvent(new Event('resize')));
+}
+showSide('left', sides.left);
+showSide('right', sides.right);
+document.getElementById('btn-left').addEventListener('click', () => showSide('left', !sides.left));
+document.getElementById('btn-right').addEventListener('click', () => (sides.right ? panels.close() : panels.open(null)));
 
 const toastEl = document.getElementById('toast');
 let toastTimer = 0;
@@ -136,15 +158,9 @@ for (const f of frames) {
   el.dataset.id = f.id;
   el.innerHTML = `
     <header class="cv-head">
-      <span class="cv-title"><b>${esc(f.kind === 'main' ? 'Main' : `${f.major}`)}</b> ${esc(f.kind === 'main' ? f.sub : f.title)}</span>
-      ${f.iters.length > 1 ? `<span class="cv-steps">
-        <button type="button" data-step="-1" aria-label="Earlier iteration">‹</button>
-        <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select>
-        <button type="button" data-step="1" aria-label="Later iteration">›</button>
-      </span>` : ''}
-      ${f.kind === 'exp' ? '<button type="button" class="cv-mode" hidden>Frozen</button><button type="button" class="cv-pick" title="Pick this iteration for main: Commit moves it into the app">Pick</button>' : ''}
-      <button type="button" class="cv-chip" title="The files behind this frame">Files</button>
-      <button type="button" class="cv-full" title="Fill the window (F)" aria-label="Fill the window">⤢</button>
+      <span class="cv-title">${f.kind === 'main' ? ICON.main : ICON.branch}<b>${esc(f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`)}</b></span>
+      ${f.kind === 'exp' ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
+        <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select></label>` : `<span class="cv-iter-now main"></span>`}
     </header>
     <div class="cv-body">
       <img class="cv-poster" alt="" draggable="false">
@@ -162,12 +178,7 @@ for (const f of frames) {
   if (f.select) {
     f.select.value = f.v;
     f.select.addEventListener('change', () => setIteration(f, f.select.value));
-    el.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => step(f, +b.dataset.step)));
   }
-  el.querySelector('.cv-mode')?.addEventListener('click', () => toggleMode(f));
-  el.querySelector('.cv-pick')?.addEventListener('click', () => commit?.pick(f.pg.id, f.v));
-  el.querySelector('.cv-chip').addEventListener('click', () => { selectFrame(f); panels.open(f, 'files'); });
-  el.querySelector('.cv-full').addEventListener('click', () => { selectFrame(f); focusFrame(f); });
   el.querySelector('.cv-head').addEventListener('pointerdown', () => selectFrame(f));
   world.append(el);
   drawPoster(f);
@@ -180,10 +191,16 @@ function drawPoster(f) {
   else f.poster.src = `${thumbUrl(f)}?t=${Date.now() >> 16}`;
 }
 function drawFoot(f) {
+  const now = f.el.querySelector('.cv-iter-now');
   if (f.kind === 'main') {
+    if (now) now.textContent = f.where || SCREENS[f.screen]?.title || '';
     f.foot.innerHTML = `<span>${esc(f.where || SCREENS[f.screen]?.title || '')}</span>`;
+    if (f === selected) { panels?.drawProps(); drawTools(); }
     return;
   }
+  if (now) now.textContent = `${f.v.slice(1)} · ${iterOf(f)?.name || ''}`;
+  f.el.classList.toggle('picked', commit?.picked(f.pg.id) === f.v);
+  if (f === selected) { panels?.drawProps(); drawTools(); }
   const it = iterOf(f), i = f.iters.indexOf(it), prev = f.iters[i - 1];
   // Where it starts from: said quietly when it's the step before, loudly when
   // it goes back to an earlier one or comes from another exploration.
@@ -209,7 +226,7 @@ function drawFoot(f) {
 // ---- The app: one server for main and the live frames, one for each frozen copy
 let app = null; // { origin, path }
 const statusEl = document.getElementById('status');
-const setStatus = (state, text) => { statusEl.dataset.state = state; statusEl.textContent = text; };
+const setStatus = (state, text) => { statusEl.dataset.state = state; statusEl.title = text; statusEl.setAttribute('aria-label', text); };
 const watchApp = async () => {
   const s = await fetch('/playground/app', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!s) { setStatus('error', 'No app: run playground serve.py'); return; }
@@ -383,13 +400,7 @@ function setIteration(f, id) {
 }
 // The switch in an exploration's head: its frozen copy, or on today's main.
 function drawMode(f) {
-  const b = f.el.querySelector('.cv-mode');
-  if (!b) return;
-  const fz = frozen[`${f.pg.id}/${f.v}`];
-  b.hidden = !fz;
-  b.textContent = f.onMain ? 'On main' : 'Frozen';
-  b.classList.toggle('on-main', !!f.onMain);
-  b.title = f.onMain ? "Laid over today's main. Click for the frozen copy." : `As it was ${fz?.date || ''}. Click to lay it over today's main.`;
+  if (f === selected) drawTools();
 }
 function toggleMode(f) {
   f.onMain = !f.onMain;
@@ -404,7 +415,6 @@ const step = (f, d) => {
 };
 
 // ---- Selection: the frame Claude works on ----------------------------------
-let selected = null;
 const drawTarget = () => composer?.drawTarget();
 // What the composer tells Claude about the selected frame.
 function context() {
@@ -412,12 +422,12 @@ function context() {
   if (!f) return null;
   if (f.kind === 'main') {
     return {
-      label: '<b>Main</b>',
+      chip: 'Main', kind: 'main',
       body: { screen: f.where ? undefined : f.screen, screenTitle: f.where, folder: f.screen },
     };
   }
   return {
-    label: `<b>${esc(f.group)} ${esc(f.v.slice(1))}</b> ${esc(iterOf(f)?.name || f.title)}`,
+    chip: `${f.group} ${f.v.slice(1)}`, kind: 'exp',
     body: {
       screen: f.screen, screenTitle: SCREENS[f.screen]?.title, folder: f.pg.screen,
       playground: f.pg.id, version: f.v,
@@ -434,8 +444,78 @@ function selectFrame(f) {
     drawTarget();
     panels?.selected(f);
   }
+  drawTools();
   if (f) wake(f);
 }
+
+// ---- The frame toolbar: above the selected frame, our tools as icons ----------
+const tools = document.getElementById('tools');
+const TOOLS = [
+  ['note', 'Notes: click a part to pin a note (N)', ICON.note],
+  ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
+  ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
+  '|',
+  ['frozen', '', ICON.frozen, 'exp'],
+  ['pick', '', ICON.pick, 'exp'],
+  '|',
+  ['files', 'The files behind this frame', ICON.files],
+  ['reload', 'Load it again', ICON.reload],
+  ['fill', 'Fill the window (F)', ICON.fill],
+];
+tools.innerHTML = TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
+  : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1] || t[0])}"${t[3] ? ` data-only="${t[3]}"` : ''}>${t[2]}</button>`)).join('');
+tools.addEventListener('pointerdown', (e) => e.stopPropagation());
+tools.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tool]');
+  const f = selected;
+  if (!b || !f) return;
+  const t = b.dataset.tool;
+  if (t === 'note') notes.set(!notes.on);
+  else if (t === 'inspect') panels.inspector.set(!panels.inspector.on);
+  else if (t === 'shot') { aiming = !aiming; setSnap(aiming); }
+  else if (t === 'frozen') toggleMode(f);
+  else if (t === 'pick') commit?.pick(f.pg.id, f.v);
+  else if (t === 'files') panels.open(f, 'files');
+  else if (t === 'reload') { if (f.iframe) rerun(f); else wake(f); }
+  else if (t === 'fill') { if (focused === f) escape(); else focusFrame(f); }
+  drawTools();
+});
+function drawTools() {
+  const f = selected;
+  tools.hidden = !f;
+  if (!f) return;
+  const set = (t, on, title) => {
+    const b = tools.querySelector(`[data-tool=${t}]`);
+    b.setAttribute('aria-pressed', String(!!on));
+    if (title) { b.title = title; b.setAttribute('aria-label', title); }
+  };
+  for (const b of tools.querySelectorAll('[data-only]')) b.hidden = b.dataset.only !== f.kind;
+  set('note', notes?.on);
+  set('inspect', panels?.inspector.on);
+  set('shot', snapping);
+  set('fill', focused === f);
+  if (f.kind === 'exp') {
+    const fz = frozen[`${f.pg.id}/${f.v}`];
+    tools.querySelector('[data-tool=frozen]').hidden = !fz;
+    set('frozen', fz && !f.onMain, f.onMain ? "On today's main: click for the frozen copy" : `Frozen as it was ${fz?.date || ''}: click to lay it over today's main`);
+    const picked = commit?.picked(f.pg.id) === f.v;
+    set('pick', picked, picked ? 'Picked for main: click to unpick' : 'Pick this iteration for main: Commit moves it into the app');
+  }
+  placeTools();
+}
+// Right-aligned over the frame's top edge, kept inside the canvas.
+function placeTools() {
+  const f = selected;
+  if (!f || tools.hidden) return;
+  const s = stage.getBoundingClientRect(), b = f.body.getBoundingClientRect();
+  const w = tools.offsetWidth, h = tools.offsetHeight;
+  const off = b.right < s.left || b.left > s.right || b.bottom < s.top || b.top > s.bottom;
+  tools.style.visibility = off ? 'hidden' : '';
+  const left = Math.max(8, Math.min(s.width - w - 8, b.right - s.left - w));
+  const top = Math.max(8, b.top - s.top - h - 10);
+  tools.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+}
+let aiming = false; // the toolbar's screenshot: one drag, without ⌥
 
 // ---- The view: pan and zoom --------------------------------------------------
 const VIEW_KEY = `${KEY}.view`;
@@ -452,6 +532,8 @@ function draw(glide = false) {
   world.classList.toggle('tiny', W * view.z < 90);
   zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
   notes?.moved();
+  if (glide) { const t0 = performance.now(); const follow = () => { placeTools(); if (performance.now() - t0 < 520) requestAnimationFrame(follow); }; requestAnimationFrame(follow); }
+  else placeTools();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
 }
@@ -488,6 +570,7 @@ function focusFrame(f) {
   focused = f;
   f.el.classList.add('focused');
   stage.classList.add('focusing');
+  drawTools();
   wake(f);
   fitBox(f.x, f.y, f.x + W, f.y + H, 16);
 }
@@ -496,6 +579,7 @@ function escape(quiet = false) {
     focused.el.classList.remove('focused');
     stage.classList.remove('focusing');
     focused = null;
+    drawTools();
     if (beforeFocus && !quiet) { Object.assign(view, beforeFocus); draw(true); }
     return true;
   }
@@ -673,7 +757,9 @@ snapBox.hidden = true;
 stage.append(snapBox);
 let snapping = false, snap = null;
 function setSnap(down) {
-  snapping = down;
+  if (!down) aiming = false;
+  snapping = down || aiming;
+  down = snapping;
   document.body.classList.toggle('pg-alt', down);
   stage.classList.toggle('snapping', down || !!snap);
   shield.hidden = !down && !snap && !space && !pan;
@@ -700,7 +786,9 @@ const endSnap = async (e) => {
   const r = { x: Math.min(snap.x0, snap.x1), y: Math.min(snap.y0, snap.y1), w: Math.abs(snap.x1 - snap.x0), h: Math.abs(snap.y1 - snap.y0) };
   snap = null;
   snapBox.hidden = true;
-  setSnap(snapping);
+  aiming = false;
+  setSnap(false);
+  drawTools();
   if (r.w < 8 || r.h < 8) return;
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
   const f = frames.find((x) => {
@@ -731,9 +819,10 @@ function drawSnap() {
 panels = mountPanels({
   key: KEY, data: CFG.data, W, screens: SCREENS, playgrounds, frames, ask, send, toast,
   target: () => selected, showVersion, notes: () => notes,
+  properties, show: (on) => showSide('right', on), shown: () => sides.right,
 });
-document.getElementById('btn-files').addEventListener('click', () => panels.toggle());
-document.getElementById('btn-files').before(document.querySelector('.pg-inspect-btn')); // beside Files
+// Inspect's own button would sit in the header: the frame toolbar has it.
+new MutationObserver(() => drawTools()).observe(document.querySelector('.pg-inspect-btn'), { attributes: true, attributeFilter: ['aria-pressed'] });
 addEventListener('keydown', (e) => {
   if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'p' || e.key === 'P') { e.preventDefault(); panels.toggle(); }
@@ -743,5 +832,34 @@ commit = await mountCommit({
   changed: () => { for (const f of frames) if (f.kind === 'exp') drawFoot(f); },
   done: () => location.reload(),
 });
+panels.start();
+
+// Properties: what the selected frame is.
+function properties(f) {
+  if (!f) return '<p class="cv-pnone">Select a frame.</p>';
+  const row = (icon, label, value, extra = '') => `<div class="cv-prow">${icon}<span class="cv-plabel">${esc(label)}</span><span class="cv-pval${extra}">${value}</span></div>`;
+  const when = (d) => (d ? new Date(`${d}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  const screen = f.route?.screen ?? f.screen;
+  if (f.kind === 'main') {
+    return `<h3>${ICON.main} Main</h3><section>
+      ${row(ICON.folder, 'Screen', esc(f.where || SCREENS[screen]?.title || screen))}
+      ${row(ICON.clock, 'Runs', "the app as it is")}</section>`;
+  }
+  const it = iterOf(f), fz = frozen[`${f.pg.id}/${f.v}`];
+  const runs = f.onMain || !fz ? "On today's main" : fz.label === 'frozen' ? `Frozen ${when(fz.made?.slice(0, 10))}` : fz.label === 'rebuilt' ? `On main of ${when(fz.date)}` : "On today's main";
+  const picked = commit?.picked(f.pg.id) === f.v;
+  const status = it.merged ? `<span class="cv-ok">Merged ${esc(it.merged)}</span>` : picked ? '<span class="cv-on">Picked for main</span>' : 'Not picked';
+  return `<h3>${ICON.branch} ${esc(f.group)} ${f.major}</h3>
+    <section>
+      ${row(ICON.folder, 'Screen', esc(SCREENS[f.pg.screen]?.title || f.pg.screen))}
+      ${row(ICON.branch, 'Exploration', `${f.major} · ${esc(f.title)}`)}
+      ${row(ICON.pick, 'Iteration', `${esc(f.v.slice(1))} · ${esc(it.name)}`)}
+      ${it.from ? row(ICON.branch, 'From', esc(it.from.slice(1))) : ''}
+      ${row(ICON.frozen, 'Runs', esc(runs))}
+      ${row(ICON.clock, 'Made', esc(when(it.date)))}
+    </section>
+    <section>${row(ICON.pick, 'Main', status)}</section>
+    ${it.note ? `<p class="cv-pnote" title="Click to read it all" onclick="this.classList.toggle('open')">${esc(it.note)}</p>` : ''}`;
+}
 
 drawTarget();

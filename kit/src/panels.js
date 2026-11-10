@@ -1,11 +1,14 @@
-// The canvas's one panel (src/canvas.js): Files and Library, the classic
-// playground's left panel, opened from a frame's Files chip and floating over
-// the canvas until it's closed. Part of the prototype-playground kit.
+// The panel at the canvas's right (src/canvas.js): Properties, Files and
+// Library. Part of the prototype-playground kit.
 //
-// - Files (files.js) shows "On show" for the frame it was opened from (or the
-//   selected one): the file main draws the screen from, the iteration's
-//   folder, and its exploration's versions.json. Changed and All files are
-//   the project's, as in the classic playground. The reader opens beside it.
+// - Properties: what the selected frame is (its screen, exploration and
+//   iteration, what it started from, whether it runs frozen or on today's
+//   main, and whether it's picked or merged), from hooks.properties(f).
+// - Files (files.js) shows "On show" for the selected frame (or the one the
+//   frame toolbar's Files opened it for): the file main draws the screen from,
+//   the iteration's folder, and its exploration's versions.json. Changed and
+//   All files are the project's, as in the classic playground. The reader
+//   opens over the canvas.
 // - Library (library.js) asks the selected frame's app to point at, picture
 //   and draw components.
 // - Inspect (inspect.js, I): hover any live frame to see which component each
@@ -22,23 +25,28 @@ import { mountInspect } from './inspect.js';
  *   ask(f, message, wait), send(f, message),
  *   target(): the selected frame,
  *   showVersion('<screen>/<version>'), toast(text), notes(): the notes (src/notes.js),
+ *   properties(f): HTML, show(on): opens or closes the panel, shown(): whether it's open,
  * }
  */
 export function mountPanels(o) {
-  const ws = document.getElementById('workspace');
-  const panel = document.createElement('aside');
+  const panel = document.createElement('div');
   panel.id = 'files';
   panel.className = 'pg-panel pg-files cv-panel';
-  panel.setAttribute('aria-label', 'Files and Library');
-  panel.hidden = true;
-  panel.innerHTML = '<div class="pg-body"><div class="pg-pane" data-pane="files"></div><div class="pg-pane" data-pane="library" hidden></div></div>';
-  ws.append(panel);
+  panel.innerHTML = '<div class="pg-body"><div class="pg-pane" data-pane="props"></div><div class="pg-pane" data-pane="files" hidden></div><div class="pg-pane" data-pane="library" hidden></div></div>';
+  document.getElementById('right').append(panel);
+  const propsEl = panel.querySelector('[data-pane=props]');
   const filesEl = panel.querySelector('[data-pane=files]');
   const libraryEl = panel.querySelector('[data-pane=library]');
-  const tabs = (on) => `<div class="pg-ptabs" role="tablist" aria-label="Files or Library">${[['files', 'Files'], ['library', 'Library']]
+  const tabs = (on) => `<div class="pg-ptabs" role="tablist" aria-label="Properties, Files or Library">${[['props', 'Properties'], ['files', 'Files'], ['library', 'Library']]
     .map(([k, t]) => `<button type="button" role="tab" data-ptab="${k}" aria-selected="${k === on}" class="${k === on ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
-  let pane = 'files', about = null; // the frame Files shows
+  let pane = 'props', about = null; // the frame Files shows
+  try { pane = JSON.parse(localStorage.getItem(`${o.key}.pane`)) || 'props'; } catch {}
+
+  // ---- Properties ----
+  propsEl.innerHTML = `<div class="pg-head">${tabs('props')}<button type="button" class="pg-min" data-close aria-label="Hide the panel" title="Hide (P)">‹</button></div><div class="cv-props"></div>`;
+  propsEl.querySelector('[data-close]').addEventListener('click', () => close());
+  const drawProps = () => { propsEl.querySelector('.cv-props').innerHTML = o.properties(o.target()); };
   const frameOf = () => (about && o.frames.includes(about) ? about : o.target());
   const nameOf = (f) => (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`);
   const titleOf = (id) => o.screens[id]?.title || id;
@@ -131,20 +139,23 @@ export function mountPanels(o) {
 
   function setPane(p) {
     pane = p;
+    try { localStorage.setItem(`${o.key}.pane`, JSON.stringify(p)); } catch {}
+    propsEl.hidden = p !== 'props';
     filesEl.hidden = p !== 'files';
     libraryEl.hidden = p !== 'library';
     if (p === 'library') { library.load(); if (!files.reader.el.hidden) files.reader.close(); }
-    else { files.draw(); if (!library.reader.hidden) library.close(); }
+    else if (p === 'files') { files.draw(); if (!library.reader.hidden) library.close(); }
+    else drawProps();
   }
   panel.addEventListener('click', (e) => { const t = e.target.closest('[data-ptab]'); if (t) setPane(t.dataset.ptab); });
 
   function open(f, p = pane) {
     if (f) about = f;
-    panel.hidden = false;
+    o.show(true);
     setPane(p);
   }
   function close() {
-    panel.hidden = true;
+    o.show(false);
     if (!files.reader.el.hidden) files.reader.close();
     if (!library.reader.hidden) library.close();
   }
@@ -176,13 +187,16 @@ export function mountPanels(o) {
 
   return {
     open, close,
-    toggle: () => (panel.hidden ? open(null) : close()),
+    toggle: () => (o.shown() ? close() : open(null)),
     inspector,
     // The selected frame or the one on show in Files changed (an iteration, a screen).
     changed(f) {
-      if (!panel.hidden && (f === frameOf() || f === o.target())) files.draw();
+      if (f === o.target()) drawProps();
+      if (o.shown() && pane === 'files' && (f === frameOf() || f === o.target())) files.draw();
       if (f === o.target() && f.route?.screen) library.onScreen?.(f.route.screen);
     },
-    selected(f) { about = f; if (!panel.hidden) files.draw(); },
+    selected(f) { about = f; drawProps(); if (o.shown() && pane === 'files') files.draw(); },
+    drawProps,
+    start() { setPane(pane); },
   };
 }

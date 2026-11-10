@@ -2,7 +2,9 @@
    prototype-playground kit. Same colours and materials as src/style.css. */
 
 :root {
-  --page: #141518;
+  --page: #17181c;
+  --chrome: #0f1013;
+  --raised: #1d1f24;
   --page-text: #c9ccd2;
   --page-muted: #7c818b;
   --page-line: #2a2c31;
@@ -18,7 +20,7 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
-  background: var(--page); color: var(--page-text);
+  display: block; background: var(--chrome); color: var(--page-text);
   font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
   overflow: hidden;
 }
@@ -30,29 +32,9 @@ button, select, a.cv-link {
 button:hover, select:hover { filter: brightness(1.2); }
 button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ---- The bar: one thin line ---- */
-.cv-bar {
-  position: fixed; inset: 0 0 auto 0; height: 48px; z-index: 10;
-  display: flex; align-items: center; gap: 12px; padding: 0 16px;
-  background: linear-gradient(var(--page), rgba(20, 21, 24, 0.85));
-  border-bottom: 1px solid var(--page-line);
-}
-.cv-bar h1 { font-size: 14px; font-weight: 600; margin: 0; color: #fff; }
-.cv-spacer { flex: 1; }
-.cv-status { font-size: 12px; color: var(--page-muted); }
-.cv-status[data-state=busy]::before, .cv-status[data-state=ready]::before, .cv-status[data-state=error]::before {
-  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
-}
-.cv-status[data-state=busy]::before { background: var(--amber); }
-.cv-status[data-state=ready]::before { background: #5fd08a; }
-.cv-status[data-state=error]::before { background: #ff5a6e; }
-.cv-zoom { font-size: 12px; color: var(--page-muted); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
-#classic { font-size: 12px; color: var(--page-muted); text-decoration: none; }
-#classic:hover { color: var(--page-text); }
-
 /* ---- The canvas ---- */
 .cv-stage {
-  position: fixed; inset: 48px 0 0 0; overflow: hidden;
+  position: relative; overflow: hidden; min-width: 0;
   background-color: var(--page);
   background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
   background-size: 22px 22px;
@@ -126,52 +108,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 /* ⤢: the focused frame alone, the others dimmed. */
 .cv-stage.focusing .cv-frame:not(.focused), .cv-stage.focusing .cv-group { opacity: 0.08; transition: opacity 0.3s; }
 
-/* ---- The composer (src/composer.js): floats at the bottom, names its target ---- */
-.cv-composer {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
-  width: min(760px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px;
-}
-.cm-bar, .cm-sheet, .cm-shots {
-  background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
-}
-.cm-bar { display: flex; align-items: flex-end; gap: 8px; padding: 8px; }
-.cm-tabs { display: flex; gap: 3px; flex: none; }
-.cm-tabs button { min-height: 32px; min-width: 28px; padding: 0 8px; font-size: 12px; color: var(--page-muted); }
-.cm-tabs button[aria-selected=true] { color: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
-.cm-tabs button.busy { color: var(--amber); }
-.cm-target { flex: none; align-self: center; font-size: 12px; color: var(--page-muted); white-space: nowrap; max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
-.cm-target b { color: var(--accent); font-weight: 600; }
-.cm-bar textarea {
-  flex: 1; min-width: 0; resize: none; font: inherit; color: var(--page-text); background: rgba(255, 255, 255, 0.04);
-  border: 0; border-radius: 10px; padding: 7px 12px; min-height: 32px; max-height: 160px; line-height: 18px;
-}
-.cm-bar textarea:focus { outline: 1px solid rgba(37, 195, 255, 0.5); }
-.cm-bar textarea:disabled { opacity: 0.6; }
-.cm-send { color: #0b0b0d !important; background: var(--accent) !important; font-weight: 600; }
-.cm-send:disabled { opacity: 0.4; cursor: default; }
-.cm-sheet { padding: 10px 14px; max-height: 42vh; display: flex; flex-direction: column; gap: 8px; }
-.cm-log { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; }
-.cm-m { white-space: pre-wrap; }
-.cm-m.you { color: #fff; }
-.cm-m.you b { color: var(--accent); font-weight: 600; }
-.cm-m.step { color: var(--page-muted); font-size: 12px; }
-.cm-m.error { color: #ff8a98; }
-.cm-m.done { color: #5fd08a; }
-.cm-view { min-height: 22px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
-.cm-run { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--amber); }
-.cm-run .cm-stop { margin-left: auto; min-height: 26px; }
-.cm-shots { display: flex; gap: 8px; padding: 8px; }
-.cm-shot { position: relative; }
-.cm-shot img { height: 56px; border-radius: 6px; display: block; }
-.cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
-
 /* ⌥-drag: a screenshot of part of a live frame. */
 .cv-stage.snapping, .cv-stage.snapping * { cursor: crosshair !important; }
 .cv-snap { position: absolute; z-index: 6; border: 1.5px solid var(--accent); background: rgba(37, 195, 255, 0.08); border-radius: 4px; pointer-events: none; }
 
 #toast {
-  position: fixed; left: 50%; bottom: 96px; transform: translate(-50%, 12px); z-index: 11;
+  position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px); z-index: 11;
   background: var(--frame); backdrop-filter: blur(16px); padding: 10px 14px; border-radius: 12px;
   box-shadow: inset 0 0 0 1px var(--frame-edge); font-size: 13px; opacity: 0; pointer-events: none;
   transition: opacity 0.25s, transform 0.25s var(--settle); max-width: min(560px, calc(100vw - 32px));
@@ -181,13 +123,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 @media (prefers-reduced-motion: reduce) {
   .cv-world.glide, #toast, .cv-poster { transition: none; }
 }
-
-/* Frozen or on today's main: the switch in an exploration's head, and its word in the foot. */
-.cv-head .cv-mode { color: #8fd8ff; }
-.cv-head .cv-mode.on-main { color: var(--amber); }
-.cv-mode-label { flex: none; color: #8fd8ff; }
-.cv-mode-label.on-main { color: var(--amber); }
-.small .cv-mode { display: none; }
 
 /* ---- Notes (src/notes.js): N, then click a part of a live frame or drag over an area ---- */
 .cv-stage.noting iframe { pointer-events: none; }
@@ -243,11 +178,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-answer.done b { color: #5fd08a; }
 .cv-answer.question b { color: var(--accent); }
 .cv-answer.skipped b, .cv-answer.sent b { color: var(--page-muted); }
-.cm-notes {
-  list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow-y: auto;
-  background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
-}
+.cm-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow-y: auto; }
 .cm-notes li { display: flex; align-items: center; gap: 4px; }
 .cv-noted {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left;
@@ -260,22 +191,152 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-noted-text small { color: var(--page-muted); font-size: 11px; }
 .cv-unnote { flex: none; min-height: 24px; width: 24px; padding: 0; background: none; box-shadow: none; color: var(--page-muted); }
 
-/* ---- Files and Library (src/panels.js): one panel floating over the canvas ---- */
-.cv-workspace { position: fixed; inset: 48px 0 0 0; z-index: 9; pointer-events: none; }
-.cv-workspace > * { pointer-events: auto; }
-.cv-workspace > .cv-panel { position: absolute; left: 8px; top: 8px; bottom: 8px; }
-.cv-workspace > .pg-reader { left: 336px; right: 16px; bottom: 96px; }
-.cv-workspace:has(> .cv-panel[hidden]) > .pg-reader { left: 16px; }
-.pg-shield { z-index: 4; }
-
-/* A frame's Files chip and Pick, and what's picked. */
-.cv-head .cv-chip { color: var(--page-muted); }
-.cv-head .cv-pick.on, .cv-picked { color: var(--accent); }
-.cv-picked { flex: none; }
-.small .cv-chip, .small .cv-pick { display: none; }
-
-/* The bar's Files, Inspect and Commit. */
-.cv-bar .pg-inspect-btn[aria-pressed=true], #btn-files[aria-pressed=true] { color: #0b0b0d; background: var(--accent); }
 .cv-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px; font-size: 11px; background: var(--accent); color: #0b0b0d; }
 .cv-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber); animation: cv-blink 1s infinite alternate; }
 @keyframes cv-blink { to { opacity: 0.3; } }
+
+/* ---- The layout: header and chat on the chrome, the canvas a card beside them ---- */
+.cv-bar {
+  position: fixed; inset: 0 0 auto 0; height: 48px; z-index: 10;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  background: var(--chrome);
+}
+.cv-bar h1 { font-size: 14px; font-weight: 600; margin: 0 0 0 4px; color: #fff; white-space: nowrap; }
+.cv-spacer { flex: 1; }
+.cv-status { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; background: var(--amber); }
+.cv-status[data-state=ready] { background: #5fd08a; }
+.cv-status[data-state=error] { background: #ff5a6e; }
+.cv-zoom { font-size: 12px; color: var(--page-muted); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; margin-right: 2px; }
+.cv-bar .pg-inspect-btn { display: none; } /* the frame toolbar has Inspect */
+
+/* Icon buttons: the header's and the frame toolbar's. */
+.cv-icon {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0;
+  background: none; box-shadow: none; border-radius: 8px; color: var(--page-muted); text-decoration: none;
+}
+.cv-icon:hover { filter: none; background: rgba(255, 255, 255, 0.07); color: var(--page-text); }
+.cv-icon[aria-pressed=true] { color: var(--accent); background: rgba(37, 195, 255, 0.13); }
+.cv-bar #btn-left[aria-pressed=true], .cv-bar #btn-right[aria-pressed=true] { color: var(--page-text); background: none; }
+.cv-icon svg { display: block; }
+
+/* Commit is the primary action, Share the secondary one. */
+.cv-commit, .cv-share { min-height: 32px; padding: 0 14px; border-radius: 9px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.cv-commit { background: var(--accent); color: #0b0b0d; box-shadow: none; }
+.cv-commit .cv-count { background: #0b0b0d; color: var(--accent); }
+.cv-share { margin-left: 6px; }
+.cv-share:disabled { opacity: 0.45; cursor: default; filter: none; }
+
+.cv-layout { position: fixed; inset: 48px 0 0 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); }
+body.no-left .cv-layout { grid-template-columns: minmax(0, 1fr); }
+body.no-left .cv-left { display: none; }
+.cv-card {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-width: 0;
+  margin: 0 8px 8px 0; border-radius: 14px; overflow: hidden;
+  background: var(--page); box-shadow: inset 0 0 0 1px var(--frame-edge);
+}
+body.no-left .cv-card { margin-left: 8px; }
+body.no-right .cv-card { grid-template-columns: minmax(0, 1fr) 0; }
+body.no-right .cv-right { display: none; }
+
+/* ---- The frame: its branch and iteration above it; the rest is in Properties ---- */
+.cv-foot { display: none; }
+.cv-head .cv-title { flex: 0 1 auto; display: flex; align-items: center; gap: calc(6px * var(--inv)); }
+.cv-title svg { flex: none; width: calc(14px * var(--inv)); height: calc(14px * var(--inv)); color: var(--accent); }
+.cv-frame.main .cv-title svg { color: var(--amber); }
+.cv-title b { color: var(--accent); margin: 0; font-weight: 600; white-space: nowrap; }
+.cv-frame.main .cv-title b { color: var(--amber); }
+.cv-name { color: var(--page-muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cv-frame.picked .cv-title b::after { content: ' ◆'; }
+.cv-iter-pick { position: relative; flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: calc(3px * var(--inv)); color: var(--page-muted); cursor: pointer; max-width: calc(260px * var(--inv)); }
+.cv-iter-pick:hover { color: var(--page-text); }
+.cv-iter-now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-iter-now.main { color: var(--page-muted); }
+.cv-iter-pick svg { flex: none; width: calc(12px * var(--inv)); height: calc(12px * var(--inv)); }
+.cv-iter-pick select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; min-height: 0; }
+.cv-head { gap: calc(6px * var(--inv)); }
+.cv-iter-now::before { content: '/ '; opacity: 0.6; }
+.cv-right .pg-min { transform: scaleX(-1); } /* it closes to the right */
+.small .cv-iter-pick, .small .cv-iter-now.main { display: none; }
+
+/* The frame toolbar: over the selected frame's top edge, at its right. */
+.cv-tools {
+  position: absolute; left: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 3px;
+  background: var(--raised); border-radius: 11px;
+  box-shadow: inset 0 0 0 1px var(--frame-edge), 0 10px 24px -10px rgba(0, 0, 0, 0.8);
+}
+.cv-tools .cv-icon { width: 30px; height: 30px; }
+.cv-tsep { width: 1px; height: 18px; margin: 0 3px; background: var(--page-line); }
+
+/* ---- The chat (src/composer.js): the left panel ---- */
+.cv-left { display: flex; flex-direction: column; min-height: 0; padding: 4px 12px 12px; gap: 10px; }
+.cm-tabs { display: flex; gap: 4px; flex: none; }
+.cm-tabs button { min-height: 26px; min-width: 28px; padding: 0 9px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
+.cm-tabs button:hover { filter: none; color: var(--page-text); background: rgba(255, 255, 255, 0.06); }
+.cm-tabs button[aria-selected=true] { color: #fff; background: rgba(255, 255, 255, 0.09); }
+.cm-tabs button.busy { color: var(--amber); }
+.cm-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 2px; font-size: 14px; line-height: 1.5; }
+.cm-empty { margin: auto 0; text-align: center; color: var(--page-muted); font-size: 13px; }
+.cm-m { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm-m.you { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.cm-m.you p { margin: 0; padding: 9px 13px; border-radius: 14px; background: rgba(255, 255, 255, 0.07); color: #fff; }
+.cm-m.claude { color: var(--page-text); }
+.cm-m.step { color: var(--page-muted); font-size: 12px; margin-top: -8px; }
+.cm-m.error { color: #ff8a98; }
+.cm-m.done { color: #5fd08a; }
+.cm-m time { display: block; margin-top: 4px; font-size: 11px; color: var(--page-muted); }
+.cm-view { min-height: 22px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
+.cm-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 9px; border-radius: 8px;
+  font-size: 12.5px; color: var(--accent); background: rgba(37, 195, 255, 0.12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cm-chip svg { flex: none; width: 13px; height: 13px; }
+.cm-run { flex: none; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--amber); padding: 0 4px; }
+.cm-run .cm-stop { margin-left: auto; width: 26px; min-height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.cm-box {
+  position: relative; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  background: var(--raised); border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge);
+}
+.cm-target { align-self: flex-start; max-width: 100%; }
+.cm-box textarea {
+  resize: none; font: inherit; font-size: 14px; color: var(--page-text); background: none; border: 0;
+  padding: 4px 44px 4px 4px; min-height: 36px; max-height: 200px; line-height: 20px;
+}
+.cm-box textarea:focus { outline: none; }
+.cm-box textarea:disabled { opacity: 0.6; }
+.cm-box:focus-within { box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.45); }
+.cm-send {
+  position: absolute; right: 10px; bottom: 10px; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; background: var(--accent); color: #0b0b0d; box-shadow: none;
+}
+.cm-send:disabled { opacity: 0.35; cursor: default; filter: none; }
+.cm-shots { display: flex; gap: 8px; flex-wrap: wrap; }
+.cm-shot { position: relative; }
+.cm-shot img { height: 52px; border-radius: 6px; display: block; }
+.cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
+
+/* ---- The right panel (src/panels.js): Properties, Files, Library ---- */
+.cv-right { display: flex; min-width: 0; min-height: 0; border-left: 1px solid var(--page-line); background: var(--page); }
+.cv-right > .pg-panel { flex: 1; width: auto; height: 100%; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.cv-right > .pg-panel::after { display: none; }
+.cv-right .pg-body { width: 100%; }
+.cv-right .pg-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.cv-right .pg-head { padding: 12px 10px 8px 14px; }
+.cv-props { overflow-y: auto; padding: 4px 14px 16px; }
+.cv-props h3 { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; font-size: 14px; font-weight: 600; color: #fff; }
+.cv-props h3 svg { color: var(--accent); }
+.cv-props section { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--page-line); }
+.cv-prow { display: grid; grid-template-columns: 16px 84px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 30px; font-size: 13px; }
+.cv-prow svg { color: var(--page-muted); }
+.cv-plabel { color: var(--page-muted); }
+.cv-pval { color: var(--page-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-pval .cv-on { color: var(--accent); }
+.cv-pval .cv-ok { color: #5fd08a; }
+.cv-pnote { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--page-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; cursor: pointer; }
+.cv-pnote.open { -webkit-line-clamp: unset; }
+.cv-pnone { color: var(--page-muted); font-size: 13px; margin: 12px 0; }
+
+/* The readers of Files and Library: over the canvas. */
+.cv-workspace { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
+.cv-workspace > * { pointer-events: auto; }
+.cv-workspace > .pg-reader { left: 10px; right: 10px; top: 10px; bottom: 10px; }
+.pg-shield { z-index: 4; }

@@ -11,27 +11,37 @@
 <body>
   <!-- The canvas version of the playground (branch "canvas"). Main and every
        exploration are frames on one canvas; each frame is the app itself,
-       running its own layers. See src/canvas.js. -->
+       running its own layers. The chat sits at the left, joined to the
+       header; the canvas is the card in the middle, with Properties, Files
+       and Library at its right. Both sides close, to give the canvas room.
+       See src/canvas.js. -->
   <header class="cv-bar" id="subbar">
+    <button type="button" class="cv-icon" id="btn-left" aria-label="Show or hide the chat" aria-pressed="true" title="Chat"></button>
+    <span class="cv-status" id="status" data-state="busy" title="Starting the app…"></span>
     <h1 id="name">Playground</h1>
-    <span class="cv-status" id="status" data-state="busy">Starting the app…</span>
     <span class="cv-spacer spacer"></span>
-    <button type="button" id="btn-files" title="Files and Library (P)">Files</button>
-    <button type="button" id="btn-commit" title="Move the picked iterations into the app and commit them">Commit</button>
-    <button type="button" id="btn-fit" title="Show every frame (⇧1)">Fit all</button>
     <span class="cv-zoom" id="zoom-label">100%</span>
-    <a id="classic" target="_blank" rel="noopener" title="The playground as it was, with the strip and panels">Classic ↗</a>
+    <button type="button" class="cv-icon" id="btn-fit" aria-label="Show every frame" title="Show every frame (⇧1)"></button>
+    <a class="cv-icon" id="classic" target="_blank" rel="noopener" aria-label="The classic playground" title="The classic playground"></a>
+    <button type="button" class="cv-share" id="btn-share" disabled title="Sharing with the team comes with the team version">Share</button>
+    <button type="button" class="cv-commit" id="btn-commit" title="Move the picked iterations into the app and commit them">Commit</button>
+    <button type="button" class="cv-icon" id="btn-right" aria-label="Show or hide Properties and Files" aria-pressed="true" title="Properties and Files"></button>
   </header>
 
-  <main class="cv-stage" id="stage" aria-label="Canvas">
-    <div class="cv-world" id="world"></div>
-    <div class="cv-shield" id="shield" hidden></div>
-    <div class="pg-shield"></div>
-  </main>
-  <!-- Files and Library (src/panels.js) and their readers float here. -->
-  <div class="cv-workspace" id="workspace"></div>
-
-  <div class="cv-composer" id="composer"></div>
+  <div class="cv-layout">
+    <aside class="cv-left" id="composer" aria-label="Chat with Claude"></aside>
+    <div class="cv-card">
+      <main class="cv-stage" id="stage" aria-label="Canvas">
+        <div class="cv-world" id="world"></div>
+        <div class="cv-shield" id="shield" hidden></div>
+        <div class="pg-shield"></div>
+        <div class="cv-tools" id="tools" role="toolbar" aria-label="The selected frame" hidden></div>
+        <!-- The readers of Files and Library open over the canvas. -->
+        <div class="cv-workspace" id="workspace"></div>
+      </main>
+      <aside class="cv-right" id="right" aria-label="Properties and files"></aside>
+    </div>
+  </div>
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="src/canvas.js"></script>

@@ -1,13 +1,15 @@
-// The canvas's composer (src/canvas.js): one floating bar at the bottom that
-// asks Claude for an iteration of the selected frame. Part of the
-// prototype-playground kit.
+// The canvas's chat (src/canvas.js): the panel at the left, joined to the
+// header, that asks Claude for an iteration of the selected frame. Part of
+// the prototype-playground kit.
 //
 // It talks to serve.py's chat (POST /playground/chat, a stream of JSON lines,
 // as the classic Claude panel does) and keeps up to four chats as tabs, each
-// with its own conversation, which carries on between messages. The
-// conversation shows in a sheet above the bar while a chat runs, and on a
-// click on the chevron. Screenshots: hold ⌥ and drag over any live frame; the
-// picture waits above the box until Send.
+// with its own conversation, which carries on between messages. Each message
+// carries a chip with the frame it was about; the box's chip names the
+// selected frame. Screenshots (⌥-drag over a live frame), pasted pictures and
+// notes wait in the box until Send.
+
+import { ICON } from './icons.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const store = {
@@ -18,7 +20,7 @@ const store = {
 /**
  * hooks: {
  *   key,                          // localStorage prefix
- *   context(): {label, body} | null,  // the selected frame: its name, and what the server is told
+ *   context(): {chip, kind, body} | null,  // the selected frame: its name, main or exp, and what the server is told
  *   toast(text),
  *   done({ new: [{playground, version}], updated: [...] }),  // a run finished
  *   notes(): the canvas's notes (src/notes.js): count(), take(), answered(list), restore(ids)
@@ -29,25 +31,21 @@ export function mountComposer(root, hooks) {
   const saved = store.get(KEY, null);
   const chats = saved?.chats?.length ? saved.chats : [{ id: 'c1', session: null, log: [] }];
   let active = chats.find((c) => c.id === saved?.active) ? saved.active : chats[0].id;
-  let enabled = false, maxTabs = 4, open = false;
+  let enabled = false, maxTabs = 4;
   const running = new Map(); // chat id → { started, status }
   const pending = []; // screenshots waiting: { png, note, url }
 
   root.innerHTML = `
-    <div class="cm-sheet" hidden>
-      <div class="cm-log" aria-live="polite"></div>
-      <div class="cm-run" hidden><span class="cm-status"></span><button type="button" class="cm-stop">Stop</button></div>
-    </div>
-    <ol class="cm-notes" hidden></ol>
-    <div class="cm-shots" hidden></div>
-    <form class="cm-bar">
-      <div class="cm-tabs" role="tablist" aria-label="Chats"></div>
+    <div class="cm-tabs" role="tablist" aria-label="Chats"></div>
+    <div class="cm-log" aria-live="polite"></div>
+    <div class="cm-run" hidden><span class="cm-status"></span><button type="button" class="cm-stop" aria-label="Stop" title="Stop">${ICON.stop}</button></div>
+    <form class="cm-box">
       <span class="cm-target"></span>
-      <textarea rows="1" placeholder="Ask Claude for an iteration…" aria-label="Message to Claude"></textarea>
-      <button type="button" class="cm-toggle" aria-label="Show the conversation" title="The conversation">⌃</button>
-      <button type="submit" class="cm-send">Send</button>
+      <ol class="cm-notes" hidden></ol>
+      <div class="cm-shots" hidden></div>
+      <textarea rows="1" placeholder="Chat" aria-label="Message to Claude"></textarea>
+      <button type="submit" class="cm-send" aria-label="Send" title="Send (Enter)">${ICON.send}</button>
     </form>`;
-  const sheet = root.querySelector('.cm-sheet');
   const logEl = root.querySelector('.cm-log');
   const runEl = root.querySelector('.cm-run');
   const statusEl = root.querySelector('.cm-status');
@@ -56,7 +54,7 @@ export function mountComposer(root, hooks) {
   const tabsEl = root.querySelector('.cm-tabs');
   const targetEl = root.querySelector('.cm-target');
   const input = root.querySelector('textarea');
-  const toggle = root.querySelector('.cm-toggle');
+  const chipOf = (frame, kind) => `<span class="cm-chip">${kind === 'main' ? ICON.main : ICON.branch}${esc(frame)}</span>`;
 
   const chat = () => chats.find((c) => c.id === active);
   const keep = () => store.set(KEY, { active, chats: chats.map((c) => ({ ...c, log: c.log.slice(-80) })) });
@@ -72,7 +70,6 @@ export function mountComposer(root, hooks) {
       const n = chats.length + 1;
       chats.push({ id: `c${Date.now().toString(36)}`, session: null, log: [] });
       active = chats.at(-1).id;
-      setOpen(false);
       hooks.toast(`Chat ${n}: a new conversation.`);
     } else active = b.dataset.id;
     keep();
@@ -91,19 +88,12 @@ export function mountComposer(root, hooks) {
     drawLog();
   });
 
-  function setOpen(v) {
-    open = v;
-    sheet.hidden = !open || !chat().log.length;
-    toggle.setAttribute('aria-expanded', String(open));
-    toggle.textContent = open ? '⌄' : '⌃';
-    if (open) logEl.scrollTop = logEl.scrollHeight;
-  }
-  toggle.addEventListener('click', () => setOpen(!open));
-
   function drawLog() {
     const c = chat();
-    logEl.innerHTML = c.log.map((m) => `<div class="cm-m ${m.who}">${m.who === 'you' ? '<b>You</b> ' : ''}${esc(m.text)}${m.view ? ` <button type="button" class="cm-view" data-view="${esc(m.view)}">View</button>` : ''}</div>`).join('');
-    sheet.hidden = !open || !c.log.length;
+    logEl.innerHTML = c.log.length ? c.log.map((m) => m.who === 'you'
+      ? `<div class="cm-m you">${m.frame ? chipOf(m.frame, m.kind) : ''}<p>${esc(m.text)}</p></div>`
+      : `<div class="cm-m ${m.who}">${esc(m.text)}${m.view ? ` <button type="button" class="cm-view" data-view="${esc(m.view)}">View</button>` : ''}${m.at ? `<time>${esc(m.at)}</time>` : ''}</div>`).join('')
+      : '<p class="cm-empty">Select a frame, then ask for an iteration.</p>';
     const r = running.get(active);
     runEl.hidden = !r;
     if (r) statusEl.textContent = `${r.status} ${clock(r.started)}`;
@@ -117,16 +107,17 @@ export function mountComposer(root, hooks) {
   const clock = (t) => { const s = Math.round((Date.now() - t) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   setInterval(() => { if (running.size) drawLog(); }, 1000);
 
-  const say = (c, who, text, view) => {
-    c.log.push({ who, text, view });
+  const say = (c, who, text, view, extra = {}) => {
+    c.log.push({ who, text, view, ...extra });
     keep();
     if (c.id === active) drawLog();
   };
 
   function drawTarget() {
     const ctx = hooks.context();
-    targetEl.innerHTML = ctx ? `▣ ${ctx.label}` : 'Select a frame';
-    input.placeholder = !enabled ? (chatWhy || 'Chat is off') : ctx ? 'Ask Claude for an iteration of this frame…' : 'Select a frame first, or ask for a new exploration…';
+    targetEl.innerHTML = ctx ? chipOf(ctx.chip, ctx.kind) : '';
+    targetEl.hidden = !ctx;
+    input.placeholder = !enabled ? (chatWhy || 'Chat is off') : ctx ? 'Ask for an iteration' : 'Ask for a new exploration';
   }
 
   function drawShots() {
@@ -161,10 +152,9 @@ export function mountComposer(root, hooks) {
   async function send(c, message, shots, batch = []) {
     const ctx = hooks.context();
     const extra = [shots.length && `${shots.length} screenshot${shots.length > 1 ? 's' : ''}`, batch.length && `${batch.length} note${batch.length > 1 ? 's' : ''}`].filter(Boolean);
-    say(c, 'you', message + (extra.length ? ` (${extra.join(', ')})` : ''));
+    say(c, 'you', message + (extra.length ? ` (${extra.join(', ')})` : ''), undefined, ctx ? { frame: ctx.chip, kind: ctx.kind } : {});
     let answered = false;
-    running.set(c.id, { started: Date.now(), status: 'Claude is working…' });
-    setOpen(true);
+    running.set(c.id, { started: Date.now(), status: 'Working' });
     drawTabs();
     drawLog();
     let result = null;
@@ -225,7 +215,8 @@ export function mountComposer(root, hooks) {
       const names = made.map((x) => `${x.playground} ${x.version.slice(1)}`);
       say(c, 'done', made.length
         ? `${result.new?.length ? 'Made' : 'Updated'} ${names.join(', ')}${result.cost ? ` · $${result.cost.toFixed(2)}` : ''}`
-        : `Finished, with no new version${result.cost ? ` · $${result.cost.toFixed(2)}` : ''}.`, made[0] ? `${made[0].playground}/${made[0].version}` : undefined);
+        : `Finished, with no new version${result.cost ? ` · $${result.cost.toFixed(2)}` : ''}.`, made[0] ? `${made[0].playground}/${made[0].version}` : undefined,
+        { at: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) });
       hooks.done(result);
     }
   }
