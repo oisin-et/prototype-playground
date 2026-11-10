@@ -126,6 +126,7 @@ export function mountNotes(o) {
   let on = false, draft = null, drag = null, hover = null, asking = false, nextHover = null;
   function set(v) {
     on = v && o.enabled();
+    if (on) o.onStart?.();
     if (v && !on) o.toast('Notes go to Claude, and chat is off.');
     o.stage.classList.toggle('noting', on);
     target.hidden = true;

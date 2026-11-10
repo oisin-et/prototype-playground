@@ -15,6 +15,8 @@
 
 import { mountComposer } from './composer.js';
 import { mountNotes } from './notes.js';
+import { mountPanels } from './panels.js';
+import { mountCommit } from './commit.js';
 
 const load = (path, base) => fetch(new URL(path, base), { cache: 'no-store' }).then((r) => {
   if (!r.ok) throw new Error(`Couldn't load ${path} (${r.status})`);
@@ -28,6 +30,8 @@ const store = {
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 const CFG = await load('../playground.json', import.meta.url);
+// Mounted at the end (composer.js, notes.js, panels.js, commit.js); the frames use them once they're there.
+let composer = null, notes = null, panels = null, commit = null;
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
 const DATA = new URL(`/${CFG.data}/`, location.href);
@@ -138,7 +142,8 @@ for (const f of frames) {
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select>
         <button type="button" data-step="1" aria-label="Later iteration">›</button>
       </span>` : ''}
-      ${f.kind === 'exp' ? '<button type="button" class="cv-mode" hidden>Frozen</button>' : ''}
+      ${f.kind === 'exp' ? '<button type="button" class="cv-mode" hidden>Frozen</button><button type="button" class="cv-pick" title="Pick this iteration for main: Commit moves it into the app">Pick</button>' : ''}
+      <button type="button" class="cv-chip" title="The files behind this frame">Files</button>
       <button type="button" class="cv-full" title="Fill the window (F)" aria-label="Fill the window">⤢</button>
     </header>
     <div class="cv-body">
@@ -160,6 +165,8 @@ for (const f of frames) {
     el.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => step(f, +b.dataset.step)));
   }
   el.querySelector('.cv-mode')?.addEventListener('click', () => toggleMode(f));
+  el.querySelector('.cv-pick')?.addEventListener('click', () => commit?.pick(f.pg.id, f.v));
+  el.querySelector('.cv-chip').addEventListener('click', () => { selectFrame(f); panels.open(f, 'files'); });
   el.querySelector('.cv-full').addEventListener('click', () => { selectFrame(f); focusFrame(f); });
   el.querySelector('.cv-head').addEventListener('pointerdown', () => selectFrame(f));
   world.append(el);
@@ -192,7 +199,10 @@ function drawFoot(f) {
   const mode = f.onMain || !fz ? "on today's main"
     : fz.label === 'frozen' ? `frozen ${when(fz.made?.slice(0, 10))}`
     : fz.label === 'rebuilt' ? `rebuilt on main of ${when(fz.date)}` : "on today's main (no older main in git)";
-  f.foot.innerHTML = `<span class="cv-iter"><b>${esc(it.id.slice(1))}</b> ${esc(it.name)}</span>${from}${it.merged ? `<span class="cv-merged">✓ in main ${esc(it.merged)}</span>` : ''}${built ? '' : '<span class="cv-warn">not in the app yet: reload it</span>'}<span class="cv-mode-label${f.onMain || !fz ? ' on-main' : ''}">${esc(mode)}</span><span class="cv-date">${esc(it.date || '')}</span>`;
+  const picked = commit?.picked(f.pg.id) === f.v;
+  const pickBtn = f.el.querySelector('.cv-pick');
+  if (pickBtn) { pickBtn.textContent = picked ? '◆ Picked' : 'Pick'; pickBtn.classList.toggle('on', picked); }
+  f.foot.innerHTML = `<span class="cv-iter"><b>${esc(it.id.slice(1))}</b> ${esc(it.name)}</span>${from}${picked ? '<span class="cv-picked">◆ picked for main</span>' : ''}${it.merged ? `<span class="cv-merged">✓ in main ${esc(it.merged)}</span>` : ''}${built ? '' : '<span class="cv-warn">not in the app yet: reload it</span>'}<span class="cv-mode-label${f.onMain || !fz ? ' on-main' : ''}">${esc(mode)}</span><span class="cv-date">${esc(it.date || '')}</span>`;
   f.foot.title = it.note || '';
 }
 
@@ -325,6 +335,7 @@ addEventListener('message', (e) => {
     f.route = { screen: m.screen, params: m.params || {} };
     if (f.kind === 'main') drawFoot(f);
     notes?.drawPins(f);
+    panels?.changed(f);
   } else if (['captured', 'inspected', 'located', 'pictured', 'drawn'].includes(m.type)) {
     const p = pending.get(m.id);
     if (p) { pending.delete(m.id); m.error ? p.fail(new Error(m.error)) : p.ok(m); }
@@ -338,7 +349,11 @@ addEventListener('message', (e) => {
     if (m.key === 'Space') setSpace(m.down);
     else if (m.key === 'Alt') setSnap(m.down);
     else if (m.key === 'n') notes.key('n');
-    else if (m.key === 'Escape' && m.down !== false) { if (notes.on) notes.key('Escape'); else escape(); }
+    else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
+    else if (m.key === 'p') panels.toggle();
+    else if (m.key === 'Escape' && m.down !== false) {
+      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else escape();
+    }
   } else if (m.type === 'zoomkey') {
     zoomKey({ in: '+', out: '-', actual: '0', fit: '!' }[m.key] || m.key);
   }
@@ -359,6 +374,7 @@ function setIteration(f, id) {
   drawMode(f);
   drawFoot(f);
   notes?.drawPins(f);
+  panels?.changed(f);
   if (f === selected) drawTarget();
 }
 // The switch in an exploration's head: its frozen copy, or on today's main.
@@ -385,7 +401,6 @@ const step = (f, d) => {
 
 // ---- Selection: the frame Claude works on ----------------------------------
 let selected = null;
-let composer = null, notes = null; // mounted at the end (mountComposer, mountNotes)
 const drawTarget = () => composer?.drawTarget();
 // What the composer tells Claude about the selected frame.
 function context() {
@@ -413,6 +428,7 @@ function selectFrame(f) {
     f?.el.classList.add('selected');
     store.set(`${KEY}.selected`, f?.id ?? null);
     drawTarget();
+    panels?.selected(f);
   }
   if (f) wake(f);
 }
@@ -493,6 +509,7 @@ stage.addEventListener('wheel', (e) => {
 let space = false, pan = null;
 function setSpace(down) {
   space = down;
+  document.body.classList.toggle('pg-space', down);
   stage.classList.toggle('grab', down);
   shield.hidden = !down && !pan;
 }
@@ -577,6 +594,7 @@ notes = mountNotes({
   key: KEY, W, stage, frames, ask, about, toast,
   listEl: composer.notesEl,
   enabled: () => true,
+  onStart: () => panels?.inspector.set(false),
   changed: () => {},
   goto(x) {
     const f = frames.find((y) => y.id === x.frame);
@@ -652,6 +670,7 @@ stage.append(snapBox);
 let snapping = false, snap = null;
 function setSnap(down) {
   snapping = down;
+  document.body.classList.toggle('pg-alt', down);
   stage.classList.toggle('snapping', down || !!snap);
   shield.hidden = !down && !snap && !space && !pan;
 }
@@ -704,5 +723,21 @@ function drawSnap() {
   snapBox.hidden = false;
   snapBox.style.cssText = `left:${Math.min(snap.x0, snap.x1) - s.left}px;top:${Math.min(snap.y0, snap.y1) - s.top}px;width:${Math.abs(snap.x1 - snap.x0)}px;height:${Math.abs(snap.y1 - snap.y0)}px`;
 }
+
+panels = mountPanels({
+  key: KEY, data: CFG.data, W, screens: SCREENS, playgrounds, frames, ask, send, toast,
+  target: () => selected, showVersion, notes: () => notes,
+});
+document.getElementById('btn-files').addEventListener('click', () => panels.toggle());
+document.getElementById('btn-files').before(document.querySelector('.pg-inspect-btn')); // beside Files
+addEventListener('keydown', (e) => {
+  if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); panels.toggle(); }
+});
+commit = await mountCommit({
+  data: DATA, button: document.getElementById('btn-commit'), toast,
+  changed: () => { for (const f of frames) if (f.kind === 'exp') drawFoot(f); },
+  done: () => location.reload(),
+});
 
 drawTarget();

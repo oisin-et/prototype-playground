@@ -5,16 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Playground Canvas</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="src/style.css">
   <link rel="stylesheet" href="src/canvas.css">
 </head>
 <body>
   <!-- The canvas version of the playground (branch "canvas"). Main and every
        exploration are frames on one canvas; each frame is the app itself,
        running its own layers. See src/canvas.js. -->
-  <header class="cv-bar">
+  <header class="cv-bar" id="subbar">
     <h1 id="name">Playground</h1>
     <span class="cv-status" id="status" data-state="busy">Starting the app…</span>
-    <span class="cv-spacer"></span>
+    <span class="cv-spacer spacer"></span>
+    <button type="button" id="btn-files" title="Files and Library (P)">Files</button>
+    <button type="button" id="btn-commit" title="Move the picked iterations into the app and commit them">Commit</button>
     <button type="button" id="btn-fit" title="Show every frame (⇧1)">Fit all</button>
     <span class="cv-zoom" id="zoom-label">100%</span>
     <a id="classic" target="_blank" rel="noopener" title="The playground as it was, with the strip and panels">Classic ↗</a>
@@ -23,7 +26,10 @@
   <main class="cv-stage" id="stage" aria-label="Canvas">
     <div class="cv-world" id="world"></div>
     <div class="cv-shield" id="shield" hidden></div>
+    <div class="pg-shield"></div>
   </main>
+  <!-- Files and Library (src/panels.js) and their readers float here. -->
+  <div class="cv-workspace" id="workspace"></div>
 
   <div class="cv-composer" id="composer"></div>
   <div id="toast" role="status" aria-live="polite"></div>
