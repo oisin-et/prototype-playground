@@ -1796,14 +1796,17 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.from_panel(("frozen",)):
                 self.send_error(403)
                 return
-            if path.endswith("/sync"):
-                self.json(200, {"enabled": frozen.enabled(), "versions": frozen.sync()})
-                return
             try:
                 body = self.read_json() or {}
             except ValueError:
                 body = {}
-            port = frozen.open_copy(str(body.get("key", "")) if isinstance(body, dict) else "")
+            if not isinstance(body, dict):
+                body = {}
+            if path.endswith("/sync"):
+                stale = body.get("stale") if isinstance(body.get("stale"), list) else None
+                self.json(200, {"enabled": frozen.enabled(), "versions": frozen.sync(stale)})
+                return
+            port = frozen.open_copy(str(body.get("key", "")))
             self.json(200 if port else 404, {"port": port})
         elif path == "/playground/thumbs":
             if not self.from_panel(("thumbs",)):

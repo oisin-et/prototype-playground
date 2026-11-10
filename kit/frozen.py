@@ -191,10 +191,16 @@ def newest_change(folder):
         return 0
 
 
-def sync():
-    """Freezes every version that isn't yet. Returns listing()."""
+def sync(stale=None):
+    """Freezes every version that isn't yet. Returns listing(). stale: versions
+    a chat changed after they were frozen today; they're frozen again, once
+    they settle."""
     if not enabled():
         return {}
+    for key in stale or []:
+        p = manifest_path(str(key))
+        if KEY.match(str(key)) and p.exists() and read_json(p, {}).get("label") == "frozen":
+            p.unlink()
     today = datetime.date.today().isoformat()
     head = git("rev-parse", "HEAD")
     busy = chat_busy()

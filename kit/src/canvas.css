@@ -15,6 +15,7 @@
   --settle: cubic-bezier(0.22, 1, 0.36, 1);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--page); color: var(--page-text);
@@ -125,24 +126,52 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 /* ⤢: the focused frame alone, the others dimmed. */
 .cv-stage.focusing .cv-frame:not(.focused), .cv-stage.focusing .cv-group { opacity: 0.08; transition: opacity 0.3s; }
 
-/* ---- The composer: floats at the bottom, names its target ---- */
+/* ---- The composer (src/composer.js): floats at the bottom, names its target ---- */
 .cv-composer {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
-  width: min(720px, calc(100vw - 32px));
-  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px;
+  width: min(760px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px;
+}
+.cm-bar, .cm-sheet, .cm-shots {
   background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
 }
-.cv-target { font-size: 12px; color: var(--page-muted); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
-.cv-target b { color: var(--accent); font-weight: 600; }
-.cv-composer input {
-  flex: 1; min-width: 0; font: inherit; color: var(--page-text); background: rgba(255, 255, 255, 0.04);
-  border: 0; border-radius: 10px; padding: 9px 12px;
+.cm-bar { display: flex; align-items: flex-end; gap: 8px; padding: 8px; }
+.cm-tabs { display: flex; gap: 3px; flex: none; }
+.cm-tabs button { min-height: 32px; min-width: 28px; padding: 0 8px; font-size: 12px; color: var(--page-muted); }
+.cm-tabs button[aria-selected=true] { color: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
+.cm-tabs button.busy { color: var(--amber); }
+.cm-target { flex: none; align-self: center; font-size: 12px; color: var(--page-muted); white-space: nowrap; max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
+.cm-target b { color: var(--accent); font-weight: 600; }
+.cm-bar textarea {
+  flex: 1; min-width: 0; resize: none; font: inherit; color: var(--page-text); background: rgba(255, 255, 255, 0.04);
+  border: 0; border-radius: 10px; padding: 7px 12px; min-height: 32px; max-height: 160px; line-height: 18px;
 }
-.cv-composer input:disabled { opacity: 0.6; }
+.cm-bar textarea:focus { outline: 1px solid rgba(37, 195, 255, 0.5); }
+.cm-bar textarea:disabled { opacity: 0.6; }
+.cm-send { color: #0b0b0d !important; background: var(--accent) !important; font-weight: 600; }
+.cm-send:disabled { opacity: 0.4; cursor: default; }
+.cm-sheet { padding: 10px 14px; max-height: 42vh; display: flex; flex-direction: column; gap: 8px; }
+.cm-log { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; }
+.cm-m { white-space: pre-wrap; }
+.cm-m.you { color: #fff; }
+.cm-m.you b { color: var(--accent); font-weight: 600; }
+.cm-m.step { color: var(--page-muted); font-size: 12px; }
+.cm-m.error { color: #ff8a98; }
+.cm-m.done { color: #5fd08a; }
+.cm-view { min-height: 22px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
+.cm-run { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--amber); }
+.cm-run .cm-stop { margin-left: auto; min-height: 26px; }
+.cm-shots { display: flex; gap: 8px; padding: 8px; }
+.cm-shot { position: relative; }
+.cm-shot img { height: 56px; border-radius: 6px; display: block; }
+.cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
+
+/* ⌥-drag: a screenshot of part of a live frame. */
+.cv-stage.snapping, .cv-stage.snapping * { cursor: crosshair !important; }
+.cv-snap { position: absolute; z-index: 6; border: 1.5px solid var(--accent); background: rgba(37, 195, 255, 0.08); border-radius: 4px; pointer-events: none; }
 
 #toast {
-  position: fixed; left: 50%; bottom: 84px; transform: translate(-50%, 12px); z-index: 11;
+  position: fixed; left: 50%; bottom: 96px; transform: translate(-50%, 12px); z-index: 11;
   background: var(--frame); backdrop-filter: blur(16px); padding: 10px 14px; border-radius: 12px;
   box-shadow: inset 0 0 0 1px var(--frame-edge); font-size: 13px; opacity: 0; pointer-events: none;
   transition: opacity 0.25s, transform 0.25s var(--settle); max-width: min(560px, calc(100vw - 32px));

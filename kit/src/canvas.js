@@ -13,6 +13,8 @@
 // Clicking a frame wakes it and selects it; the selected frame is the one
 // Claude will work on (step 6). ⤢ or F opens a frame to fill the window.
 
+import { mountComposer } from './composer.js';
+
 const load = (path, base) => fetch(new URL(path, base), { cache: 'no-store' }).then((r) => {
   if (!r.ok) throw new Error(`Couldn't load ${path} (${r.status})`);
   return r.json();
@@ -298,11 +300,11 @@ function rerun(f) {
 
 const pending = new Map();
 let askId = 0;
-const ask = (f, m) => new Promise((ok, fail) => {
+const ask = (f, m, wait = 2500) => new Promise((ok, fail) => {
   const id = `cv${++askId}`;
   pending.set(id, { ok, fail });
   send(f, { ...m, id });
-  setTimeout(() => { if (pending.delete(id)) fail(new Error('No answer')); }, 2500);
+  setTimeout(() => { if (pending.delete(id)) fail(new Error('No answer')); }, wait);
 });
 
 addEventListener('message', (e) => {
@@ -331,6 +333,7 @@ addEventListener('message', (e) => {
     zoomAt(Math.exp(-m.dy * 0.01), r.left + m.x * k, r.top + m.y * k);
   } else if (m.type === 'key') {
     if (m.key === 'Space') setSpace(m.down);
+    else if (m.key === 'Alt') setSnap(m.down);
     else if (m.key === 'Escape' && m.down !== false) escape();
   } else if (m.type === 'zoomkey') {
     zoomKey(m.key);
@@ -377,12 +380,26 @@ const step = (f, d) => {
 
 // ---- Selection: the frame Claude works on ----------------------------------
 let selected = null;
-const targetEl = document.getElementById('target');
-function drawTarget() {
-  if (!selected) { targetEl.textContent = 'Select a frame'; return; }
-  targetEl.innerHTML = selected.kind === 'main'
-    ? '▣ <b>Main</b>'
-    : `▣ <b>${esc(selected.group)} ${esc(selected.v.slice(1))}</b> ${esc(selected.title)}`;
+let composer = null; // mounted at the end (mountComposer)
+const drawTarget = () => composer?.drawTarget();
+// What the composer tells Claude about the selected frame.
+function context() {
+  const f = selected;
+  if (!f) return null;
+  if (f.kind === 'main') {
+    return {
+      label: '<b>Main</b>',
+      body: { screen: f.where ? undefined : f.screen, screenTitle: f.where, folder: f.screen },
+    };
+  }
+  return {
+    label: `<b>${esc(f.group)} ${esc(f.v.slice(1))}</b> ${esc(iterOf(f)?.name || f.title)}`,
+    body: {
+      screen: f.screen, screenTitle: SCREENS[f.screen]?.title, folder: f.pg.screen,
+      playground: f.pg.id, version: f.v,
+      versionState: `selected on the canvas, ${frozenOf(f) ? 'shown as frozen when it was made' : "shown on today's main"}`,
+    },
+  };
 }
 function selectFrame(f) {
   if (selected !== f) {
@@ -480,7 +497,7 @@ stage.addEventListener('pointerdown', (e) => {
   if (!space && !onCover && !onBg) return;
   pan = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, cover: onCover && !space ? onCover : null };
   shield.hidden = false;
-  stage.setPointerCapture(e.pointerId);
+  try { stage.setPointerCapture(e.pointerId); } catch {}
 });
 stage.addEventListener('pointermove', (e) => {
   if (!pan) return;
@@ -526,5 +543,131 @@ addEventListener('blur', () => {
   });
 });
 addEventListener('resize', () => { if (focused) fitBox(focused.x, focused.y, focused.x + W, focused.y + H, 16); });
+
+// ---- Claude: the composer, and what a run made --------------------------------
+composer = mountComposer(document.getElementById('composer'), {
+  key: KEY,
+  context,
+  toast,
+  view: (key) => showVersion(key),
+  done: (result) => afterRun(result),
+});
+
+// Opens a version's frame on that iteration, and selects it.
+function showVersion(key) {
+  const [pgId, v] = [key.slice(0, key.lastIndexOf('/')), key.slice(key.lastIndexOf('/') + 1)];
+  const major = num(v)[0];
+  const f = frames.find((x) => x.kind === 'exp' && x.pg.id === pgId && x.major === major);
+  if (!f) return false;
+  setIteration(f, v);
+  selectFrame(f);
+  focusFrame(f);
+  return true;
+}
+
+// After a run: the versions it made or changed. A new iteration joins its
+// frame; a new exploration needs a place on the canvas, so the page lays out
+// again (keeping the view and the selection).
+async function afterRun(result) {
+  const made = [...(result.new || []), ...(result.updated || [])];
+  if (!made.length) return;
+  if (result.updated?.length) await post('/playground/frozen/sync', 'frozen', { stale: result.updated.map((x) => `${x.playground}/${x.version}`) });
+  let relayout = false;
+  for (const id of new Set(made.map((x) => x.playground))) {
+    const pg = playgrounds.find((p) => p.id === id);
+    const fresh = await load(`${id}/versions.json`, DATA).catch(() => null);
+    if (!pg || !fresh) { relayout = true; continue; }
+    pg.versions = fresh.versions;
+    for (const v of fresh.versions) {
+      const n = num(v.id);
+      if (!n.length) continue;
+      const f = frames.find((x) => x.kind === 'exp' && x.pg.id === id && x.major === n[0]);
+      if (!f) { relayout = true; continue; }
+      const i = f.iters.findIndex((x) => x.id === v.id);
+      if (i >= 0) f.iters[i] = v; else f.iters.push(v);
+      f.iters.sort((a, b) => num(a.id)[1] - num(b.id)[1]);
+    }
+  }
+  const first = made[0], key = `${first.playground}/${first.version}`;
+  if (relayout) {
+    const major = num(first.version)[0];
+    chosen[`${first.playground}/v${major}`] = first.version;
+    store.set(`${KEY}.iteration`, chosen);
+    store.set(`${KEY}.selected`, `${first.playground}/v${major}`);
+    toast(`${first.playground} ${first.version.slice(1)} is ready: laying the canvas out again…`);
+    setTimeout(() => location.reload(), 1200);
+    return;
+  }
+  for (const f of frames) {
+    if (f.kind !== 'exp' || !made.some((x) => x.playground === f.pg.id)) continue;
+    if (f.select) f.select.innerHTML = f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('');
+    if (f.select) f.select.value = f.v;
+    // The live app compiles its versions in when it loads: a frame on it loads again.
+    if (f.iframe && f.source === 'live') rerun(f);
+  }
+  showVersion(key);
+  toast(`${first.playground} ${first.version.slice(1)} is ready.`);
+}
+
+// ---- Screenshots: hold ⌥ and drag over a live frame -------------------------------
+const snapBox = document.createElement('div');
+snapBox.className = 'cv-snap';
+snapBox.hidden = true;
+stage.append(snapBox);
+let snapping = false, snap = null;
+function setSnap(down) {
+  snapping = down;
+  stage.classList.toggle('snapping', down || !!snap);
+  shield.hidden = !down && !snap && !space && !pan;
+}
+addEventListener('keydown', (e) => { if (e.key === 'Alt' && !typing(e.target)) setSnap(true); });
+addEventListener('keyup', (e) => { if (e.key === 'Alt') setSnap(false); });
+stage.addEventListener('pointerdown', (e) => {
+  if (!snapping || e.button !== 0) return;
+  e.stopImmediatePropagation();
+  const s = stage.getBoundingClientRect();
+  snap = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, s };
+  try { stage.setPointerCapture(e.pointerId); } catch {}
+  drawSnap();
+}, true);
+stage.addEventListener('pointermove', (e) => {
+  if (!snap) return;
+  e.stopImmediatePropagation();
+  snap.x1 = e.clientX; snap.y1 = e.clientY;
+  drawSnap();
+}, true);
+const endSnap = async (e) => {
+  if (!snap) return;
+  e.stopImmediatePropagation();
+  const r = { x: Math.min(snap.x0, snap.x1), y: Math.min(snap.y0, snap.y1), w: Math.abs(snap.x1 - snap.x0), h: Math.abs(snap.y1 - snap.y0) };
+  snap = null;
+  snapBox.hidden = true;
+  setSnap(snapping);
+  if (r.w < 8 || r.h < 8) return;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  const f = frames.find((x) => {
+    if (!x.ready) return false;
+    const b = x.iframe.getBoundingClientRect();
+    return cx >= b.left && cx <= b.right && cy >= b.top && cy <= b.bottom;
+  });
+  if (!f) { toast('Drag over a live frame: click a frame first to wake it.'); return; }
+  const b = f.iframe.getBoundingClientRect(), k = b.width / W;
+  const rect = { x: (r.x - b.left) / k, y: (r.y - b.top) / k, w: r.w / k, h: r.h / k };
+  try {
+    const shot = await ask(f, { type: 'capture', rect, scale: 2 }, 8000);
+    const where = f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`;
+    composer.addShot(shot.png, `${where}: ${shot.note || 'part of the app'}`);
+    if (selected !== f) selectFrame(f);
+  } catch {
+    toast("The frame didn't answer: try again once it has loaded.");
+  }
+};
+stage.addEventListener('pointerup', endSnap, true);
+stage.addEventListener('pointercancel', endSnap, true);
+function drawSnap() {
+  const { s } = snap;
+  snapBox.hidden = false;
+  snapBox.style.cssText = `left:${Math.min(snap.x0, snap.x1) - s.left}px;top:${Math.min(snap.y0, snap.y1) - s.top}px;width:${Math.abs(snap.x1 - snap.x0)}px;height:${Math.abs(snap.y1 - snap.y0)}px`;
+}
 
 drawTarget();
