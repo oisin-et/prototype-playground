@@ -233,6 +233,67 @@ export function mountComposer(root, hooks) {
     fetch('/playground/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'chat' }, body: JSON.stringify({ tab: active }) });
   });
 
+  // Pasting and dictation (VoiceInk and the like paste with ⌘V, then put the
+  // old clipboard back) always reach the box, the first time, as in the
+  // classic Claude panel. A ⌘V made while the canvas or a button has the focus
+  // moves the focus to the box before the browser pastes, so the paste lands
+  // there itself. A paste that lands elsewhere is put in the box, and so is
+  // one a live frame passes on (paste()). The clipboard is read only as a last
+  // resort, for an app that sends a ⌘V and no paste; a paste that does arrive
+  // cancels it. Pasted pictures wait above the box, as screenshots do.
+  const editable = (el) => el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
+  const insert = (text) => {
+    if (!text || input.disabled) return;
+    input.focus({ preventScroll: true });
+    if (!document.execCommand('insertText', false, text)) {
+      input.setRangeText(text, input.selectionStart, input.selectionEnd, 'end');
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  let pasteWait = 0;
+  const readLater = () => {
+    clearTimeout(pasteWait);
+    pasteWait = setTimeout(() => navigator.clipboard?.readText().then(insert).catch(() => {}), 120);
+  };
+  const IMAGE = /^image\/(png|jpeg|webp|gif)$/;
+  const addImage = (dataUrl, note) => {
+    const [head, data] = String(dataUrl).split(',');
+    if (!data || !/image\/png/.test(head)) return pictureToPng(dataUrl).then((png) => png && addShot(png, note));
+    addShot(data, note);
+    return Promise.resolve();
+  };
+  // Any picture as a PNG (base64), which is what the server takes.
+  const pictureToPng = (url) => new Promise((ok) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = Object.assign(document.createElement('canvas'), { width: img.naturalWidth, height: img.naturalHeight });
+      c.getContext('2d').drawImage(img, 0, 0);
+      ok(c.toDataURL('image/png').split(',')[1]);
+    };
+    img.onerror = () => ok(null);
+    img.src = url;
+  });
+  const readFile = (f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f); });
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'v' || input.disabled) return;
+    if (editable(e.target)) return;
+    input.focus({ preventScroll: true });
+    if (document.activeElement !== input) readLater();
+  }, true);
+  document.addEventListener('paste', async (e) => {
+    clearTimeout(pasteWait);
+    if (input.disabled) return;
+    const images = [...(e.clipboardData?.files || [])].filter((f) => IMAGE.test(f.type));
+    if (images.length && (!editable(e.target) || e.target === input)) {
+      e.preventDefault();
+      for (const f of images) await addImage(await readFile(f), 'Pasted');
+      return;
+    }
+    if (editable(e.target)) return; // the box, a note, a search: the browser pastes there itself
+    e.preventDefault();
+    insert(e.clipboardData?.getData('text/plain'));
+  }, true);
+
   let chatWhy = '';
   fetch('/playground/chat', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((s) => {
     enabled = !!s?.enabled;
@@ -247,13 +308,23 @@ export function mountComposer(root, hooks) {
   drawTabs();
   drawLog();
   drawTarget();
+  function addShot(png, note) {
+    pending.push({ png, note, url: `data:image/png;base64,${png}` });
+    drawShots();
+    input.focus();
+  }
   return {
     drawTarget,
     notesEl: root.querySelector('.cm-notes'),
-    addShot(png, note) {
-      pending.push({ png, note, url: `data:image/png;base64,${png}` });
-      drawShots();
-      input.focus();
+    addShot,
+    // A paste a live frame caught (its bridge's `paste`): text, and pictures as data URLs.
+    async paste(text, images = []) {
+      clearTimeout(pasteWait);
+      if (input.disabled) return;
+      for (const im of images) await addImage(im.url, 'Pasted');
+      if (!images.length) insert(text);
     },
+    // A ⌘V a frame saw with no paste after it (a bridge that can't catch one).
+    pasteKey() { if (!input.disabled) readLater(); },
   };
 }

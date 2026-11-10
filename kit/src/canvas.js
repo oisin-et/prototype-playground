@@ -354,6 +354,10 @@ addEventListener('message', (e) => {
     else if (m.key === 'Escape' && m.down !== false) {
       if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else escape();
     }
+  } else if (m.type === 'paste') {
+    composer.paste(m.text, m.images);
+  } else if (m.type === 'pastekey') {
+    composer.pasteKey();
   } else if (m.type === 'zoomkey') {
     zoomKey({ in: '+', out: '-', actual: '0', fit: '!' }[m.key] || m.key);
   }
