@@ -14,6 +14,7 @@
 // Claude will work on (step 6). ⤢ or F opens a frame to fill the window.
 
 import { mountComposer } from './composer.js';
+import { mountNotes } from './notes.js';
 
 const load = (path, base) => fetch(new URL(path, base), { cache: 'no-store' }).then((r) => {
   if (!r.ok) throw new Error(`Couldn't load ${path} (${r.status})`);
@@ -321,8 +322,10 @@ addEventListener('message', (e) => {
     drawFoot(f);
   } else if (m.type === 'where') {
     f.where = m.title || SCREENS[m.screen]?.title || m.screen;
+    f.route = { screen: m.screen, params: m.params || {} };
     if (f.kind === 'main') drawFoot(f);
-  } else if (m.type === 'captured') {
+    notes?.drawPins(f);
+  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn'].includes(m.type)) {
     const p = pending.get(m.id);
     if (p) { pending.delete(m.id); m.error ? p.fail(new Error(m.error)) : p.ok(m); }
   } else if (m.type === 'errors') {
@@ -334,9 +337,10 @@ addEventListener('message', (e) => {
   } else if (m.type === 'key') {
     if (m.key === 'Space') setSpace(m.down);
     else if (m.key === 'Alt') setSnap(m.down);
-    else if (m.key === 'Escape' && m.down !== false) escape();
+    else if (m.key === 'n') notes.key('n');
+    else if (m.key === 'Escape' && m.down !== false) { if (notes.on) notes.key('Escape'); else escape(); }
   } else if (m.type === 'zoomkey') {
-    zoomKey(m.key);
+    zoomKey({ in: '+', out: '-', actual: '0', fit: '!' }[m.key] || m.key);
   }
 });
 
@@ -354,6 +358,7 @@ function setIteration(f, id) {
   } else drawPoster(f);
   drawMode(f);
   drawFoot(f);
+  notes?.drawPins(f);
   if (f === selected) drawTarget();
 }
 // The switch in an exploration's head: its frozen copy, or on today's main.
@@ -380,7 +385,7 @@ const step = (f, d) => {
 
 // ---- Selection: the frame Claude works on ----------------------------------
 let selected = null;
-let composer = null; // mounted at the end (mountComposer)
+let composer = null, notes = null; // mounted at the end (mountComposer, mountNotes)
 const drawTarget = () => composer?.drawTarget();
 // What the composer tells Claude about the selected frame.
 function context() {
@@ -426,6 +431,7 @@ function draw(glide = false) {
   world.classList.toggle('small', W * view.z < 420);
   world.classList.toggle('tiny', W * view.z < 90);
   zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
+  notes?.moved();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
 }
@@ -551,6 +557,35 @@ composer = mountComposer(document.getElementById('composer'), {
   toast,
   view: (key) => showVersion(key),
   done: (result) => afterRun(result),
+  notes: () => notes,
+});
+
+// What a note says about where it was left: the screen on show, the files
+// it's drawn from, and the version, as serve.py's notes take it.
+function about(f) {
+  const screen = f.route?.screen ?? f.screen;
+  const title = (f.route && f.where) || SCREENS[screen]?.title || screen;
+  const exp = f.kind === 'exp';
+  return {
+    screen, screenTitle: title, params: f.route?.params || {},
+    files: exp ? [`${CFG.data}/${f.pg.id}/${f.v}/`] : SCREENS[screen]?.file ? [SCREENS[screen].file] : [],
+    playground: exp ? f.pg.id : null, version: exp ? f.v : null,
+    label: exp ? `${f.group} ${f.v.slice(1)} · ${title}` : `Main · ${title}`,
+  };
+}
+notes = mountNotes({
+  key: KEY, W, stage, frames, ask, about, toast,
+  listEl: composer.notesEl,
+  enabled: () => true,
+  changed: () => {},
+  goto(x) {
+    const f = frames.find((y) => y.id === x.frame);
+    if (!f) return;
+    if (x.version && f.v !== x.version) setIteration(f, x.version);
+    selectFrame(f);
+    focusFrame(f);
+    if (f.ready && x.screen && f.route?.screen !== x.screen) send(f, { type: 'show', screen: x.screen, params: x.params });
+  },
 });
 
 // Opens a version's frame on that iteration, and selects it.

@@ -188,3 +188,74 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-mode-label { flex: none; color: #8fd8ff; }
 .cv-mode-label.on-main { color: var(--amber); }
 .small .cv-mode { display: none; }
+
+/* ---- Notes (src/notes.js): N, then click a part of a live frame or drag over an area ---- */
+.cv-stage.noting iframe { pointer-events: none; }
+.cv-stage.noting .cv-frame.live .cv-body { cursor: crosshair; }
+.cv-target {
+  position: fixed; z-index: 7; pointer-events: none; border-radius: 3px;
+  outline: 1.5px solid var(--amber); background: rgba(240, 180, 76, 0.08);
+}
+.cv-target::after {
+  content: attr(data-name); position: absolute; left: -1.5px; bottom: 100%; margin-bottom: 4px;
+  font-size: 11px; line-height: 18px; padding: 0 6px; border-radius: 4px; white-space: nowrap;
+  background: var(--amber); color: #141518; font-weight: 600;
+}
+.cv-target[data-name=""]::after { display: none; }
+.cv-snap.note { z-index: 7; border-color: var(--amber); background: rgba(240, 180, 76, 0.08); }
+.cv-pins { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.cv-pin {
+  position: absolute; pointer-events: auto; transform: translate(-50%, -50%);
+  width: calc(24px * var(--inv)); height: calc(24px * var(--inv)); min-height: 0; padding: 0;
+  border-radius: 50% 50% 50% 0; font-size: calc(12px * var(--inv)); font-weight: 700;
+  background: var(--amber); color: #141518; box-shadow: 0 calc(2px * var(--inv)) calc(6px * var(--inv)) rgba(0, 0, 0, 0.5);
+}
+.cv-pin.sent { background: #8a8f99; }
+.cv-pin.question { background: var(--accent); }
+.cv-pin.editing, .cv-pin.lit { outline: calc(2px * var(--inv)) solid #fff; }
+.tiny .cv-pins { display: none; }
+.cv-pop {
+  position: fixed; z-index: 12; width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-radius: 14px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
+}
+.cv-pop-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cv-pop-head b { color: #fff; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-pop-head small { color: var(--page-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-pop-where { margin: 0; font-size: 11px; color: var(--page-muted); }
+.cv-pin-n {
+  flex: none; width: 20px; height: 20px; border-radius: 50% 50% 50% 0; display: grid; place-items: center;
+  background: var(--amber); color: #141518; font-size: 11px; font-weight: 700;
+}
+.cv-pop textarea {
+  resize: vertical; font: inherit; font-size: 13px; color: var(--page-text); background: rgba(255, 255, 255, 0.05);
+  border: 0; border-radius: 8px; padding: 8px 10px;
+}
+.cv-pop textarea:focus { outline: 1px solid rgba(240, 180, 76, 0.6); }
+.cv-intents { display: flex; gap: 4px; }
+.cv-intents button { flex: 1; min-height: 26px; font-size: 12px; color: var(--page-muted); }
+.cv-intents button[aria-checked=true] { color: #fff; box-shadow: inset 0 0 0 1px var(--amber); }
+.cv-pop-row { display: flex; gap: 6px; }
+.cv-pop-row span { flex: 1; }
+.cv-pop-row button { min-height: 28px; font-size: 12px; }
+.cv-use { color: #141518 !important; background: var(--amber) !important; font-weight: 600; }
+.cv-answer { margin: 0; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); }
+.cv-answer.done b { color: #5fd08a; }
+.cv-answer.question b { color: var(--accent); }
+.cv-answer.skipped b, .cv-answer.sent b { color: var(--page-muted); }
+.cm-notes {
+  list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow-y: auto;
+  background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
+}
+.cm-notes li { display: flex; align-items: center; gap: 4px; }
+.cv-noted {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left;
+  background: none; box-shadow: none; padding: 4px 6px; min-height: 0;
+}
+.cv-noted:hover { background: rgba(255, 255, 255, 0.05); filter: none; }
+.cv-noted-text { min-width: 0; display: flex; flex-direction: column; }
+.cv-noted-text b, .cv-noted-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-noted-text b { font-weight: 500; color: #fff; }
+.cv-noted-text small { color: var(--page-muted); font-size: 11px; }
+.cv-unnote { flex: none; min-height: 24px; width: 24px; padding: 0; background: none; box-shadow: none; color: var(--page-muted); }

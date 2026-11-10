@@ -21,6 +21,7 @@ const store = {
  *   context(): {label, body} | null,  // the selected frame: its name, and what the server is told
  *   toast(text),
  *   done({ new: [{playground, version}], updated: [...] }),  // a run finished
+ *   notes(): the canvas's notes (src/notes.js): count(), take(), answered(list), restore(ids)
  * }
  */
 export function mountComposer(root, hooks) {
@@ -37,6 +38,7 @@ export function mountComposer(root, hooks) {
       <div class="cm-log" aria-live="polite"></div>
       <div class="cm-run" hidden><span class="cm-status"></span><button type="button" class="cm-stop">Stop</button></div>
     </div>
+    <ol class="cm-notes" hidden></ol>
     <div class="cm-shots" hidden></div>
     <form class="cm-bar">
       <div class="cm-tabs" role="tablist" aria-label="Chats"></div>
@@ -145,17 +147,22 @@ export function mountComposer(root, hooks) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const message = input.value.trim();
-    if (!enabled || (!message && !pending.length) || running.has(active)) return;
+    const notes = hooks.notes?.();
+    if (!enabled || (!message && !pending.length && !notes?.count()) || running.has(active)) return;
     input.value = '';
     input.style.height = '';
     const shots = pending.splice(0);
     drawShots();
-    send(chat(), message || 'See the screenshot.', shots);
+    const batch = notes?.take() || [];
+    notes?.set(false);
+    send(chat(), message || (batch.length ? `Work through ${batch.length === 1 ? 'this note' : `these ${batch.length} notes`}.` : 'See the screenshot.'), shots, batch);
   });
 
-  async function send(c, message, shots) {
+  async function send(c, message, shots, batch = []) {
     const ctx = hooks.context();
-    say(c, 'you', message + (shots.length ? ` (${shots.length} screenshot${shots.length > 1 ? 's' : ''})` : ''));
+    const extra = [shots.length && `${shots.length} screenshot${shots.length > 1 ? 's' : ''}`, batch.length && `${batch.length} note${batch.length > 1 ? 's' : ''}`].filter(Boolean);
+    say(c, 'you', message + (extra.length ? ` (${extra.join(', ')})` : ''));
+    let answered = false;
     running.set(c.id, { started: Date.now(), status: 'Claude is working…' });
     setOpen(true);
     drawTabs();
@@ -168,7 +175,7 @@ export function mountComposer(root, hooks) {
         body: JSON.stringify({
           message, tab: c.id, session: c.session,
           attachments: shots.map((s) => ({ type: 'image/png', data: s.png, note: s.note })),
-          notes: [],
+          notes: batch,
           ...(ctx?.body || {}),
         }),
       });
@@ -194,12 +201,20 @@ export function mountComposer(root, hooks) {
           else if (ev.type === 'tool') { if (/^(Editing|Writing|Running)/.test(ev.label)) say(c, 'step', ev.label); else running.get(c.id).status = `${ev.label}…`; }
           else if (ev.type === 'refused') say(c, 'error', `Not allowed: ${ev.label}`);
           else if (ev.type === 'error') say(c, 'error', ev.message);
-          else if (ev.type === 'done') { if (ev.session) c.session = ev.session; result = ev; }
+          else if (ev.type === 'notes') {
+            answered = true;
+            const said = hooks.notes?.().answered(ev.notes);
+            say(c, said ? 'done' : 'error', said ? `Notes: ${said}` : "Claude didn't answer the notes. Their pins say Sent: open one and press Send again.");
+          } else if (ev.type === 'done') { if (ev.session) c.session = ev.session; result = ev; }
         }
       }
     } catch {
       say(c, 'error', 'Lost the connection to serve.py.');
     } finally {
+      if (batch.length && !answered && !result) {
+        hooks.notes?.().restore(batch.map((x) => x.id));
+        say(c, 'error', "The notes didn't reach Claude, so they wait above the box again.");
+      }
       running.delete(c.id);
       keep();
       drawTabs();
@@ -234,6 +249,7 @@ export function mountComposer(root, hooks) {
   drawTarget();
   return {
     drawTarget,
+    notesEl: root.querySelector('.cm-notes'),
     addShot(png, note) {
       pending.push({ png, note, url: `data:image/png;base64,${png}` });
       drawShots();
