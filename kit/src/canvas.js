@@ -29,7 +29,8 @@
 // Clicking a frame wakes it and selects it; the selected frame is the one
 // Claude works on. ⤢ or F opens a frame to fill the window. While a frame
 // fills it, the canvas is locked: it doesn't pan, zoom or fit, no other frame
-// can be selected, and only the same ⤢ (or F) closes the fill. Inside the
+// can be selected, and only the same button (its icon turned inward), Esc or
+// F closes the fill. Inside the
 // frame, the app works as ever, and the frame has a zoom of its own: a pinch
 // or ⌘-scroll zooms into the app, Space-drag (or a drag or scroll beside it)
 // moves around in it, ⇧1 fits it back. The fill stays across a reload.
@@ -400,7 +401,7 @@ addEventListener('message', (e) => {
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
     else if (m.key === 'p') panels.toggle();
     else if (m.key === 'Escape' && m.down !== false) {
-      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else xray?.escape();
+      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) unfocus();
     }
   } else if (m.type === 'leaving') {
     // The frame's page is going away (a reload): until the next one has a
@@ -531,7 +532,9 @@ function drawTools() {
   set('inspect', panels?.inspector.on);
   set('xray', xray?.armed);
   set('shot', snapping);
-  set('fill', focused === f, focused === f ? 'Back to the canvas (F)' : 'Fill the window (F)');
+  set('fill', focused === f, focused === f ? 'Back to the canvas (Esc)' : 'Fill the window (F)');
+  const fill = tools.querySelector('[data-tool=fill]'), icon = focused === f ? ICON.unfill : ICON.fill;
+  if (fill.innerHTML !== icon) fill.innerHTML = icon;
   if (f.kind === 'exp') {
     const fz = frozen[`${f.pg.id}/${f.v}`];
     tools.querySelector('[data-tool=frozen]').hidden = !fz;
@@ -695,6 +698,8 @@ function unfocus() {
 // What opens over the canvas (the readers of Files and Library) scrolls
 // itself: the wheel and the pointer there are its own, not the canvas's.
 const overCanvas = (e) => e.target instanceof Element && e.target.closest('#workspace > *');
+// A reader open over the canvas takes the first Esc (it closes itself).
+const readerOpen = () => !!document.querySelector('#workspace > :not([hidden])');
 stage.addEventListener('wheel', (e) => {
   if (overCanvas(e)) return;
   e.preventDefault();
@@ -751,7 +756,7 @@ addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); zoomKey(e.key); return; }
   if (typing(e.target)) return;
   if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) { e.preventDefault(); fitAll(); }
-  else if (e.key === 'Escape') { if (!focused) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); } }
+  else if (e.key === 'Escape') { if (readerOpen()) return; if (!unfocus()) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); } }
   else if (selected && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selected.iters.length > 1) { e.preventDefault(); step(selected, e.key === 'ArrowLeft' ? -1 : 1); }
   else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? unfocus() : focusFrame(selected); }
 });
