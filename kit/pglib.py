@@ -374,4 +374,11 @@ def make_version(screen, source, new, name, meta_path, meta):
     meta["versions"].append(entry)
     write_json(meta_path, meta)
     write_registry()
+    # The canvas's frozen copy (frozen.py): the version's base is fixed now, as
+    # it's made: main as it is, or, made from a version, that version's base.
+    try:
+        import frozen
+        frozen.freeze(f"{screen}/{new}", None if source == "default" else source)
+    except Exception as e:  # the version is made: a copy that failed is made by the next sync
+        print(f"(The canvas's frozen copy of {screen} {new} wasn't made: {e})")
     print(f"Made {screen} {new} from {source}: {rel(dest)}/. Write what it changes in its note in versions.json.")

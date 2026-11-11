@@ -2,40 +2,49 @@
 
 A version on its own is only its changes, laid over main when it's opened. Main
 moves on, so an old version shows on today's main, and can look different
-from the day it was made, or break. A frozen copy keeps it as it was: the
-app's files as they were then, with the version on top, and it never changes.
+from the day it was made, or break. A frozen copy keeps it on the main it was
+made on: its base never changes.
+
+The rules (the canvas's foundation):
+
+- A frame is one exploration, and its base is fixed when the exploration
+  starts: main as it is then. Every iteration made from it (iterate.py, or
+  new.py --from) takes the same base, so a frame's iterations always run on
+  the main they were written for, like the commits of one branch.
+- A version is frozen the moment it's made: new.py and iterate.py call
+  freeze() as they make it. sync() freezes anything made some other way.
+- A frozen copy runs its base with its own version on top, and nothing else:
+  its registry lists that one version, and the version's own folder is read
+  from disk, so what Claude made in it is always what the frame shows. (On the
+  canvas, a version doesn't change after the message that made it: a change is
+  a new iteration. See serve.py's CANVAS_RULES.)
 
 Only for an app that is served as its own files, with no build step
-("canvas": {"freeze": {"kind": "files"}} in playground.json). The copy takes
-no room for what git has already:
+("canvas": {"freeze": {"kind": "files"}} in playground.json, web adapter). The
+copy takes no room for what git has already:
 
 - commit: main's commit then. Every file git has is read from it.
-- dirty: the files that differed from that commit when it was frozen (an app
-  with work not committed yet), each kept once by its content in blobs/.
-- set: the playground's data folder (the versions, the registry, the bridge),
-  which git ignores, kept the same way. Versions frozen together share a set.
+- dirty: the files that differed from that commit (work not committed yet, and
+  files git doesn't track yet), each kept once by its content in blobs/.
+- set: the playground's data folder (the versions, the bridge), which git
+  ignores, kept the same way. Versions frozen together share a set.
 - Anything else (a file git ignores, such as a licensed font) comes from disk.
 - The bridge (the data folder's bridge.js) always comes from disk too: it's the
   playground's plumbing, not the design, so every copy talks to the playground
   as it is now (a new message, such as X-ray's, works on old copies too).
 
-A version is frozen the first time the canvas sees it (sync()):
+A version that was never frozen (made before this, or by hand) is frozen by
+sync(): from its "from" version's base when that one is frozen; one made
+today, on main as it is now ("frozen"); an older one, on main's last commit of
+its date ("rebuilt"), or today's main when git has nothing that old ("today").
 
-- One made today: from the app as it is now, labelled "frozen". Not while a
-  chat holds the lock or its folder changed in the last 5 minutes (still
-  being made): the next sync gets it.
-- An older one, which was never frozen: rebuilt on main's last commit of its
-  date, labelled "rebuilt". If git has no commit that old, on today's main,
-  labelled "today".
-
-Each frozen copy the canvas opens is served on a port of its own (open()), so
-an app that names its files from the root (/src/…) works as it is. A few stay
-open; the one used longest ago is closed first.
+Each frozen copy the canvas opens is served on a port of its own (open_copy()),
+so an app that names its files from the root (/src/…) works as it is. A few
+stay open; the one used longest ago is closed first.
 
 Everything is kept in playground/frozen/ (git ignores it). Standard library only.
 """
 import datetime
-import fcntl
 import hashlib
 import json
 import mimetypes
@@ -47,7 +56,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from pglib import CONFIG, DATA, HERE, ROOT, playgrounds, read_json, versions
+from pglib import ADAPTER, CONFIG, DATA, HERE, ROOT, VERSION_FILE, playgrounds, read_json, versions
 
 FROZEN = HERE / "frozen"
 BLOBS = FROZEN / "blobs"
@@ -58,8 +67,10 @@ SETTINGS = CONFIG.get("canvas", {}).get("freeze")
 APP_PATH = CONFIG.get("app", {}).get("path", "/")
 KEY = re.compile(r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*/v\d+\.\d+$")
 POOL_MAX = 6
-LIVE = {(DATA / "bridge.js").relative_to(ROOT).as_posix()}  # served from disk in every copy
-STILL_MAKING = 300  # seconds: a version folder changed more recently is still being made
+DATA_REL = DATA.relative_to(ROOT).as_posix()
+LIVE = {f"{DATA_REL}/bridge.js"}  # served from disk in every copy
+REGISTRY_REL = f"{DATA_REL}/registry.js"  # each copy has its own: its one version
+UNTRACKED_MAX = 400  # files git doesn't track yet, kept with a copy (more: read from disk)
 
 TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".css": "text/css",
          ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff", ".otf": "font/otf",
@@ -67,7 +78,7 @@ TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".json": "applicat
 
 
 def enabled():
-    return isinstance(SETTINGS, dict) and SETTINGS.get("kind") == "files"
+    return isinstance(SETTINGS, dict) and SETTINGS.get("kind") == "files" and ADAPTER == "web"
 
 
 def git(*args):
@@ -161,83 +172,112 @@ def data_set():
 
 
 def dirty_files():
-    """The files git has that differ from HEAD now, kept: {path: blob}."""
+    """The files that differ from HEAD now, kept: {path: blob}. Those git has
+    that changed, and those it doesn't track yet (and doesn't ignore), outside
+    the data folder (that's the set)."""
     out = {}
-    for rel in filter(None, git("diff", "--name-only", "-z", "HEAD").split("\0")):
+    changed = git("diff", "--name-only", "-z", "HEAD").split("\0")
+    untracked = git("ls-files", "--others", "--exclude-standard", "-z").split("\0")[:UNTRACKED_MAX]
+    for rel in filter(None, changed + untracked):
         p = ROOT / rel
-        if p.is_file():
+        if p.is_file() and not rel.startswith(f"{DATA_REL}/"):
             out[rel] = file_sha(p)
     return out
 
 
 # ---- Freezing ---------------------------------------------------------------------
-def chat_busy():
-    """Whether a chat holds the playground's lock (pglib.playground_lock) now."""
-    try:
-        with open(DATA / ".lock", "a") as f:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.flock(f, fcntl.LOCK_UN)
-        return False
-    except BlockingIOError:
-        return True
-    except OSError:
-        return False
-
-
 def manifest_path(key):
     return MANIFESTS / f"{key}.json"
 
 
-def newest_change(folder):
-    try:
-        return max((p.stat().st_mtime for p in folder.rglob("*")), default=folder.stat().st_mtime)
-    except OSError:
-        return 0
+def manifest(key):
+    return read_json(manifest_path(key), None) if KEY.match(str(key or "")) else None
 
 
-def sync(stale=None):
-    """Freezes every version that isn't yet. Returns listing(). stale: versions
-    a chat changed after they were frozen today; they're frozen again, once
-    they settle."""
+def base_now(cache=None):
+    """Main as it is now: (commit, dirty, set)."""
+    cache = {} if cache is None else cache
+    if "now" not in cache:
+        cache["now"] = (git("rev-parse", "HEAD"), dirty_files(), data_set())
+    return cache["now"]
+
+
+def freeze(key, source=None, date=None, cache=None):
+    """Freezes the version key (<screen>/v<N>.<M>), unless it is already.
+    source: the version it was copied from (an id in the same screen), whose
+    base it takes when that one is frozen; otherwise main as it is now."""
+    if not enabled() or not KEY.match(key) or manifest_path(key).exists():
+        return None
+    pg = key.rsplit("/", 1)[0]
+    parent = manifest(f"{pg}/{source}") if source and re.match(r"^v\d+\.\d+$", str(source)) else None
+    if parent:
+        commit, dirty, sid = parent["commit"], parent.get("dirty", {}), parent["set"]
+        label, base = parent["label"], parent.get("base") or parent.get("made")
+    else:
+        commit, dirty, sid = base_now(cache)
+        label, base = "frozen", None
+    made = datetime.datetime.now().isoformat(timespec="seconds")
+    m = {"key": key, "label": label, "commit": commit, "dirty": dirty, "set": sid,
+         "date": date or datetime.date.today().isoformat(), "made": made, "base": base or made,
+         "from": parent["key"] if parent else None}
+    write(manifest_path(key), m)
+    save_hashes()
+    return m
+
+
+def sync():
+    """Freezes every version that isn't yet (made some other way than new.py
+    and iterate.py, or before they froze). Returns listing()."""
     if not enabled():
         return {}
-    for key in stale or []:
-        p = manifest_path(str(key))
-        if KEY.match(str(key)) and p.exists() and read_json(p, {}).get("label") == "frozen":
-            p.unlink()
     today = datetime.date.today().isoformat()
-    head = git("rev-parse", "HEAD")
-    busy = chat_busy()
     cache = {}
     for pg in playgrounds():
-        for v in versions(pg):
+        vs = versions(pg)
+        # Sources first, so an iteration can take its source's base.
+        order = sorted(vs, key=lambda v: [int(n) for n in re.findall(r"\d+", str(v.get("id", "")))])
+        for v in order:
             vid = v.get("id", "")
-            if not re.match(r"^v\d+\.\d+$", vid):
-                continue
             key = f"{pg}/{vid}"
-            if manifest_path(key).exists():
+            if not re.match(r"^v\d+\.\d+$", vid) or manifest_path(key).exists():
                 continue
             date = str(v.get("date", ""))
-            made_today = date >= today
-            if made_today and (busy or time.time() - newest_change(DATA / pg / vid) < STILL_MAKING):
-                continue  # still being made: the next sync freezes it
-            if made_today:
-                commit, label = head, "frozen"
-                if "dirty" not in cache:
-                    cache["dirty"] = dirty_files()
-                dirty = cache["dirty"]
+            if v.get("from") and manifest(f"{pg}/{v['from']}"):
+                freeze(key, v["from"], date, cache)
+            elif date >= today or not date:
+                freeze(key, None, date or today, cache)
             else:
-                commit = git("rev-list", "-1", f"--before={date} 23:59:59", "HEAD") if date else ""
-                label = "rebuilt" if commit else "today"
-                commit, dirty = commit or head, {}
-            if "set" not in cache:
-                cache["set"] = data_set()
-            write(manifest_path(key), {
-                "key": key, "label": label, "commit": commit, "dirty": dirty, "set": cache["set"],
-                "date": date, "made": datetime.datetime.now().isoformat(timespec="seconds"),
-            })
+                commit = git("rev-list", "-1", f"--before={date} 23:59:59", "HEAD")
+                write(manifest_path(key), {
+                    "key": key, "label": "rebuilt" if commit else "today", "commit": commit or base_now(cache)[0],
+                    "dirty": {}, "set": base_now(cache)[2], "date": date,
+                    "made": datetime.datetime.now().isoformat(timespec="seconds"), "base": f"{date}T23:59:59" if commit else None,
+                })
     save_hashes()
     return listing()
+
+
+def base_drift(key, limit=15):
+    """How main has moved on since key's base: (when the base was taken, the
+    files that differ now, outside the data folder), or None."""
+    m = manifest(key)
+    if not m:
+        return None
+    files = set(filter(None, git("diff", "--name-only", "-z", m["commit"]).split("\0")))
+    files |= set(filter(None, git("ls-files", "--others", "--exclude-standard", "-z").split("\0")[:UNTRACKED_MAX]))
+    out = []
+    for rel in sorted(files):
+        if rel.startswith(f"{DATA_REL}/") or not (ROOT / rel).is_file():
+            continue
+        kept = m.get("dirty", {}).get(rel)
+        if kept and file_sha(ROOT / rel) == kept:
+            continue  # it differed from the commit then too, and hasn't changed since
+        out.append(rel)
+    for rel, kept in m.get("dirty", {}).items():
+        if rel not in files and rel not in out:
+            out.append(rel)  # differed then, back to the commit's now
+    save_hashes()
+    return {"base": m.get("base") or m.get("made"), "commit": m["commit"][:7], "files": out[:limit], "count": len(out)}
 
 
 def listing():
@@ -246,7 +286,8 @@ def listing():
         for p in MANIFESTS.rglob("*.json"):
             m = read_json(p, {})
             if m.get("key"):
-                out[m["key"]] = {"label": m["label"], "commit": m["commit"][:7], "date": m.get("date"), "made": m.get("made")}
+                out[m["key"]] = {"label": m["label"], "commit": m["commit"][:7], "date": m.get("date"),
+                                 "made": m.get("made"), "base": m.get("base") or m.get("made"), "from": m.get("from")}
     return out
 
 
@@ -254,12 +295,28 @@ def listing():
 class Snapshot:
     def __init__(self, key):
         m = read_json(manifest_path(key))
+        self.key = key
         self.commit = m["commit"]
         self.files = {**read_json(SETS / f"{m['set']}.json", {}), **m.get("dirty", {})}
+        self.own = f"{DATA_REL}/{key}/"  # the version's own folder: from disk
+        # Its registry: this one version, and nothing else.
+        self.registry = "\n".join([
+            "// The registry of a frozen copy (playground/frozen.py): its one version.",
+            "const load = (id, get) => get().then(",
+            "  (m) => [id, m.default ?? m.version],",
+            "  (e) => [id, null, `${id}: ${e?.message || e}`],",
+            ");",
+            f"const loaded = await Promise.all([load('{key}', () => import('./{key}/{VERSION_FILE}'))]);",
+            "export default Object.fromEntries(loaded.filter(([, v]) => v).map(([id, v]) => [id, v]));",
+            "export const errors = loaded.filter(([, , e]) => e).map(([, , e]) => e);",
+            "",
+        ]).encode()
 
     def get(self, rel):
         """(etag, bytes) or None."""
-        if rel in LIVE and (ROOT / rel).is_file():
+        if rel == REGISTRY_REL:
+            return hashlib.sha1(self.registry).hexdigest(), self.registry
+        if (rel in LIVE or rel.startswith(self.own)) and (ROOT / rel).is_file():
             st = (ROOT / rel).stat()
             return f"{st.st_mtime_ns}-{st.st_size}", (ROOT / rel).read_bytes()
         sha = self.files.get(rel)

@@ -264,10 +264,46 @@ Designing with the library (the project's components: {lib}/, and playground/REA
 """
 
 
-def chat_rules():
+CANVAS_RULES = f"""
+This message comes from the canvas (canvas.html), not the Explorations strip. On the
+canvas these rules come first, and replace the rules above where they differ:
+
+- Every frame on the canvas is one exploration of a screen, and its iterations stay
+  inside it. Main is a frame too: the app as it is, with no versions.
+- A version never changes after the message that made it, so every iteration the
+  person has seen stays as it was. Every change the person asks for, however small,
+  and a fix of something you got wrong in an earlier message, is a new iteration of
+  the version the frame shows:
+  python3 playground/iterate.py <screen> <version on show> "<short name>"
+  Never update a version in place, and never change a version you didn't make in this
+  message. (Within this message, keep fixing the version you made until it reloads with
+  no errors.)
+- On Main, a change starts a new exploration of the screen the frame shows:
+  python3 playground/new.py <screen> "<short name>". It is main with only that change:
+  copy as little as you can, and wrap what main draws (`below`, ctx.app) rather than
+  draw it again, so everything else stays exactly main.
+- A different direction ("another way", "a new exploration") is a new exploration too:
+  new.py, with --from <version on show> when it takes that version somewhere new.
+- Work on the page the frame shows, as the prompt names it (the page and its
+  params). If the app has more than one place that draws what the person means (two
+  copies of a part, an older screen that can still be reached), don't guess: change the
+  one the frame shows, and say that the other exists.
+- Each frame runs on main as it was when its exploration started (its frozen base), so
+  it looks the same tomorrow. The prompt says if main has changed since. Main's files on
+  disk are main as it is now: if the change needs something main has only had since the
+  base, say so rather than rely on it.
+- To keep a version for main, the person picks it (◆ in the frame's toolbar) and
+  presses Commit. Don't edit {DATA_REL}/picks.json.
+- Finish by naming the version you made, by its number: "4.4, an iteration of
+  exploration 4" or "exploration 6, new, from main".
+"""
+
+
+def chat_rules(canvas=False):
     """What Claude is told on every run, after Claude Code's own instructions:
     the kit's rules, then the project's own (playground/RULES.md), read
-    fresh so an edit to them counts at the next message."""
+    fresh so an edit to them counts at the next message. canvas: the message
+    comes from the canvas, whose rules (CANVAS_RULES) come last and win."""
     try:
         own = (HERE / "RULES.md").read_text().strip()
     except OSError:
@@ -404,7 +440,54 @@ Rules:
 """ + library_rules() + reference_rules() + guide_rules()
     if own:
         rules += "\nThis project's own rules (playground/RULES.md):\n\n" + own + "\n"
+    if canvas:
+        rules += CANVAS_RULES
     return rules
+
+
+def shown_page(body):
+    """'the "x" page (Title, a 1, b 2), drawn from f' from a message's body, or ''."""
+    if not body.get("screen"):
+        return ""
+    shown = f"the \"{body['screen']}\" page"
+    bits = [str(body["screenTitle"])] if body.get("screenTitle") else []
+    if isinstance(body.get("params"), dict):
+        bits += [f"{k} {v}" for k, v in body["params"].items()]
+    if bits:
+        shown += f" ({', '.join(bits)})"
+    if isinstance(body.get("files"), list) and body["files"]:
+        shown += ", drawn from " + " with ".join(str(f) for f in body["files"][:4])
+    return shown
+
+
+def canvas_context(body):
+    """What the canvas's message says about its selected frame: which frame,
+    the page it shows, and the main it runs on."""
+    page = shown_page(body)
+    if body.get("frame") != "exp" or not body.get("playground"):
+        out = "The selected frame is Main: the app as it is, with no versions."
+        if page:
+            out += f" It shows {page}."
+        return [out]
+    pg, v = str(body["playground"]), str(body.get("version") or "")
+    m = re.match(r"v(\d+)\.(\d+)$", v)
+    if not m:
+        return [f"The selected frame is {pg} {v}." + (f" It shows {page}." if page else "")]
+    name = f" (\"{body['name']}\")" if body.get("name") else ""
+    out = [f"The selected frame is exploration {m[1]} of {pg}, showing iteration {v}{name}: its folder is {DATA_REL}/{pg}/{v}/."]
+    if page:
+        out.append(f"It shows {page}.")
+    if body.get("onMain"):
+        out.append("The person has it laid over today's main, not its frozen base.")
+    else:
+        drift = frozen.base_drift(f"{pg}/{v}")
+        if drift and drift["count"]:
+            more = f" and {drift['count'] - len(drift['files'])} more" if drift["count"] > len(drift["files"]) else ""
+            out.append(f"It runs on main as it was on {drift['base']} (commit {drift['commit']}), its frozen base. "
+                       f"Main has changed since in {', '.join(drift['files'])}{more}: the frame doesn't have those changes.")
+        elif drift:
+            out.append(f"It runs on main as it was on {drift['base']} (its frozen base); main hasn't changed since.")
+    return [" ".join(out)]
 
 
 def find_claude():
@@ -912,7 +995,7 @@ class Chat:
             self.claude = find_claude()
         return self.claude is not None
 
-    def command(self, prompt, session):
+    def command(self, prompt, session, canvas=False):
         cmd = [
             self.claude, "-p", prompt,
             "--output-format", "stream-json", "--verbose",
@@ -925,7 +1008,7 @@ class Chat:
             "Bash(python3 playground/iterate.py:*)", "Bash(python3 playground/new.py:*)",
             "Bash(python3 playground/reload.py:*)", "Bash(python3 playground/library.py:*)",
             *reference_flags(),
-            "--append-system-prompt", chat_rules(),
+            "--append-system-prompt", chat_rules(canvas),
         ]
         if self.model:
             cmd += ["--model", self.model]
@@ -947,26 +1030,22 @@ class Chat:
         if not message:
             emit({"type": "error", "message": "Nothing to send."})
             return
-        context = []
-        if body.get("screen"):
-            shown = f"The app is showing the \"{body['screen']}\" page"
-            if body.get("screenTitle"):
-                shown += f" ({body['screenTitle']}"
-                if isinstance(body.get("params"), dict) and body["params"]:
-                    shown += ", " + ", ".join(f"{k} {v}" for k, v in body["params"].items())
-                shown += ")"
-            if isinstance(body.get("files"), list) and body["files"]:
-                shown += ", drawn from " + " with ".join(str(f) for f in body["files"][:4])
-            context.append(shown + ".")
-        if body.get("folder"):
-            context.append(f"The Explorations strip shows the \"{body['folder']}\" screen's versions.")
-        if body.get("playground"):
-            v = body.get("version") or "default"
-            m = re.match(r"v(\d+)\.(\d+)$", v)
-            what = (f"exploration {m[1]}'s own version" if m[2] == "0" else f"iteration {m[2]} of exploration {m[1]}") if m else "main" if v == "default" else v
-            context.append(
-                f"The version on show is {body['playground']} {v} ({what}, {body.get('versionState') or 'shown'})."
-            )
+        canvas = body.get("surface") == "canvas"
+        if canvas:
+            context = canvas_context(body)
+        else:
+            context = []
+            if body.get("screen"):
+                context.append(f"The app is showing {shown_page(body)}.")
+            if body.get("folder"):
+                context.append(f"The Explorations strip shows the \"{body['folder']}\" screen's versions.")
+            if body.get("playground"):
+                v = body.get("version") or "default"
+                m = re.match(r"v(\d+)\.(\d+)$", v)
+                what = (f"exploration {m[1]}'s own version" if m[2] == "0" else f"iteration {m[2]} of exploration {m[1]}") if m else "main" if v == "default" else v
+                context.append(
+                    f"The version on show is {body['playground']} {v} ({what}, {body.get('versionState') or 'shown'})."
+                )
         prompt = message + ("\n\n(" + " ".join(context) + ")" if context else "")
         shots = save_attachments(body.get("attachments"))
         if shots:
@@ -989,7 +1068,7 @@ class Chat:
             env["PATH"] = f"{Path(flutter).parent}:{env.get('PATH', '')}"
         try:
             proc = subprocess.Popen(
-                self.command(prompt, body.get("session")), cwd=ROOT, env=env,
+                self.command(prompt, body.get("session"), canvas), cwd=ROOT, env=env,
                 stdout=subprocess.PIPE, stderr=errors, stdin=subprocess.DEVNULL, text=True, bufsize=1,
             )
             with self.lock:
@@ -1692,6 +1771,12 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/playground/frozen":
             self.json(200, frozen.listing())
             return
+        if path == "/playground/thumbs" and "canvas" in urllib.parse.parse_qs(query):
+            # The canvas's own pictures: {key: time}, key "main" or <screen>/<version>.
+            folder = THUMBS / "_canvas"
+            self.json(200, {p.relative_to(folder).with_suffix("").as_posix(): int(p.stat().st_mtime * 1000)
+                            for p in folder.rglob("*.png")} if folder.is_dir() else {})
+            return
         if path == "/playground/thumbs":
             self.json(200, {f"{p.parent.name}/{p.stem}": int(p.stat().st_mtime * 1000)
                             for p in THUMBS.glob("*/*.png")} if THUMBS.is_dir() else {})
@@ -1803,8 +1888,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(body, dict):
                 body = {}
             if path.endswith("/sync"):
-                stale = body.get("stale") if isinstance(body.get("stale"), list) else None
-                self.json(200, {"enabled": frozen.enabled(), "versions": frozen.sync(stale)})
+                self.json(200, {"enabled": frozen.enabled(), "versions": frozen.sync()})
                 return
             port = frozen.open_copy(str(body.get("key", "")))
             self.json(200 if port else 404, {"port": port})
@@ -1868,6 +1952,9 @@ class Handler(SimpleHTTPRequestHandler):
             if isinstance(body, dict) and "component" in body:
                 self.save_component_thumb(body)
                 return
+            if isinstance(body, dict) and "canvas" in body:
+                self.save_canvas_thumb(body)
+                return
             screen, version = str(body["screen"]), str(body["version"])
             assert re.fullmatch(r"[\w-]+", screen) and re.fullmatch(r"default|v\d+\.\d+|[a-z0-9]+", version)
             data = base64.b64decode(str(body["png"]), validate=True)
@@ -1877,6 +1964,24 @@ class Handler(SimpleHTTPRequestHandler):
             return
         (THUMBS / screen).mkdir(parents=True, exist_ok=True)
         (THUMBS / screen / f"{version}.png").write_bytes(data)
+        self.send_response(204)
+        self.end_headers()
+
+    def save_canvas_thumb(self, body):
+        """A frame's picture, from the canvas: {"canvas": "main" | "<screen>/<version>",
+        "png"}, kept in playground/thumbs/_canvas/. An exploration's is its frozen
+        copy's, so it never goes out of date; main's is retaken as main runs."""
+        key = str(body["canvas"])
+        if not re.fullmatch(r"main|[\w-]+/v\d+\.\d+", key):
+            raise ValueError("bad key")
+        data = base64.b64decode(str(body["png"]), validate=True)
+        if not data.startswith(b"\x89PNG"):
+            raise ValueError("not a PNG")
+        path = THUMBS / "_canvas" / f"{key}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(path)
         self.send_response(204)
         self.end_headers()
 

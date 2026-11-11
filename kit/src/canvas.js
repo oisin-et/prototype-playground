@@ -8,10 +8,21 @@
 // iteration. An exploration is a version's major number (v20); its
 // iterations (v20.0, v20.1 …) stay inside its frame, behind a stepper.
 //
-// Frames are live only while they're used: a few at once, the rest show a
-// picture (playground/thumbs, or one taken as the frame went to sleep).
+// The foundation (frozen.py has the server's side):
+// - A frame is one exploration, on the main it started from (its frozen base);
+//   its iterations stay inside it, each on that same base. Main is a frame too,
+//   the app as it is, and always live.
+// - A frame shows what it runs. After a run, every frame on a version the run
+//   made or touched runs again, whatever it runs on.
+// - A sleeping frame shows its own picture (playground/thumbs/_canvas), taken
+//   from its frozen copy, which never changes; or none. Never a picture taken
+//   of something else. While nobody's using the canvas, frames without one wake
+//   one at a time to have theirs taken.
+// - Claude is told the page the selected frame shows (its route), not the page
+//   it opened on.
+//
 // Clicking a frame wakes it and selects it; the selected frame is the one
-// Claude will work on (step 6). ⤢ or F opens a frame to fill the window.
+// Claude works on. ⤢ or F opens a frame to fill the window.
 
 import { mountComposer } from './composer.js';
 import { mountNotes } from './notes.js';
@@ -152,7 +163,11 @@ for (const l of labels) {
 }
 
 const iterOf = (f) => f.iters.find((x) => x.id === f.v);
-const thumbUrl = (f) => (f.kind === 'main' ? `/playground/thumbs/${playgrounds.find((p) => p.screen === f.screen)?.id || f.screen}/default.png` : `/playground/thumbs/${f.pg.id}/${f.v}.png`);
+// The canvas's own pictures (serve.py's save_canvas_thumb): key → when it was taken.
+const pictures = await loadOptional('/playground/thumbs?canvas=1', location.href, {});
+// A frame's picture: main's, or its frozen copy's. One running on today's main has none kept.
+const pictureKey = (f) => (f.kind === 'main' ? 'main' : frozenOf(f) ? `${f.pg.id}/${f.v}` : null);
+const pictureUrl = (key) => new URL(`thumbs/_canvas/${key}.png?t=${pictures[key]}`, location.href).href;
 
 for (const f of frames) {
   const el = document.createElement('section');
@@ -190,8 +205,26 @@ for (const f of frames) {
 
 function drawPoster(f) {
   const shot = f.shots?.[`${f.kind === 'exp' ? sourceOf(f) : 'live'}|${f.v ?? 'main'}`];
+  const key = pictureKey(f);
   if (shot) f.poster.src = shot;
-  else f.poster.src = `${thumbUrl(f)}?t=${Date.now() >> 16}`;
+  else if (key && pictures[key]) f.poster.src = pictureUrl(key);
+  else { f.poster.removeAttribute('src'); f.el.classList.remove('has-poster'); }
+}
+// Takes the frame's picture once it has settled: kept for this page, and, for
+// main or a frozen copy, on the server for the next time.
+async function takePicture(f) {
+  const source = f.source, v = f.v ?? 'main', key = pictureKey(f);
+  await new Promise((r) => setTimeout(r, 2500));
+  if (!f.ready || f.source !== source || (f.v ?? 'main') !== v) return false;
+  try {
+    const shot = await ask(f, { type: 'capture', width: 960 }, 8000);
+    (f.shots ??= {})[`${source}|${v}`] = `data:image/png;base64,${shot.png}`;
+    if (key && pictureKey(f) === key) {
+      await post('/playground/thumbs', 'thumbs', { canvas: key, png: shot.png });
+      pictures[key] = Date.now();
+    }
+    return true;
+  } catch { return false; }
 }
 function drawFoot(f) {
   const now = f.el.querySelector('.cv-iter-now');
@@ -237,10 +270,13 @@ const watchApp = async () => {
     const first = !app;
     app = { origin: `http://${s.host || '127.0.0.1'}:${s.port}`, path: s.path || '/' };
     if (first) {
+      setStatus('busy', 'Loading the frozen copies…');
       await syncFrozen();
       setStatus('ready', 'App ready');
+      wake(main); // main is always live
       const sel = frames.find((f) => f.id === store.get(`${KEY}.selected`));
       if (sel) { selectFrame(sel); }
+      fillPictures();
     }
   } else if (s.state === 'starting') setStatus('busy', 'Building the app…');
   else setStatus('error', "The app isn't running");
@@ -249,24 +285,23 @@ const watchApp = async () => {
 // Frozen copies (frozen.py): every iteration as it was the day it was made.
 // An exploration frame shows its frozen copy unless it's switched to "On main"
 // (the iteration laid over today's main, as the classic playground does).
-let freezing = false;
+let freezing = null;
 const post = (url, kind, body = {}) => fetch(url, {
   method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': kind }, body: JSON.stringify(body),
-}).then((r) => r.json()).catch(() => null);
-async function syncFrozen() {
-  if (freezing) return;
-  freezing = true;
-  setStatus('busy', 'Freezing new versions…');
-  const r = await post('/playground/frozen/sync', 'frozen');
-  freezing = false;
-  if (!r?.enabled) return;
-  const before = Object.keys(frozen).length;
-  frozen = r.versions || {};
-  for (const f of frames) if (f.kind === 'exp') { drawMode(f); drawFoot(f); }
-  const added = Object.keys(frozen).length - before;
-  if (before && added > 0) toast(`${added === 1 ? 'A new version is' : `${added} new versions are`} frozen.`);
+}).then((r) => (r.status === 204 ? {} : r.json())).catch(() => null);
+// Fetches the frozen copies (and freezes any version made some other way).
+// One at a time: a second call waits for the one under way.
+function syncFrozen() {
+  freezing ??= (async () => {
+    const r = await post('/playground/frozen/sync', 'frozen');
+    if (r?.enabled) {
+      frozen = r.versions || {};
+      for (const f of frames) if (f.kind === 'exp') { drawMode(f); drawFoot(f); }
+    }
+  })().finally(() => { freezing = null; });
+  return freezing;
 }
-setInterval(() => { if (!document.hidden && app) syncFrozen().then(() => setStatus('ready', 'App ready')); }, 60000);
+setInterval(() => { if (!document.hidden && app) syncFrozen(); }, 60000);
 watchApp();
 setInterval(() => { if (!document.hidden) watchApp(); }, 3000);
 
@@ -276,7 +311,7 @@ const layersOf = (f) => (f.kind === 'main' ? [] : [`${f.pg.id}/${f.v}`]);
 const liveOrder = [];
 async function wake(f) {
   if (!app) { toast('The app is still starting.'); return; }
-  if (f.iframe) { liveOrder.splice(liveOrder.indexOf(f), 1); liveOrder.push(f); return; }
+  if (f.iframe) { if (f !== main) { liveOrder.splice(liveOrder.indexOf(f), 1); liveOrder.push(f); } return; }
   const source = sourceOf(f);
   let origin = app.origin;
   if (source !== 'live') {
@@ -293,6 +328,7 @@ async function wake(f) {
   f.iframe = iframe; f.ready = false; f.origin = origin; f.source = sourceOf(f);
   f.body.append(iframe);
   f.el.classList.add('live', 'loading');
+  if (f === main) return; // always live, and not counted
   liveOrder.push(f);
   while (liveOrder.length > LIVE_MAX) {
     const old = liveOrder.find((x) => x !== selected && x !== focused);
@@ -350,6 +386,8 @@ addEventListener('message', (e) => {
     send(f, { type: 'layers', layers: layersOf(f) });
     if (f.screen) send(f, { type: 'show', screen: f.screen });
     drawFoot(f);
+    const key = pictureKey(f);
+    if (f === main || (key && (!pictures[key] || f.repicture))) takePicture(f).then((ok) => { if (ok) f.repicture = false; f.pictured?.(ok); });
   } else if (m.type === 'where') {
     f.where = m.title || SCREENS[m.screen]?.title || m.screen;
     f.route = { screen: m.screen, params: m.params || {} };
@@ -425,22 +463,21 @@ const step = (f, d) => {
 // ---- Selection: the frame Claude works on ----------------------------------
 const drawTarget = () => composer?.drawTarget();
 // What the composer tells Claude about the selected frame.
+// The page is the one the frame shows now (its route, from the bridge's
+// "where"), not the one it opened on: serve.py's canvas_context says it.
 function context() {
   const f = selected;
   if (!f) return null;
-  if (f.kind === 'main') {
-    return {
-      chip: 'Main', kind: 'main',
-      body: { screen: f.where ? undefined : f.screen, screenTitle: f.where, folder: f.screen },
-    };
-  }
+  const screen = f.route?.screen ?? f.screen;
+  const page = {
+    surface: 'canvas', screen, params: f.route?.params || {},
+    screenTitle: (f.route && f.where) || SCREENS[screen]?.title || screen,
+    files: SCREENS[screen]?.file ? [SCREENS[screen].file] : [],
+  };
+  if (f.kind === 'main') return { chip: 'Main', kind: 'main', body: { ...page, frame: 'main' } };
   return {
     chip: `${f.group} ${f.v.slice(1)}`, kind: 'exp',
-    body: {
-      screen: f.screen, screenTitle: SCREENS[f.screen]?.title, folder: f.pg.screen,
-      playground: f.pg.id, version: f.v,
-      versionState: `selected on the canvas, ${frozenOf(f) ? 'shown as frozen when it was made' : "shown on today's main"}`,
-    },
+    body: { ...page, frame: 'exp', playground: f.pg.id, version: f.v, name: iterOf(f)?.name, onMain: !frozenOf(f) },
   };
 }
 function selectFrame(f) {
@@ -508,7 +545,7 @@ function drawTools() {
   if (f.kind === 'exp') {
     const fz = frozen[`${f.pg.id}/${f.v}`];
     tools.querySelector('[data-tool=frozen]').hidden = !fz;
-    set('frozen', fz && !f.onMain, f.onMain ? "On today's main: click for the frozen copy" : `Frozen as it was ${fz?.date || ''}: click to lay it over today's main`);
+    set('frozen', fz && !f.onMain, f.onMain ? "On today's main: click for its own base" : `On main as it was ${(fz?.base || fz?.date || '').slice(0, 10)}: click to lay it over today's main`);
     const picked = commit?.picked(f.pg.id) === f.v;
     set('pick', picked, picked ? 'Picked for main: click to unpick' : 'Pick this iteration for main: Commit moves it into the app');
   }
@@ -724,11 +761,13 @@ function showVersion(key) {
 
 // After a run: the versions it made or changed. A new iteration joins its
 // frame; a new exploration needs a place on the canvas, so the page lays out
-// again (keeping the view and the selection).
+// again (keeping the view and the selection). Every frame on a version the run
+// touched runs again, whatever it runs on, and has its picture taken again.
 async function afterRun(result) {
   const made = [...(result.new || []), ...(result.updated || [])];
   if (!made.length) return;
-  if (result.updated?.length) await post('/playground/frozen/sync', 'frozen', { stale: result.updated.map((x) => `${x.playground}/${x.version}`) });
+  if (result.updated?.length) toast(`Claude changed ${result.updated.map((x) => `${x.playground} ${x.version.slice(1)}`).join(', ')} in place.`);
+  await syncFrozen(); // new.py and iterate.py froze theirs as they made them
   let relayout = false;
   for (const id of new Set(made.map((x) => x.playground))) {
     const pg = playgrounds.find((p) => p.id === id);
@@ -755,15 +794,50 @@ async function afterRun(result) {
     setTimeout(() => location.reload(), 1200);
     return;
   }
+  const touched = new Set(made.map((x) => `${x.playground}/${x.version}`));
   for (const f of frames) {
     if (f.kind !== 'exp' || !made.some((x) => x.playground === f.pg.id)) continue;
     if (f.select) f.select.innerHTML = f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('');
     if (f.select) f.select.value = f.v;
-    // The live app compiles its versions in when it loads: a frame on it loads again.
-    if (f.iframe && f.source === 'live') rerun(f);
+    if (!touched.has(`${f.pg.id}/${f.v}`)) continue;
+    // What it showed is out of date: forget its pictures, and run it again.
+    f.shots = {};
+    f.repicture = true;
+    if (f.iframe) rerun(f); else drawPoster(f);
   }
+  // The live app compiles its versions in as it loads: main loads again too.
+  if (main.iframe) rerun(main);
   showVersion(key);
   toast(`${first.playground} ${first.version.slice(1)} is ready.`);
+}
+
+// ---- Pictures for frames that have none ------------------------------------------
+// While nobody's using the canvas, a frame without a picture wakes, has it
+// taken, and sleeps again: one at a time, the nearest to the middle first.
+// A frozen copy's picture is taken once: the copy never changes.
+let lastInput = 0, filling = null;
+for (const type of ['pointerdown', 'wheel', 'keydown']) addEventListener(type, () => { lastInput = Date.now(); }, { capture: true, passive: true });
+const tried = new Set();
+function fillPictures() {
+  setInterval(async () => {
+    if (filling || document.hidden || !app || Date.now() - lastInput < 4000) return;
+    const s = stage.getBoundingClientRect();
+    const cx = (s.width / 2 - view.x) / view.z, cy = (s.height / 2 - view.y) / view.z;
+    const todo = frames.filter((f) => f.kind === 'exp' && !f.iframe && !tried.has(f.id + f.v)
+      && pictureKey(f) && (!pictures[pictureKey(f)] || f.repicture));
+    if (!todo.length) return;
+    const dist = (f) => Math.hypot(f.x + W / 2 - cx, f.y + H / 2 - cy);
+    const f = todo.sort((a, b) => dist(a) - dist(b))[0];
+    tried.add(f.id + f.v);
+    filling = f;
+    const done = new Promise((ok) => { f.pictured = ok; setTimeout(() => ok(false), 25000); });
+    await wake(f);
+    await done;
+    f.pictured = null;
+    if (f.iframe && f !== selected && f !== focused) await sleep(f, false);
+    drawPoster(f);
+    filling = null;
+  }, 1500);
 }
 
 // ---- Screenshots: hold ⌥ and drag over a live frame -------------------------------
@@ -867,7 +941,7 @@ function properties(f) {
       ${row(ICON.clock, 'Runs', "the app as it is")}</section>`;
   }
   const it = iterOf(f), fz = frozen[`${f.pg.id}/${f.v}`];
-  const runs = f.onMain || !fz ? "On today's main" : fz.label === 'frozen' ? `Frozen ${when(fz.made?.slice(0, 10))}` : fz.label === 'rebuilt' ? `On main of ${when(fz.date)}` : "On today's main";
+  const runs = f.onMain || !fz ? "On today's main" : fz.label === 'today' ? "On today's main (git has no older one)" : `On main of ${when((fz.base || fz.date)?.slice(0, 10))}`;
   const picked = commit?.picked(f.pg.id) === f.v;
   const status = it.merged ? `<span class="cv-ok">Merged ${esc(it.merged)}</span>` : picked ? '<span class="cv-on">Picked for main</span>' : 'Not picked';
   return `<h3>${ICON.branch} ${esc(f.group)} ${f.major}</h3>
