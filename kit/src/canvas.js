@@ -76,26 +76,39 @@ const classic = document.getElementById('classic');
 if (CFG.canvas?.classic) classic.href = CFG.canvas.classic; else classic.hidden = true;
 classic.innerHTML = ICON.external;
 document.getElementById('btn-fit').innerHTML = ICON.fit;
-// The ids name what each shows ("left" is the chat), not where: the chat is
-// at the right now, Properties and Files at the left.
-document.getElementById('btn-left').innerHTML = ICON.right;
-document.getElementById('btn-right').innerHTML = ICON.left;
 document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
 
-// The side panels: the chat at the right, Properties and Files at the left.
-// Closing one gives the canvas its room.
-const sides = { left: true, right: true, ...store.get(`${KEY}.sides`, {}) };
-function showSide(side, on) {
-  sides[side] = on;
-  document.body.classList.toggle(`no-${side}`, !on);
-  document.getElementById(`btn-${side}`).setAttribute('aria-pressed', String(on));
-  store.set(`${KEY}.sides`, sides);
-  requestAnimationFrame(() => dispatchEvent(new Event('resize')));
+// The panels, the classic playground's: Properties, Files and Library at the
+// left (panels.js), Claude at the right, floating over the canvas. Each
+// minimises to a strip at its edge (its ‹ or ›, or P for both) and springs
+// open again from it, and that's kept for next time. At phone width only one
+// is open at a time. Fitting fits between them.
+const panelsOpen = { props: true, chat: true, ...store.get(`${KEY}.panels`, {}) };
+const panelEl = (which) => document.getElementById(which === 'props' ? 'files' : 'claude');
+const narrowView = () => matchMedia('(max-width: 760px)').matches;
+function setPanel(which, on) {
+  if (on && narrowView()) { const other = which === 'props' ? 'chat' : 'props'; if (panelsOpen[other]) setPanel(other, false); }
+  panelsOpen[which] = on;
+  const el = panelEl(which);
+  el?.classList.toggle('min', !on);
+  el?.querySelector('.pg-rail')?.setAttribute('aria-expanded', String(on));
+  store.set(`${KEY}.panels`, panelsOpen);
+  if (focused) lockTo(focused); // the frame fills the room the panels leave
 }
-showSide('left', sides.left);
-showSide('right', sides.right);
-document.getElementById('btn-left').addEventListener('click', () => showSide('left', !sides.left));
-document.getElementById('btn-right').addEventListener('click', () => (sides.right ? panels.close() : panels.open(null)));
+const togglePanels = () => { const on = !panelsOpen.props || !panelsOpen.chat; setPanel('props', on); setPanel('chat', on); };
+{
+  const chat = panelEl('chat');
+  chat.querySelector('.pg-rail').addEventListener('click', () => { setPanel('chat', true); chat.querySelector('textarea')?.focus(); });
+  chat.querySelector('[data-close]').addEventListener('click', () => setPanel('chat', false));
+}
+// The part of the stage the panels leave free (x: from the stage's left).
+function room() {
+  const s = stage.getBoundingClientRect();
+  if (narrowView()) return { left: s.left, top: s.top, width: s.width, height: s.height, x: 0 };
+  const w = (which) => (panelsOpen[which] ? panelEl(which)?.querySelector('.pg-body')?.offsetWidth || 320 : 44);
+  const l = 8 + w('props') + 8, r = 8 + w('chat') + 8;
+  return { left: s.left + l, top: s.top, width: Math.max(240, s.width - l - r), height: s.height, x: l };
+}
 
 const toastEl = document.getElementById('toast');
 let toastTimer = 0;
@@ -399,7 +412,7 @@ addEventListener('message', (e) => {
     else if (m.key === 'Shift') xray?.shift(m.down);
     else if (m.key === 'n') notes.key('n');
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
-    else if (m.key === 'p') panels.toggle();
+    else if (m.key === 'p') togglePanels();
     else if (m.key === 'Escape' && m.down !== false) {
       if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) unfocus();
     }
@@ -591,10 +604,10 @@ function zoomAt(k, px, py, glide = false) {
 }
 // Fits a box of the world into the stage, leaving room for the heads and feet.
 function fitBox(x0, y0, x1, y1, pad = 48) {
-  const s = stage.getBoundingClientRect();
+  const s = room();
   const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - pad * 2) / (x1 - x0), (s.height - pad * 2 - 80) / (y1 - y0))));
   view.z = z;
-  view.x = (s.width - (x1 - x0) * z) / 2 - x0 * z;
+  view.x = s.x + (s.width - (x1 - x0) * z) / 2 - x0 * z;
   view.y = (s.height - (y1 - y0) * z) / 2 - y0 * z;
   draw(true);
 }
@@ -621,9 +634,9 @@ function lockTo(f, glide = true) {
   stage.classList.add('focusing');
   fitTitle('Fit the frame (⇧1)');
   setSpace(false);
-  const s = stage.getBoundingClientRect();
+  const s = room();
   const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - 32) / W, (s.height - 32 - 80) / H)));
-  Object.assign(view, { z, x: (s.width - W * z) / 2 - f.x * z, y: (s.height - H * z) / 2 - f.y * z });
+  Object.assign(view, { z, x: s.x + (s.width - W * z) / 2 - f.x * z, y: (s.height - H * z) / 2 - f.y * z });
   draw(glide);
   clampLens();
   drawLens();
@@ -744,7 +757,7 @@ stage.addEventListener('pointerup', endPan);
 stage.addEventListener('pointercancel', endPan);
 
 function zoomKey(key) {
-  const s = stage.getBoundingClientRect();
+  const s = room();
   if (key === '+' || key === '=') zoomAt(1.25, s.left + s.width / 2, s.top + s.height / 2, true);
   else if (key === '-') zoomAt(0.8, s.left + s.width / 2, s.top + s.height / 2, true);
   else if (key === '0') zoomAt(1 / (view.z * (focused ? lens.z : 1)), s.left + s.width / 2, s.top + s.height / 2, true);
@@ -983,13 +996,23 @@ function drawSnap() {
 panels = mountPanels({
   key: KEY, data: CFG.data, W, screens: SCREENS, playgrounds, frames, ask, send, toast,
   target: () => selected, showVersion, notes: () => notes,
-  properties, show: (on) => showSide('right', on), shown: () => sides.right,
+  properties, show: (on) => setPanel('props', on), shown: () => panelsOpen.props,
 });
+// Both panels as they were left (at phone width, both minimised at first).
+setPanel('props', !narrowView() && panelsOpen.props);
+setPanel('chat', !narrowView() && panelsOpen.chat);
+// Claude's strip keeps a dot while a chat is working.
+{
+  const dot = panelEl('chat').querySelector('.pg-rail-dot'), tabsEl = document.querySelector('#composer .cm-tabs');
+  const drawDot = () => { const n = tabsEl.querySelectorAll('.busy').length; dot.hidden = !n; dot.title = n ? (n === 1 ? 'Claude is working' : `${n} chats are working`) : ''; };
+  new MutationObserver(drawDot).observe(tabsEl, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+  drawDot();
+}
 // Inspect's own button would sit in the header: the frame toolbar has it.
 new MutationObserver(() => drawTools()).observe(document.querySelector('.pg-inspect-btn'), { attributes: true, attributeFilter: ['aria-pressed'] });
 addEventListener('keydown', (e) => {
   if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); panels.toggle(); }
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); togglePanels(); }
 });
 commit = await mountCommit({
   data: DATA, button: document.getElementById('btn-commit'), toast,

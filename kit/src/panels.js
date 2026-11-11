@@ -1,5 +1,7 @@
-// The panel at the canvas's right (src/canvas.js): Properties, Files and
-// Library. Part of the prototype-playground kit.
+// The panel at the canvas's left (src/canvas.js): Properties, Files and
+// Library, in the classic playground's panel. It minimises to a strip at the
+// edge, named for the pane on show, with a dot while files are changing.
+// Part of the prototype-playground kit.
 //
 // - Properties: what the selected frame is (its screen, exploration and
 //   iteration, what it started from, whether it runs frozen or on today's
@@ -25,15 +27,19 @@ import { mountInspect } from './inspect.js';
  *   ask(f, message, wait), send(f, message),
  *   target(): the selected frame,
  *   showVersion('<screen>/<version>'), toast(text), notes(): the notes (src/notes.js),
- *   properties(f): HTML, show(on): opens or closes the panel, shown(): whether it's open,
+ *   properties(f): HTML, show(on): expands or minimises the panel, shown(): whether it's expanded,
  * }
  */
 export function mountPanels(o) {
   const panel = document.createElement('div');
   panel.id = 'files';
   panel.className = 'pg-panel pg-files cv-panel';
-  panel.innerHTML = '<div class="pg-body"><div class="pg-pane" data-pane="props"></div><div class="pg-pane" data-pane="files" hidden></div><div class="pg-pane" data-pane="library" hidden></div></div>';
-  document.getElementById('right').append(panel);
+  panel.innerHTML = `<button type="button" class="pg-rail" aria-expanded="true" aria-controls="files-body" title="Expand (P)">
+      <span class="pg-rail-arrow" aria-hidden="true">›</span><span class="pg-rail-label">Properties</span><span class="pg-rail-dot" hidden></span>
+    </button><div class="pg-body" id="files-body"><div class="pg-pane" data-pane="props"></div><div class="pg-pane" data-pane="files" hidden></div><div class="pg-pane" data-pane="library" hidden></div></div>`;
+  document.getElementById('side-props').append(panel);
+  const rail = panel.querySelector('.pg-rail'), railDot = panel.querySelector('.pg-rail-dot');
+  rail.addEventListener('click', () => open(null));
   const propsEl = panel.querySelector('[data-pane=props]');
   const filesEl = panel.querySelector('[data-pane=files]');
   const libraryEl = panel.querySelector('[data-pane=library]');
@@ -44,7 +50,7 @@ export function mountPanels(o) {
   try { pane = JSON.parse(localStorage.getItem(`${o.key}.pane`)) || 'props'; } catch {}
 
   // ---- Properties ----
-  propsEl.innerHTML = `<div class="pg-head">${tabs('props')}<button type="button" class="pg-min" data-close aria-label="Hide the panel" title="Hide (P)">‹</button></div><div class="cv-props"></div>`;
+  propsEl.innerHTML = `<div class="pg-head">${tabs('props')}<button type="button" class="pg-min" data-close aria-label="Minimise the panel" title="Minimise (P)">‹</button></div><div class="cv-props"></div>`;
   propsEl.querySelector('[data-close]').addEventListener('click', () => close());
   const drawProps = () => { propsEl.querySelector('.cv-props').innerHTML = o.properties(o.target()); };
   const frameOf = () => (about && o.frames.includes(about) ? about : o.target());
@@ -85,6 +91,7 @@ export function mountPanels(o) {
     key: o.key, head: tabs('files'), onShow, describe,
     showSummary: () => { const f = frameOf(); return f ? `Behind ${nameOf(f)}` : 'Select a frame to see the files behind it'; },
     toggle: () => close(),
+    onFresh: (on) => { railDot.hidden = !on; railDot.title = on ? 'Files are changing' : ''; },
   });
 
   // ---- Library: the selected frame's app answers ----
@@ -143,6 +150,7 @@ export function mountPanels(o) {
   function setPane(p) {
     pane = p;
     try { localStorage.setItem(`${o.key}.pane`, JSON.stringify(p)); } catch {}
+    rail.querySelector('.pg-rail-label').textContent = { props: 'Properties', files: 'Files', library: 'Library' }[p];
     propsEl.hidden = p !== 'props';
     filesEl.hidden = p !== 'files';
     libraryEl.hidden = p !== 'library';

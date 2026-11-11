@@ -177,16 +177,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-answer.skipped b, .cv-answer.sent b { color: var(--page-muted); }
 .cm-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow-y: auto; }
 .cm-notes li { display: flex; align-items: center; gap: 4px; }
-.cv-noted {
+.cv-chat .cv-noted {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left;
   background: none; box-shadow: none; padding: 4px 6px; min-height: 0;
 }
-.cv-noted:hover { background: rgba(255, 255, 255, 0.05); filter: none; }
+.cv-chat .cv-noted:hover { background: rgba(255, 255, 255, 0.05); filter: none; }
 .cv-noted-text { min-width: 0; display: flex; flex-direction: column; }
 .cv-noted-text b, .cv-noted-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-noted-text b { font-weight: 500; color: #fff; }
 .cv-noted-text small { color: var(--page-muted); font-size: 11px; }
-.cv-unnote { flex: none; min-height: 24px; width: 24px; padding: 0; background: none; box-shadow: none; color: var(--page-muted); }
+.cv-chat .cv-unnote { flex: none; min-height: 24px; width: 24px; padding: 0; background: none; box-shadow: none; color: var(--page-muted); }
 
 .cv-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px; font-size: 11px; background: var(--accent); color: #0b0b0d; }
 .cv-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber); animation: cv-blink 1s infinite alternate; }
@@ -213,7 +213,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 }
 .cv-icon:hover { filter: none; background: rgba(255, 255, 255, 0.07); color: var(--page-text); }
 .cv-icon[aria-pressed=true] { color: var(--accent); background: rgba(37, 195, 255, 0.13); }
-.cv-bar #btn-left[aria-pressed=true], .cv-bar #btn-right[aria-pressed=true] { color: var(--page-text); background: none; }
 .cv-icon svg { display: block; }
 
 /* Commit is the primary action, Share the secondary one. */
@@ -223,28 +222,17 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-share { margin-left: 6px; }
 .cv-share:disabled { opacity: 0.45; cursor: default; filter: none; }
 
-/* Both sides are joined to the header: Properties and Files at the left,
-   the chat at the right; the canvas is the card between them. (The ids and
-   classes name what each holds: .cv-right is Properties, .cv-left the chat.) */
-.cv-layout {
-  position: fixed; inset: 48px 0 0 0; display: grid;
-  grid-template-columns: var(--props-w, 300px) minmax(0, 1fr) var(--chat-w, 340px);
-  grid-template-areas: 'props card chat';
-}
-.cv-layout > .cv-right { grid-area: props; }
-.cv-layout > .cv-card { grid-area: card; }
-.cv-layout > .cv-left { grid-area: chat; }
-body.no-left .cv-layout { --chat-w: 0px; }
-body.no-left .cv-left { display: none; }
-body.no-right .cv-layout { --props-w: 0px; }
-body.no-right .cv-right { display: none; }
-.cv-card {
-  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0;
-  margin: 0 0 8px; border-radius: 14px; overflow: hidden;
-  background: var(--page); box-shadow: inset 0 0 0 1px var(--frame-edge);
-}
-body.no-right .cv-card { margin-left: 8px; }
-body.no-left .cv-card { margin-right: 8px; }
+/* The canvas fills everything under the header, and the classic
+   playground's panels float over it, 8px from everything (style.css has
+   .pg-panel: the frosted card, the 44px strip it minimises to, its spring). */
+.cv-layout { position: fixed; inset: 48px 0 0 0; }
+.cv-card { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); background: var(--page); }
+.cv-side { position: absolute; top: 8px; bottom: 8px; z-index: 10; display: flex; }
+.cv-side.at-left { left: 8px; }
+.cv-side.at-right { right: 8px; }
+.cv-side > .pg-panel { height: 100%; }
+.cv-side .pg-body { height: 100%; }
+.pg-claude .pg-rail-label { transform: none; }
 
 /* ---- The frame: its branch and iteration above it; the rest is in Properties ---- */
 .cv-foot { display: none; }
@@ -274,13 +262,15 @@ body.no-left .cv-card { margin-right: 8px; }
 .cv-tools .cv-icon { width: 30px; height: 30px; }
 .cv-tsep { width: 1px; height: 18px; margin: 0 3px; background: var(--page-line); }
 
-/* ---- The chat (src/composer.js): the left panel ---- */
-.cv-left { display: flex; flex-direction: column; min-height: 0; padding: 4px 12px 12px; gap: 10px; }
+/* ---- The chat (src/composer.js), in the Claude panel at the right ----
+   Its rules start with .cv-chat: inside a .pg-panel, style.css's tile look
+   for every button would win over a bare class. */
+.cv-chat { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0 12px 12px; gap: 10px; }
 .cm-tabs { display: flex; gap: 4px; flex: none; }
-.cm-tabs button { min-height: 26px; min-width: 28px; padding: 0 9px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
-.cm-tabs button:hover { filter: none; color: var(--page-text); background: rgba(255, 255, 255, 0.06); }
-.cm-tabs button[aria-selected=true] { color: #fff; background: rgba(255, 255, 255, 0.09); }
-.cm-tabs button.busy { color: var(--amber); }
+.cv-chat .cm-tabs button { min-height: 26px; min-width: 28px; padding: 0 9px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
+.cv-chat .cm-tabs button:hover { filter: none; color: var(--page-text); background: rgba(255, 255, 255, 0.06); }
+.cv-chat .cm-tabs button[aria-selected=true] { color: #fff; background: rgba(255, 255, 255, 0.09); }
+.cv-chat .cm-tabs button.busy { color: var(--amber); }
 .cm-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 2px; font-size: 14px; line-height: 1.5; }
 .cm-empty { margin: auto 0; text-align: center; color: var(--page-muted); font-size: 13px; }
 .cm-m { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -291,14 +281,14 @@ body.no-left .cv-card { margin-right: 8px; }
 .cm-m.error { color: #ff8a98; }
 .cm-m.done { color: #5fd08a; }
 .cm-m time { display: block; margin-top: 4px; font-size: 11px; color: var(--page-muted); }
-.cm-view { min-height: 22px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
+.cv-chat .cm-view { min-height: 22px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
 .cm-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 9px; border-radius: 8px;
   font-size: 12.5px; color: var(--accent); background: rgba(37, 195, 255, 0.12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cm-chip svg { flex: none; width: 13px; height: 13px; }
 .cm-run { flex: none; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--amber); padding: 0 4px; }
-.cm-run .cm-stop { margin-left: auto; width: 26px; min-height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.cv-chat .cm-run .cm-stop { margin-left: auto; width: 26px; min-height: 26px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 .cm-box {
   position: relative; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px;
   background: var(--raised); border-radius: 16px; box-shadow: inset 0 0 0 1px var(--frame-edge);
@@ -311,23 +301,18 @@ body.no-left .cv-card { margin-right: 8px; }
 .cm-box textarea:focus { outline: none; }
 .cm-box textarea:disabled { opacity: 0.6; }
 .cm-box:focus-within { box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.45); }
-.cm-send {
+.cv-chat .cm-send {
   position: absolute; right: 10px; bottom: 10px; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%;
   display: grid; place-items: center; background: var(--accent); color: #0b0b0d; box-shadow: none;
 }
-.cm-send:disabled { opacity: 0.35; cursor: default; filter: none; }
+.cv-chat .cm-send:disabled { opacity: 0.35; cursor: default; filter: none; }
 .cm-shots { display: flex; gap: 8px; flex-wrap: wrap; }
 .cm-shot { position: relative; }
 .cm-shot img { height: 52px; border-radius: 6px; display: block; }
-.cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
+.cv-chat .cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
 
-/* ---- The right panel (src/panels.js): Properties, Files, Library ---- */
-.cv-right { display: flex; min-width: 0; min-height: 0; background: var(--chrome); }
-.cv-right > .pg-panel { flex: 1; width: auto; height: 100%; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.cv-right > .pg-panel::after { display: none; }
-.cv-right .pg-body { width: 100%; }
-.cv-right .pg-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.cv-right .pg-head { padding: 4px 10px 8px 14px; }
+/* ---- The left panel (src/panels.js): Properties, Files, Library ---- */
+.cv-side .pg-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .cv-props { overflow-y: auto; padding: 4px 14px 16px; }
 .cv-props h3 { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; font-size: 14px; font-weight: 600; color: #fff; }
 .cv-props h3 svg { color: var(--accent); }
@@ -345,7 +330,10 @@ body.no-left .cv-card { margin-right: 8px; }
 /* The readers of Files and Library: over the canvas. */
 .cv-workspace { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
 .cv-workspace > * { pointer-events: auto; }
-.cv-workspace > .pg-reader { left: 10px; right: 10px; top: 10px; bottom: 10px; }
+.cv-workspace > .pg-reader { top: 8px; bottom: 8px; left: 336px; right: 404px; }
+.cv-layout:has(.pg-files.min) .cv-workspace > .pg-reader { left: 60px; }
+.cv-layout:has(.pg-claude.min) .cv-workspace > .pg-reader { right: 68px; }
+@media (max-width: 760px) { .cv-layout .cv-workspace > .pg-reader { left: 8px; right: 8px; min-width: 0; } }
 .pg-shield { z-index: 4; }
 
 /* ---- X-ray (src/xray.js): ⇧-drag over a live frame ---- */
