@@ -226,16 +226,21 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-share { margin-left: 6px; }
 .cv-share:disabled { opacity: 0.45; cursor: default; filter: none; }
 
-.cv-layout { position: fixed; inset: 48px 0 0 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); }
+/* Properties and Files at the left, in the card; the chat at the right, joined to the header. */
+.cv-layout { position: fixed; inset: 48px 0 0 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+.cv-layout > .cv-left { grid-column: 2; grid-row: 1; }
+.cv-layout > .cv-card { grid-column: 1; grid-row: 1; }
 body.no-left .cv-layout { grid-template-columns: minmax(0, 1fr); }
 body.no-left .cv-left { display: none; }
 .cv-card {
-  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-width: 0;
-  margin: 0 8px 8px 0; border-radius: 14px; overflow: hidden;
+  position: relative; display: grid; grid-template-columns: 300px minmax(0, 1fr); min-width: 0;
+  margin: 0 0 8px 8px; border-radius: 14px; overflow: hidden;
   background: var(--page); box-shadow: inset 0 0 0 1px var(--frame-edge);
 }
-body.no-left .cv-card { margin-left: 8px; }
-body.no-right .cv-card { grid-template-columns: minmax(0, 1fr) 0; }
+.cv-card > .cv-right { grid-column: 1; grid-row: 1; }
+.cv-card > .cv-stage { grid-column: 2; grid-row: 1; }
+body.no-left .cv-card { margin-right: 8px; }
+body.no-right .cv-card { grid-template-columns: 0 minmax(0, 1fr); }
 body.no-right .cv-right { display: none; }
 
 /* ---- The frame: its branch and iteration above it; the rest is in Properties ---- */
@@ -255,7 +260,6 @@ body.no-right .cv-right { display: none; }
 .cv-iter-pick select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; min-height: 0; }
 .cv-head { gap: calc(6px * var(--inv)); }
 .cv-iter-now::before { content: '/ '; opacity: 0.6; }
-.cv-right .pg-min { transform: scaleX(-1); } /* it closes to the right */
 .small .cv-iter-pick, .small .cv-iter-now.main { display: none; }
 
 /* The frame toolbar: over the selected frame's top edge, at its right. */
@@ -315,7 +319,7 @@ body.no-right .cv-right { display: none; }
 .cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
 
 /* ---- The right panel (src/panels.js): Properties, Files, Library ---- */
-.cv-right { display: flex; min-width: 0; min-height: 0; border-left: 1px solid var(--page-line); background: var(--page); }
+.cv-right { display: flex; min-width: 0; min-height: 0; border-right: 1px solid var(--page-line); background: var(--page); }
 .cv-right > .pg-panel { flex: 1; width: auto; height: 100%; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .cv-right > .pg-panel::after { display: none; }
 .cv-right .pg-body { width: 100%; }

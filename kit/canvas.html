@@ -11,12 +11,12 @@
 <body>
   <!-- The canvas version of the playground (branch "canvas"). Main and every
        exploration are frames on one canvas; each frame is the app itself,
-       running its own layers. The chat sits at the left, joined to the
-       header; the canvas is the card in the middle, with Properties, Files
-       and Library at its right. Both sides close, to give the canvas room.
+       running its own layers. The chat sits at the right, joined to the
+       header; the canvas is the card beside it, with Properties, Files
+       and Library at its left. Both sides close, to give the canvas room.
        See src/canvas.js. -->
   <header class="cv-bar" id="subbar">
-    <button type="button" class="cv-icon" id="btn-left" aria-label="Show or hide the chat" aria-pressed="true" title="Chat"></button>
+    <button type="button" class="cv-icon" id="btn-right" aria-label="Show or hide Properties and Files" aria-pressed="true" title="Properties and Files"></button>
     <span class="cv-status" id="status" data-state="busy" title="Starting the app…"></span>
     <h1 id="name">Playground</h1>
     <span class="cv-spacer spacer"></span>
@@ -25,7 +25,7 @@
     <a class="cv-icon" id="classic" target="_blank" rel="noopener" aria-label="The classic playground" title="The classic playground"></a>
     <button type="button" class="cv-share" id="btn-share" disabled title="Sharing with the team comes with the team version">Share</button>
     <button type="button" class="cv-commit" id="btn-commit" title="Move the picked iterations into the app and commit them">Commit</button>
-    <button type="button" class="cv-icon" id="btn-right" aria-label="Show or hide Properties and Files" aria-pressed="true" title="Properties and Files"></button>
+    <button type="button" class="cv-icon" id="btn-left" aria-label="Show or hide the chat" aria-pressed="true" title="Chat"></button>
   </header>
 
   <div class="cv-layout">

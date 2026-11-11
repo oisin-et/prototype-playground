@@ -51,11 +51,13 @@ const classic = document.getElementById('classic');
 if (CFG.canvas?.classic) classic.href = CFG.canvas.classic; else classic.hidden = true;
 classic.innerHTML = ICON.external;
 document.getElementById('btn-fit').innerHTML = ICON.fit;
-document.getElementById('btn-left').innerHTML = ICON.left;
-document.getElementById('btn-right').innerHTML = ICON.right;
+// The ids name what each shows ("left" is the chat), not where: the chat is
+// at the right now, Properties and Files at the left.
+document.getElementById('btn-left').innerHTML = ICON.right;
+document.getElementById('btn-right').innerHTML = ICON.left;
 document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
 
-// The side panels: the chat at the left, Properties and Files at the right.
+// The side panels: the chat at the right, Properties and Files at the left.
 // Closing one gives the canvas its room.
 const sides = { left: true, right: true, ...store.get(`${KEY}.sides`, {}) };
 function showSide(side, on) {
