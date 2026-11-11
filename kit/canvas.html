@@ -17,13 +17,15 @@
        at its edge and springs open again from it. See src/canvas.js. -->
   <!-- No header: one row of round pieces over the canvas, above the panels,
        in the panels' look. Home at the left, with where you are: the selected
-       frame's name (else the project's) and the app's status; the toolbar in
+       frame's name (else the project's), to read only; only its round icon goes home; the toolbar in
        the middle; Share and Commit at the right. Inspect's own button
        (inspect.js) waits hidden in #subbar. -->
   <div class="cv-top" id="subbar">
-    <button type="button" class="cv-float cv-home" id="btn-fit" aria-label="Home: show every frame" title="Home: show every frame (⇧1)">
-      <span class="cv-home-icon"></span><span class="cv-where" id="name" aria-live="polite">Playground</span><span class="cv-status" id="status" data-state="busy" title="Starting the app…"></span>
-    </button>
+    <div class="cv-float cv-home" id="home">
+      <button type="button" class="cv-icon cv-home-icon" id="btn-fit" aria-label="Home: show every frame" title="Home: show every frame (⇧1)"></button>
+      <span class="cv-where" id="name" aria-live="polite">Playground</span>
+      <span class="cv-status" id="status" data-state="busy" hidden></span>
+    </div>
     <div class="cv-tools cv-float" id="tools" role="toolbar" aria-label="Tools for the selected frame"></div>
     <div class="cv-actions">
       <button type="button" class="cv-float cv-share" id="btn-share" disabled aria-label="Share" title="Sharing with the team comes with the team version"></button>

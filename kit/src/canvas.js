@@ -533,7 +533,7 @@ const TOOLS = [
 ];
 tools.innerHTML = `<div class="cv-tools-in">${TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
   : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1])}">${t[2]}</button>`)).join('')}</div>`;
-const toolsIn = tools.firstElementChild, toolsFrame = document.getElementById('name'), homeEl = document.getElementById('btn-fit');
+const toolsIn = tools.firstElementChild, toolsFrame = document.getElementById('name'), homeEl = document.getElementById('home');
 toolsFrame.textContent = NAME;
 tools.addEventListener('pointerdown', (e) => e.stopPropagation());
 tools.addEventListener('click', (e) => {

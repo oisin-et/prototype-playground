@@ -202,16 +202,15 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   background: var(--chrome); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
   -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
 }
-/* Home, with where you are: it springs to the width of the frame's name. */
+/* Home, with where you are: only its round icon goes home; the name is to
+   read. It springs to the width of the frame's name. */
 .cv-top .cv-home {
-  left: 8px; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px 0 14px;
+  left: 8px; display: flex; align-items: center; gap: 8px; padding: 0 18px 0 4px;
   overflow: hidden; white-space: nowrap; font-size: 13px; color: var(--page-text);
   transition: width 560ms var(--spring);
 }
-.cv-top .cv-home:hover { filter: none; background: #17191d; }
-.cv-home-icon { display: grid; place-items: center; color: var(--page-muted); }
-.cv-home:hover .cv-home-icon { color: var(--page-text); }
-.cv-where { font-weight: 600; color: #fff; }
+.cv-top .cv-home-icon { flex: none; width: 36px; height: 36px; border-radius: 18px; }
+.cv-where { font-weight: 600; color: #fff; cursor: default; user-select: none; }
 .cv-where.main { color: var(--amber); }
 .cv-where.swap { animation: cv-tswap 480ms var(--spring) both; }
 .cv-status { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
