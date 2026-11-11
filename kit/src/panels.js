@@ -21,7 +21,7 @@
 import { FilesView } from './files.js';
 import { LibraryView } from './library.js';
 import { mountInspect } from './inspect.js';
-import { designHTML, loadSystem } from './design.js';
+import { cssOf, designHTML, loadSystem } from './design.js';
 
 /**
  * o: {
@@ -60,7 +60,9 @@ export function mountPanels(o) {
   const drawProps = () => {
     const f = o.target();
     if (picked && picked.f !== f) unpick();
-    propsEl.querySelector('.cv-props').innerHTML = o.properties(f) + (picked ? designHTML(picked.levels, picked.at) : '');
+    const sel = picked && selOf(picked.levels[picked.at]);
+    propsEl.querySelector('.cv-props').innerHTML = o.properties(f)
+      + (picked ? designHTML(picked.levels, picked.at, (sel && picked.f.previews?.[sel]) || {}, picked.count || 0) : '');
   };
   const outlinePicked = () => {
     for (const el of document.querySelectorAll('.cv-picked')) el.remove();
@@ -78,10 +80,50 @@ export function mountPanels(o) {
     open(f, 'props');
     loadSystem().then(() => { drawProps(); outlinePicked(); });
   }
-  function unpick() { picked = null; outlinePicked(); }
+  function unpick() {
+    if (picked?.f.previews && Object.keys(picked.f.previews).length) { picked.f.previews = {}; if (picked.f.ready) o.ask(picked.f, { type: 'restyle', clear: true }, 2000).catch(() => {}); }
+    picked = null;
+    outlinePicked();
+  }
+  // A part's previews go on what matches its node id and component: this one
+  // (a node a template repeats matches each copy).
+  const selOf = (l) => (l?.pg ? `[data-pg="${CSS.escape(l.pg)}"][data-component="${CSS.escape(l.component)}"]` : null);
+  // After a preview: the part measured again (its box and look), so the
+  // outline and the values follow it.
+  async function remeasure() {
+    const p = picked, l = p?.levels[p.at];
+    if (!l?.box) return;
+    const [x, y, w, h] = l.box;
+    const m = await o.ask(p.f, { type: 'inspect', x: x + w / 2, y: y + h / 2, library: true, design: true }, 2000).catch(() => null);
+    if (p !== picked || !m?.chain) return;
+    for (const c of m.chain) {
+      const old = p.levels.find((q) => q.pg === c.pg && q.component === c.component);
+      if (old) Object.assign(old, { box: c.box, style: c.style, tokens: c.tokens, raw: c.raw });
+    }
+    drawProps();
+    outlinePicked();
+  }
+  async function preview(prop, value) {
+    const p = picked, l = p?.levels[p.at], sel = selOf(l);
+    if (!sel) { o.toast(`This ${l?.component || 'part'} has no node id, so a change can't be pointed at it.`); return; }
+    p.f.previews ??= {};
+    (p.f.previews[sel] ??= {})[prop] = value;
+    const [k, v] = cssOf(prop, value);
+    drawProps();
+    const m = await o.ask(p.f, { type: 'restyle', key: sel, sel, props: { [k]: v } }, 2000).catch(() => null);
+    if (p === picked) { p.count = m?.count || 0; remeasure(); }
+  }
   propsEl.addEventListener('click', (e) => {
     const lv = e.target.closest('[data-level]');
     if (lv && picked) { picked.at = +lv.dataset.level; drawProps(); outlinePicked(); return; }
+    const dot = e.target.closest('[data-prop]');
+    if (dot && picked) { preview(dot.dataset.prop, Number(dot.dataset.value)); return; }
+    if (e.target.closest('[data-reset]') && picked) {
+      picked.f.previews = {};
+      o.ask(picked.f, { type: 'restyle', clear: true }, 2000).catch(() => {}).then(() => remeasure());
+      drawProps();
+      return;
+    }
     const lib = e.target.closest('[data-library]');
     if (lib) { open(null, 'library'); library.open(lib.dataset.library); }
   });

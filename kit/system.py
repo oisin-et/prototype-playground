@@ -11,7 +11,7 @@ A project names its design system in playground.json:
         {"key": "type",   "collection": "…", "match": "^(\\w+)/Size$"},
         {"key": "weight", "collection": "…", "match": "^XS/Font Weight (\\w+)$", "map": {"basic": 400}},
         {"key": "radius", "collection": "…", "match": "…", "names": {"<name>": "<label>"}},
-        {"key": "space",  "collection": "…", "match": "…"},
+        {"key": "space",  "collection": "…", "match": "…", "onGrid": true},
         {"key": "color",  "collection": "…", "type": "COLOR"}
       ]
     }
@@ -91,6 +91,8 @@ def load():
             out.append({"name": label, "token": f"{s['collection']}/{name}", "value": value})
         if out and all(isinstance(x["value"], (int, float)) for x in out):
             out.sort(key=lambda x: x["value"])
+        if s.get("onGrid") and cfg.get("grid"):  # only the steps on the project's grid
+            out = [x for x in out if isinstance(x["value"], (int, float)) and x["value"] % cfg["grid"] == 0]
         scales[s["key"]] = out
     result = {"name": cfg.get("name") or "The design system", "grid": cfg.get("grid"),
               "modes": modes, "scales": scales}

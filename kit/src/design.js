@@ -7,8 +7,12 @@
 // corner radius, spacing (padding and gaps), colour. A value on the scale is
 // named by its step; one that isn't is marked: amber when it's still on the
 // project's grid ("grid": 4), red when it's off both. Each row shows the
-// scale as a dial, one dot a step, the step in use filled. The dials only show
-// for now: changing a value comes next.
+// scale as a dial, one dot a step, the step in use filled.
+//
+// A dot is a button: a click previews that step on the part, live in its
+// frame (the bridge's restyle, kept through the app's redraws), and the row
+// marks it as changed. Previews aren't saved: Reset takes them all back.
+// Colours only show for now.
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -35,21 +39,36 @@ function match(scale, v, grid) {
   return { state: grid && Math.abs(v / grid - Math.round(v / grid)) < 0.01 ? 'grid' : 'off', near };
 }
 
+// What each dial sets, as a style property and its value.
+export const PILL = 9999;
+const CSS = {
+  size: 'fontSize', weight: 'fontWeight', radius: 'borderRadius', gap: 'gap', rowGap: 'rowGap', columnGap: 'columnGap',
+  pt: 'paddingTop', pr: 'paddingRight', pb: 'paddingBottom', pl: 'paddingLeft',
+};
+export const cssOf = (prop, v) => [CSS[prop], prop === 'weight' ? String(v) : `${v}px`];
+
 // One row: its name, the dial (the scale's steps up to the value's
-// neighbourhood), and the value with its step.
-function row(label, v, scale, { grid, unit = 'px', special } = {}) {
+// neighbourhood; each a button when the row has a prop), and the value with
+// its step. changed: the value is a preview.
+function row(label, v, scale, { grid, unit = 'px', prop, zero, changed } = {}) {
   if (v == null) return '';
-  if (v === 0 && !special) special = 'None';
-  if (special) return `<div class="ds-row"><span class="ds-label">${esc(label)}</span><span class="ds-dial"></span><span class="ds-val ok">${esc(special)}</span></div>`;
   const m = match(scale, v, grid);
-  if (!m) return `<div class="ds-row"><span class="ds-label">${esc(label)}</span><span class="ds-dial"></span><span class="ds-val">${esc(v)}${unit}</span></div>`;
-  const top = Math.max(v, ...(scale.length <= 8 ? scale.map((x) => x.value) : [64]));
+  const lab = `<span class="ds-label">${esc(label)}${changed ? '<i class="ds-changed" title="Changed: a preview"></i>' : ''}</span>`;
+  if (!m) return `<div class="ds-row">${lab}<span class="ds-dial"></span><span class="ds-val">${v === 0 && zero ? esc(zero) : `${esc(v)}${unit}`}</span></div>`;
+  const nameOf = (x) => (x.value === 0 && zero ? zero : x.name);
+  const shown = (x) => (x.value === PILL ? '' : ` ${x.value}${unit}`);
+  const top = Math.max(v === PILL ? 0 : v, ...(scale.length <= 8 ? scale.map((x) => x.value) : [64]));
   const steps = scale.filter((x) => x.value <= top || x === m.step).slice(0, 14);
   const on = m.step || m.near;
-  const dial = steps.map((x) => `<i class="${x === on ? (m.state === 'ok' ? 'on' : `near ${m.state}`) : ''}" title="${esc(x.name)} · ${esc(x.value)}${unit}"></i>`).join('');
-  const val = m.state === 'ok' ? `<b>${esc(m.step.name)}</b> ${esc(v)}${unit}`
-    : `${esc(v)}${unit}<small>${m.state === 'grid' ? `on the ${grid} px grid, not a step` : 'off the scale'} · nearest ${esc(m.near.name)} ${esc(m.near.value)}</small>`;
-  return `<div class="ds-row" data-state="${m.state}"><span class="ds-label">${esc(label)}</span><span class="ds-dial">${dial}</span><span class="ds-val ${m.state}">${val}</span></div>`;
+  const dot = (x) => {
+    const cls = x === on ? (m.state === 'ok' ? 'on' : `near ${m.state}`) : '';
+    const title = `${esc(nameOf(x))}${esc(shown(x))}`;
+    return prop ? `<button type="button" class="ds-dot ${cls}" data-prop="${prop}" data-value="${esc(x.value)}" title="${title}" aria-label="${esc(label)}: ${title}"></button>`
+      : `<i class="${cls}" title="${title}"></i>`;
+  };
+  const val = m.state === 'ok' ? `<b>${esc(nameOf(m.step))}</b>${esc(m.step.value === 0 && zero ? '' : shown(m.step))}`
+    : `${esc(v)}${unit}<small>${m.state === 'grid' ? `on the ${grid} px grid, not a step` : 'off the scale'} · nearest ${esc(nameOf(m.near))}${esc(shown(m.near))}</small>`;
+  return `<div class="ds-row${changed ? ' changed' : ''}" data-state="${m.state}">${lab}<span class="ds-dial">${steps.map(dot).join('')}</span><span class="ds-val ${m.state}">${val}</span></div>`;
 }
 
 // The system's colour with the same red, green and blue at another opacity:
@@ -78,9 +97,10 @@ function colourRow(label, css, tokens) {
 
 /**
  * The Design section for a picked part: levels (innermost first, from
- * Inspect: { component, pg, box, style, tokens, item }), at (the one shown).
+ * Inspect: { component, pg, box, style, tokens, item }), at (the one shown),
+ * changes ({prop: value}, its previews) and count (how many parts they're on).
  */
-export function designHTML(levels, at) {
+export function designHTML(levels, at, changes = {}, count = 0) {
   const l = levels?.[at];
   if (!l) return '';
   const s = system?.scales || {}, grid = system?.grid, st = l.style || {};
@@ -91,26 +111,30 @@ export function designHTML(levels, at) {
     return `<section class="ds"><h4>Design</h4><div class="ds-path">${path}</div>
       <p class="cv-pnone">${system?.error ? esc(system.error) : 'No design system is named for this project: add "system" to playground.json.'}</p></section>`;
   }
-  const radius = st.radius == null ? null : st.radius;
+  const now = (prop, measured) => (prop in changes ? changes[prop] : measured);
+  const opt = (prop, more = {}) => ({ grid, prop, changed: prop in changes, ...more });
   const minSide = Math.min(st.width || bw || 0, st.height || bh || 0);
-  const radiusSpecial = radius === 0 ? 'Square' : radius != null && minSide && radius >= minSide / 2 - 0.5 ? 'Pill' : null;
+  const measuredRadius = st.radius == null ? null : minSide && st.radius >= minSide / 2 - 0.5 && st.radius > 0 ? PILL : st.radius;
+  const radii = [{ name: 'Square', value: 0 }, ...(s.radius || []), { name: 'Pill', value: PILL }];
   const pad = st.padding || [];
+  const sp = (label, prop, v) => row(label, now(prop, v), s.space, opt(prop, { zero: 'None' }));
+  const gap = st.gap;
   const spacing = [
-    row('Padding top', pad[0], s.space, { grid }), row('Right', pad[1], s.space, { grid }),
-    row('Bottom', pad[2], s.space, { grid }), row('Left', pad[3], s.space, { grid }),
-    ...(st.gap ? [st.gap[0] === st.gap[1] || !st.gap[1] ? row('Gap', st.gap[0], s.space, { grid })
-      : row('Gap, rows', st.gap[0], s.space, { grid }) + row('Gap, columns', st.gap[1], s.space, { grid })] : []),
+    sp('Padding top', 'pt', pad[0]), sp('Right', 'pr', pad[1]), sp('Bottom', 'pb', pad[2]), sp('Left', 'pl', pad[3]),
+    ...(gap ? [gap[0] === gap[1] || !gap[1] ? sp('Gap', 'gap', gap[0]) : sp('Gap, rows', 'rowGap', gap[0]) + sp('Gap, columns', 'columnGap', gap[1])] : []),
   ].join('');
   const sections = [
-    st.text ? `<h5>Typography</h5>${row('Size', st.text.size, s.type)}${row('Weight', st.text.weight, s.weight, { unit: '' })}` : '',
+    st.text ? `<h5>Typography</h5>${row('Size', now('size', st.text.size), s.type, opt('size'))}${row('Weight', now('weight', st.text.weight), s.weight, opt('weight', { unit: '' }))}` : '',
     `<h5>Spacing</h5>${spacing}`,
-    `<h5>Shape</h5>${row('Radius', radius, s.radius, { special: radiusSpecial })}${row('Width', st.width ?? bw, null, { grid })}${row('Height', st.height ?? bh, null, { grid })}`,
+    `<h5>Shape</h5>${row('Radius', now('radius', measuredRadius), radii, opt('radius'))}${row('Width', st.width ?? bw, null, { grid })}${row('Height', st.height ?? bh, null, { grid })}`,
     `<h5>Colour</h5>${st.text ? colourRow('Text', st.color, l.tokens) : ''}${colourRow('Fill', st.fill, l.tokens)}${colourRow('Stroke', st.stroke, l.tokens)}`,
   ].join('');
   const off = (sections.match(/data-state="(off|grid)"/g) || []).length;
+  const n = Object.keys(changes).length;
   return `<section class="ds"><h4>Design <small>${esc(system.name)}${system.modes?.Grid ? ` · ${esc(system.modes.Grid)}` : ''}</small></h4>
     <div class="ds-path">${path}</div>
     <p class="ds-sum ${off ? 'off' : 'ok'}">${off ? `${off} value${off === 1 ? '' : 's'} not on ${esc(system.name)}'s steps` : `Every value is one of ${esc(system.name)}'s steps`}</p>
+    ${n ? `<div class="ds-preview"><span>${n} change${n === 1 ? '' : 's'} in preview${count > 1 ? `, on ${count} parts` : ''}: not saved</span><button type="button" data-reset>Reset</button></div>` : ''}
     ${sections}
     ${l.item ? `<button type="button" class="ds-lib" data-library="${esc(l.item.id)}">Open ${esc(l.item.name)} in the Library</button>` : ''}
   </section>`;

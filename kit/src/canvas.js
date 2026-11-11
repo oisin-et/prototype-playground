@@ -412,7 +412,7 @@ addEventListener('message', (e) => {
     if (f.kind === 'main') drawFoot(f);
     notes?.drawPins(f);
     panels?.changed(f);
-  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed'].includes(m.type)) {
+  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed', 'restyled'].includes(m.type)) {
     const p = pending.get(m.id);
     if (p) { pending.delete(m.id); m.error ? p.fail(new Error(m.error)) : p.ok(m); }
   } else if (m.type === 'errors') {

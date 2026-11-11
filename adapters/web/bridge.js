@@ -17,6 +17,9 @@
 //               {type: 'inspect', id, x, y, library?, design?}   the element at a point, for a
 //               note; with library, the components around it too, for Inspect;
 //               with design, each with its look (style), for the canvas's Properties
+//               {type: 'restyle', id, key, sel, props} | {type: 'restyle', id, clear}
+//               a preview from the canvas's Design dials: the style props set
+//               on what sel matches, kept and set again after each redraw
 //               {type: 'locate', id, nodes, components}   where these are, for the Library
 //               {type: 'picture', id, items: [{key, nodes, components}], size}
 //               a picture of the first of each in view, for the Library
@@ -30,6 +33,7 @@
 //               {type: 'captured', id, png, note}  a capture's PNG (base64)
 //               {type: 'inspected', id, box, widget, location, text, chain?}
 //               {type: 'xrayed', id, elements: [{box, parent, s, pad, name}]}  (X-ray)
+//               {type: 'restyled', id, count}   how many elements a preview is on
 //               {type: 'located', id, boxes: [[x, y, w, h]]}
 //               {type: 'pictured', id, shots: {key: png}}   (base64)
 //               {type: 'drawn', id, shots: {key: png}, failed: {key: text}}
@@ -181,6 +185,8 @@ addEventListener('message', (e) => {
     capture(m);
   } else if (m.type === 'inspect') {
     inspect(m);
+  } else if (m.type === 'restyle') {
+    restyle(m);
   } else if (m.type === 'locate') {
     locate(m);
   } else if (m.type === 'picture') {
@@ -263,6 +269,48 @@ function styleOf(el) {
     fill: svg ? s.fill : s.backgroundColor,
     stroke: svg && s.stroke !== 'none' ? s.stroke : null,
   };
+}
+
+// Previews from the canvas's Design dials: each key's style props, on what
+// its selector matches. The app may draw a part again at any time, so they're
+// set again after every change to the page, until cleared.
+const restyles = new Map();
+const before = new WeakMap(); // element → its own inline values, put back when the previews go
+let restyleQueued = false;
+function applyRestyles() {
+  restyleQueued = false;
+  for (const { sel, props } of restyles.values()) {
+    let els = [];
+    try { els = document.querySelectorAll(sel); } catch {}
+    for (const el of els) {
+      for (const [k, v] of Object.entries(props)) {
+        if (el.style[k] === v) continue;
+        const own = before.get(el) || before.set(el, {}).get(el);
+        if (!(k in own)) own[k] = el.style[k];
+        el.style[k] = v;
+      }
+    }
+  }
+}
+new MutationObserver(() => { if (restyles.size && !restyleQueued) { restyleQueued = true; requestAnimationFrame(applyRestyles); } })
+  .observe(document.documentElement, { childList: true, subtree: true });
+function restyle(m) {
+  if (m.clear) {
+    for (const { sel, props } of restyles.values()) {
+      let els = [];
+      try { els = document.querySelectorAll(sel); } catch {}
+      for (const el of els) for (const k of Object.keys(props)) el.style[k] = before.get(el)?.[k] ?? '';
+    }
+    restyles.clear();
+    post({ type: 'restyled', id: m.id, count: 0 });
+    return;
+  }
+  const was = restyles.get(m.key);
+  restyles.set(m.key, { sel: m.sel, props: { ...(was?.props || {}), ...m.props } });
+  applyRestyles();
+  let count = 0;
+  try { count = document.querySelectorAll(m.sel).length; } catch {}
+  post({ type: 'restyled', id: m.id, count });
 }
 
 // Where nodes or components are on show, for the Library: elements whose
