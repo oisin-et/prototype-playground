@@ -220,6 +220,8 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-commit .cv-count { background: #0b0b0d; color: var(--accent); }
 .cv-share { margin-left: 6px; }
 .cv-share:disabled { opacity: 0.45; cursor: default; filter: none; }
+/* Show every frame: off while a frame fills the window (the canvas is locked). */
+#btn-fit:disabled { opacity: 0.35; cursor: default; }
 
 /* Both sides are joined to the header: Properties and Files at the left,
    the chat at the right; the canvas is the card between them. (The ids and

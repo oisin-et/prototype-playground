@@ -27,7 +27,10 @@
 //   it opened on.
 //
 // Clicking a frame wakes it and selects it; the selected frame is the one
-// Claude works on. ⤢ or F opens a frame to fill the window.
+// Claude works on. ⤢ or F opens a frame to fill the window. While a frame
+// fills it, the canvas is locked: it doesn't pan, zoom or fit, no other frame
+// can be selected, and only the same ⤢ (or F) closes the fill. Inside the
+// frame, the app works as ever. The fill stays across a reload.
 
 import { mountComposer } from './composer.js';
 import { mountNotes } from './notes.js';
@@ -51,6 +54,8 @@ const CFG = await load('../playground.json', import.meta.url);
 // Mounted at the end (composer.js, notes.js, panels.js, commit.js); the frames use them once they're there.
 let composer = null, notes = null, panels = null, commit = null, xray = null;
 let selected = null; // the frame Claude works on (selectFrame)
+let focused = null, beforeFocus = null; // the frame that fills the window, and the view to go back to (focusFrame)
+let space = false, pan = null; // Space held; a pan under way (setSpace)
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
 const DATA = new URL(`/${CFG.data}/`, location.href);
@@ -253,7 +258,7 @@ const watchApp = async () => {
       await syncFrozen();
       setStatus('ready', 'App ready');
       wake(main); // main is always live
-      const sel = frames.find((f) => f.id === store.get(`${KEY}.selected`));
+      const sel = focused || frames.find((f) => f.id === store.get(`${KEY}.selected`));
       if (sel) { selectFrame(sel); }
       fillPictures();
     }
@@ -391,7 +396,7 @@ addEventListener('message', (e) => {
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
     else if (m.key === 'p') panels.toggle();
     else if (m.key === 'Escape' && m.down !== false) {
-      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape()) escape();
+      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else xray?.escape();
     }
   } else if (m.type === 'leaving') {
     // The frame's page is going away (a reload): until the next one has a
@@ -461,6 +466,7 @@ function context() {
   };
 }
 function selectFrame(f) {
+  if (focused && f !== focused) return; // locked to the frame that fills the window
   if (selected !== f) {
     selected?.el.classList.remove('selected');
     selected = f;
@@ -504,7 +510,7 @@ tools.addEventListener('click', (e) => {
   else if (t === 'pick') commit?.pick(f.pg.id, f.v);
   else if (t === 'files') panels.open(f, 'files');
   else if (t === 'reload') { if (f.iframe) rerun(f); else wake(f); }
-  else if (t === 'fill') { if (focused === f) escape(); else focusFrame(f); }
+  else if (t === 'fill') { if (focused === f) unfocus(); else focusFrame(f); }
   drawTools();
 });
 function drawTools() {
@@ -521,7 +527,7 @@ function drawTools() {
   set('inspect', panels?.inspector.on);
   set('xray', xray?.armed);
   set('shot', snapping);
-  set('fill', focused === f);
+  set('fill', focused === f, focused === f ? 'Back to the canvas (F)' : 'Fill the window (F)');
   if (f.kind === 'exp') {
     const fz = frozen[`${f.pg.id}/${f.v}`];
     tools.querySelector('[data-tool=frozen]').hidden = !fz;
@@ -567,6 +573,7 @@ function draw(glide = false) {
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
 }
 function zoomAt(k, px, py, glide = false) {
+  if (focused) return; // locked
   const s = stage.getBoundingClientRect();
   const z = Math.min(ZMAX, Math.max(ZMIN, view.z * k));
   const cx = px - s.left, cy = py - s.top;
@@ -585,37 +592,56 @@ function fitBox(x0, y0, x1, y1, pad = 48) {
   draw(true);
 }
 const fitAll = () => {
+  if (focused) return; // locked
   const xs = frames.map((f) => f.x), ys = frames.map((f) => f.y);
   fitBox(Math.min(...xs) - GAP, Math.min(...ys) - H * 0.25, Math.max(...xs) + W + GAP, Math.max(...ys) + H);
 };
-document.getElementById('btn-fit').addEventListener('click', () => { escape(true); fitAll(); });
+const btnFit = document.getElementById('btn-fit');
+btnFit.addEventListener('click', () => fitAll());
 // The view is kept, unless the frames have changed since: then all of them.
 const LAYOUT_KEY = `${KEY}.layout`, layout = frames.map((f) => f.id).join(' ');
 if (!store.get(VIEW_KEY, null) || store.get(LAYOUT_KEY, null) !== layout) requestAnimationFrame(fitAll); else draw();
 store.set(LAYOUT_KEY, layout);
 
-// ⤢: the frame fills the window; Esc goes back to where the view was.
-let focused = null, beforeFocus = null;
-function focusFrame(f) {
-  if (!focused) beforeFocus = { ...view };
+// ⤢: the frame fills the window, and the canvas is locked until the same ⤢
+// (or F) goes back to where the view was. Kept, so a reload keeps it.
+const FILL_KEY = `${KEY}.fill`;
+const frameName = (f) => (f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`);
+function lockTo(f, glide = true) {
   focused?.el.classList.remove('focused');
   focused = f;
   f.el.classList.add('focused');
   stage.classList.add('focusing');
+  btnFit.disabled = true;
+  setSpace(false);
+  store.set(FILL_KEY, { id: f.id, before: beforeFocus });
+  const s = stage.getBoundingClientRect();
+  const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - 32) / W, (s.height - 32 - 80) / H)));
+  Object.assign(view, { z, x: (s.width - W * z) / 2 - f.x * z, y: (s.height - H * z) / 2 - f.y * z });
+  draw(glide);
+}
+function focusFrame(f) {
+  if (focused && f !== focused) return; // one fill at a time: close it first
+  if (!focused) beforeFocus = { ...view };
+  lockTo(f);
   drawTools();
   wake(f);
-  fitBox(f.x, f.y, f.x + W, f.y + H, 16);
 }
-function escape(quiet = false) {
-  if (focused) {
-    focused.el.classList.remove('focused');
-    stage.classList.remove('focusing');
-    focused = null;
-    drawTools();
-    if (beforeFocus && !quiet) { Object.assign(view, beforeFocus); draw(true); }
-    return true;
-  }
-  return false;
+function unfocus() {
+  if (!focused) return false;
+  focused.el.classList.remove('focused');
+  stage.classList.remove('focusing');
+  focused = null;
+  btnFit.disabled = false;
+  store.set(FILL_KEY, null);
+  drawTools();
+  if (beforeFocus) { Object.assign(view, beforeFocus); draw(true); }
+  return true;
+}
+{
+  const fill = store.get(FILL_KEY, null), f = fill && frames.find((x) => x.id === fill.id);
+  if (f) { beforeFocus = fill.before; requestAnimationFrame(() => lockTo(f, false)); } // selected once the app is up
+  else store.set(FILL_KEY, null);
 }
 
 // What opens over the canvas (the readers of Files and Library) scrolls
@@ -624,21 +650,21 @@ const overCanvas = (e) => e.target instanceof Element && e.target.closest('#work
 stage.addEventListener('wheel', (e) => {
   if (overCanvas(e)) return;
   e.preventDefault();
+  if (focused) return; // locked
   if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.004)), e.clientX, e.clientY);
   else { view.x -= e.deltaX; view.y -= e.deltaY; draw(); }
 }, { passive: false });
 
 // Drag the background (or anything, with Space held) to pan. While a pan is
 // on, the shield keeps the live frames from taking the pointer.
-let space = false, pan = null;
 function setSpace(down) {
-  space = down;
-  document.body.classList.toggle('pg-space', down);
-  stage.classList.toggle('grab', down);
-  shield.hidden = !down && !pan;
+  space = down && !focused; // no pan while a frame fills the window
+  document.body.classList.toggle('pg-space', space);
+  stage.classList.toggle('grab', space);
+  shield.hidden = !space && !pan;
 }
 stage.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || overCanvas(e)) return;
+  if (e.button !== 0 || overCanvas(e) || focused) return;
   const onCover = e.target.closest('.cv-cover');
   const onBg = e.target === stage || e.target === world || e.target === shield;
   if (!space && !onCover && !onBg) return;
@@ -674,10 +700,10 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !typing(e.target)) { e.preventDefault(); if (!space) setSpace(true); return; }
   if ((e.metaKey || e.ctrlKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); zoomKey(e.key); return; }
   if (typing(e.target)) return;
-  if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) { e.preventDefault(); escape(true); fitAll(); }
-  else if (e.key === 'Escape') { if (!escape()) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); } }
+  if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) { e.preventDefault(); fitAll(); }
+  else if (e.key === 'Escape') { if (!focused) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); } }
   else if (selected && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selected.iters.length > 1) { e.preventDefault(); step(selected, e.key === 'ArrowLeft' ? -1 : 1); }
-  else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? escape() : focusFrame(selected); }
+  else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? unfocus() : focusFrame(selected); }
 });
 addEventListener('keyup', (e) => { if (e.code === 'Space') setSpace(false); });
 // A click inside a live frame moves the focus into its iframe: that frame
@@ -689,7 +715,7 @@ addEventListener('blur', () => {
     if (f && f !== selected) selectFrame(f);
   });
 });
-addEventListener('resize', () => { if (focused) fitBox(focused.x, focused.y, focused.x + W, focused.y + H, 16); });
+addEventListener('resize', () => { if (focused) lockTo(focused, false); });
 
 // ---- Claude: the composer, and what a run made --------------------------------
 composer = mountComposer(document.getElementById('composer'), {
@@ -723,6 +749,7 @@ notes = mountNotes({
   goto(x) {
     const f = frames.find((y) => y.id === x.frame);
     if (!f) return;
+    if (focused && f !== focused) { toast(`That note is on ${frameName(f)}. ${frameName(focused)} fills the window: ⤢ closes it.`); return; }
     if (x.version && f.v !== x.version) setIteration(f, x.version);
     selectFrame(f);
     focusFrame(f);
@@ -737,10 +764,18 @@ function showVersion(key) {
   const f = frames.find((x) => x.kind === 'exp' && x.pg.id === pgId && x.major === major);
   if (!f) return false;
   setIteration(f, v);
+  if (focused && f !== focused) {
+    toast(`${pgId} ${v.slice(1)} is ready, in ${frameName(f)}. ${frameName(focused)} fills the window: ⤢ closes it.`);
+    return 'locked';
+  }
   selectFrame(f);
   focusFrame(f);
   return true;
 }
+
+// What a run said before the page laid out again.
+const NOTICE_KEY = `${KEY}.notice`;
+{ const n = store.get(NOTICE_KEY, null); if (n) { store.set(NOTICE_KEY, null); setTimeout(() => toast(n), 800); } }
 
 // After a run: the versions it made or changed. A new iteration joins its
 // frame; a new exploration needs a place on the canvas, so the page lays out
@@ -773,7 +808,8 @@ async function afterRun(result) {
     const major = num(first.version)[0];
     chosen[`${first.playground}/v${major}`] = first.version;
     store.set(`${KEY}.iteration`, chosen);
-    store.set(`${KEY}.selected`, `${first.playground}/v${major}`);
+    if (!focused) store.set(`${KEY}.selected`, `${first.playground}/v${major}`);
+    store.set(NOTICE_KEY, focused ? `${first.playground} ${first.version.slice(1)} is on the canvas. ${frameName(focused)} fills the window: ⤢ closes it.` : null);
     toast(`${first.playground} ${first.version.slice(1)} is ready: laying the canvas out again…`);
     setTimeout(() => location.reload(), 1200);
     return;
@@ -791,8 +827,7 @@ async function afterRun(result) {
   }
   // The live app compiles its versions in as it loads: main loads again too.
   if (main.iframe) rerun(main);
-  showVersion(key);
-  toast(`${first.playground} ${first.version.slice(1)} is ready.`);
+  if (showVersion(key) !== 'locked') toast(`${first.playground} ${first.version.slice(1)} is ready.`);
 }
 
 // ---- Pictures for frames that have none ------------------------------------------
@@ -804,7 +839,7 @@ for (const type of ['pointerdown', 'wheel', 'keydown']) addEventListener(type, (
 const tried = new Set();
 function fillPictures() {
   setInterval(async () => {
-    if (filling || document.hidden || !app || Date.now() - lastInput < 4000) return;
+    if (filling || focused || document.hidden || !app || Date.now() - lastInput < 4000) return;
     const s = stage.getBoundingClientRect();
     const cx = (s.width / 2 - view.x) / view.z, cy = (s.height / 2 - view.y) / view.z;
     const todo = frames.filter((f) => f.kind === 'exp' && !f.iframe && !tried.has(f.id + f.v)
