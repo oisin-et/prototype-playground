@@ -530,7 +530,6 @@ const TOOLS = [
   '|',
   ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
   ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
-  '|',
   ['note', 'Notes: click a part to pin a note (N)', ICON.note],
   ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
 ];
