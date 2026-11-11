@@ -440,6 +440,7 @@ addEventListener('message', (e) => {
     else if (m.key === 'n') notes.key('n');
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
     else if (m.key === 'p') togglePanels();
+    else if (m.key === 'v') toPointer();
     else if (m.key === 'Escape' && m.down !== false) {
       if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) unfocus();
     }
@@ -525,6 +526,8 @@ function selectFrame(f) {
 // the tools wait, dimmed. It springs to its new width as its name changes.
 const tools = document.getElementById('tools');
 const TOOLS = [
+  ['pointer', 'Pointer: use the app (V)', ICON.pointer],
+  '|',
   ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
   ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
   '|',
@@ -539,14 +542,24 @@ tools.addEventListener('pointerdown', (e) => e.stopPropagation());
 tools.addEventListener('click', (e) => {
   const b = e.target.closest('[data-tool]');
   const f = selected;
-  if (!b || !f) return;
+  if (!b) return;
   const t = b.dataset.tool;
+  if (t === 'pointer') { toPointer(); return; }
+  if (!f) return;
   if (t === 'note') notes.set(!notes.on);
   else if (t === 'inspect') panels.inspector.set(!panels.inspector.on);
   else if (t === 'xray') xray.arm(!xray.armed);
   else if (t === 'shot') { aiming = !aiming; setSnap(aiming); }
   drawTools();
 });
+// The pointer: every tool off, back to using the app (the toolbar's first, or V).
+function toPointer() {
+  if (notes?.on) notes.set(false);
+  if (panels?.inspector.on) panels.inspector.set(false);
+  if (xray?.armed) xray.arm(false);
+  if (aiming) { aiming = false; setSnap(false); }
+  drawTools();
+}
 function drawTools() {
   const f = selected;
   const set = (t, on, title) => {
@@ -556,6 +569,8 @@ function drawTools() {
     if (title) { b.title = title; b.setAttribute('aria-label', title); }
   };
   set('note', notes?.on);
+  const pointer = tools.querySelector('[data-tool=pointer]');
+  pointer.setAttribute('aria-pressed', String(!notes?.on && !panels?.inspector.on && !xray?.armed && !snapping));
   set('inspect', panels?.inspector.on);
   set('xray', xray?.armed);
   set('shot', snapping);
@@ -783,6 +798,7 @@ addEventListener('keydown', (e) => {
   if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) { e.preventDefault(); fitAll(); }
   else if (e.key === 'Escape') { if (readerOpen()) return; if (!unfocus()) selectFrame(null); }
   else if (selected && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selected.iters.length > 1) { e.preventDefault(); step(selected, e.key === 'ArrowLeft' ? -1 : 1); }
+  else if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey) toPointer();
   else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? unfocus() : focusFrame(selected); }
 });
 addEventListener('keyup', (e) => { if (e.code === 'Space') setSpace(false); });

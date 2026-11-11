@@ -561,6 +561,7 @@ if (embedded) {
     else if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'p', down: true });
     else if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'n', down: true });
     else if ((e.key === 'i' || e.key === 'I') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'i', down: true });
+    else if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'v', down: true }); // the canvas's pointer
     else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v' && !editable(e.target)) catchPaste();
   }, true);
   addEventListener('keyup', (e) => {
