@@ -30,7 +30,9 @@
 // Claude works on. ⤢ or F opens a frame to fill the window. While a frame
 // fills it, the canvas is locked: it doesn't pan, zoom or fit, no other frame
 // can be selected, and only the same ⤢ (or F) closes the fill. Inside the
-// frame, the app works as ever. The fill stays across a reload.
+// frame, the app works as ever, and the frame has a zoom of its own: a pinch
+// or ⌘-scroll zooms into the app, Space-drag (or a drag or scroll beside it)
+// moves around in it, ⇧1 fits it back. The fill stays across a reload.
 
 import { mountComposer } from './composer.js';
 import { mountNotes } from './notes.js';
@@ -56,6 +58,7 @@ let composer = null, notes = null, panels = null, commit = null, xray = null;
 let selected = null; // the frame Claude works on (selectFrame)
 let focused = null, beforeFocus = null; // the frame that fills the window, and the view to go back to (focusFrame)
 let space = false, pan = null; // Space held; a pan under way (setSpace)
+let lens = { z: 1, x: 0, y: 0 }; // the zoom inside the frame that fills the window, in its pixels (lensZoom)
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
 const DATA = new URL(`/${CFG.data}/`, location.href);
@@ -164,14 +167,15 @@ for (const f of frames) {
       ${f.kind === 'exp' ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select></label>` : `<span class="cv-iter-now main"></span>`}
     </header>
-    <div class="cv-body">
+    <div class="cv-body"><div class="cv-lens">
       <img class="cv-poster" alt="" draggable="false">
       <div class="cv-empty"><b>${esc(f.kind === 'main' ? 'Main' : f.title)}</b><span>Click to open it live</span></div>
       <div class="cv-cover" title="Click to use it live"></div>
-    </div>
+    </div></div>
     <footer class="cv-foot"></footer>`;
   f.el = el;
-  f.body = el.querySelector('.cv-body');
+  f.clip = el.querySelector('.cv-body'); // the frame's edge
+  f.body = el.querySelector('.cv-lens'); // what's in it: the app and what's laid over it (zoomed while the frame fills the window)
   f.poster = el.querySelector('.cv-poster');
   f.foot = el.querySelector('.cv-foot');
   f.select = el.querySelector('select');
@@ -541,7 +545,7 @@ function drawTools() {
 function placeTools() {
   const f = selected;
   if (!f || tools.hidden) return;
-  const s = stage.getBoundingClientRect(), b = f.body.getBoundingClientRect();
+  const s = stage.getBoundingClientRect(), b = f.clip.getBoundingClientRect();
   const w = tools.offsetWidth, h = tools.offsetHeight;
   // Fixed to the frame's top right, like its name: it pans with the frame and
   // never slides along the stage's edge onto the screen.
@@ -565,7 +569,7 @@ function draw(glide = false) {
   // Small frames keep only their names; tiny ones not even those.
   world.classList.toggle('small', W * view.z < 420);
   world.classList.toggle('tiny', W * view.z < 90);
-  zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
+  zoomLabel.textContent = `${Math.round(view.z * (focused ? lens.z : 1) * 100)}%`;
   notes?.moved();
   if (glide) { const t0 = performance.now(); const follow = () => { placeTools(); if (performance.now() - t0 < 520) requestAnimationFrame(follow); }; requestAnimationFrame(follow); }
   else placeTools();
@@ -573,7 +577,7 @@ function draw(glide = false) {
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
 }
 function zoomAt(k, px, py, glide = false) {
-  if (focused) return; // locked
+  if (focused) { lensZoom(k, px, py); return; } // the canvas is locked: the frame zooms
   const s = stage.getBoundingClientRect();
   const z = Math.min(ZMAX, Math.max(ZMIN, view.z * k));
   const cx = px - s.left, cy = py - s.top;
@@ -592,7 +596,7 @@ function fitBox(x0, y0, x1, y1, pad = 48) {
   draw(true);
 }
 const fitAll = () => {
-  if (focused) return; // locked
+  if (focused) { resetLens(); return; } // the canvas is locked: the frame fits
   const xs = frames.map((f) => f.x), ys = frames.map((f) => f.y);
   fitBox(Math.min(...xs) - GAP, Math.min(...ys) - H * 0.25, Math.max(...xs) + W + GAP, Math.max(...ys) + H);
 };
@@ -612,14 +616,55 @@ function lockTo(f, glide = true) {
   focused = f;
   f.el.classList.add('focused');
   stage.classList.add('focusing');
-  btnFit.disabled = true;
+  fitTitle('Fit the frame (⇧1)');
   setSpace(false);
-  store.set(FILL_KEY, { id: f.id, before: beforeFocus });
   const s = stage.getBoundingClientRect();
   const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - 32) / W, (s.height - 32 - 80) / H)));
   Object.assign(view, { z, x: (s.width - W * z) / 2 - f.x * z, y: (s.height - H * z) / 2 - f.y * z });
   draw(glide);
+  clampLens();
+  drawLens();
 }
+const fitTitle = (t) => { btnFit.title = t; btnFit.setAttribute('aria-label', t.replace(/ \(.*\)$/, '')); };
+
+// Inside the frame that fills the window: its own zoom, in the frame's pixels,
+// on the layer that holds the app and what's laid over it (notes, X-ray,
+// Inspect), so they stay in step. The frame's edge and the canvas don't move.
+const LENS_MAX = 4; // up to 400% of the app's own pixels
+function drawLens() {
+  const f = focused;
+  if (!f) return;
+  const { x, y, z } = lens;
+  f.body.style.transform = z === 1 ? '' : `translate(${x}px, ${y}px) scale(${z})`;
+  f.body.style.setProperty('--inv', String(1 / (view.z * z))); // what keeps its size on screen
+  zoomLabel.textContent = `${Math.round(view.z * z * 100)}%`;
+  notes?.moved();
+  store.set(FILL_KEY, { id: f.id, before: beforeFocus, lens });
+}
+function clampLens() {
+  lens.z = Math.min(Math.max(1, LENS_MAX / view.z), Math.max(1, lens.z));
+  lens.x = Math.min(0, Math.max(W - W * lens.z, lens.x));
+  lens.y = Math.min(0, Math.max(H - H * lens.z, lens.y));
+}
+// Screen pixels per frame pixel at the frame's own size.
+const clipScale = () => focused.clip.getBoundingClientRect().width / W;
+function lensZoom(k, px, py) {
+  const b = focused.clip.getBoundingClientRect(), s0 = b.width / W;
+  const cx = (px - b.left) / s0, cy = (py - b.top) / s0, z0 = lens.z;
+  lens.z = z0 * k;
+  clampLens();
+  lens.x = cx - (cx - lens.x) * (lens.z / z0);
+  lens.y = cy - (cy - lens.y) * (lens.z / z0);
+  clampLens();
+  drawLens();
+}
+function lensPan(dx, dy) { // screen pixels
+  const s0 = clipScale();
+  lens.x += dx / s0; lens.y += dy / s0;
+  clampLens();
+  drawLens();
+}
+function resetLens() { lens = { z: 1, x: 0, y: 0 }; drawLens(); }
 function focusFrame(f) {
   if (focused && f !== focused) return; // one fill at a time: close it first
   if (!focused) beforeFocus = { ...view };
@@ -631,8 +676,11 @@ function unfocus() {
   if (!focused) return false;
   focused.el.classList.remove('focused');
   stage.classList.remove('focusing');
+  focused.body.style.transform = '';
+  focused.body.style.removeProperty('--inv');
+  lens = { z: 1, x: 0, y: 0 };
   focused = null;
-  btnFit.disabled = false;
+  fitTitle('Show every frame (⇧1)');
   store.set(FILL_KEY, null);
   drawTools();
   if (beforeFocus) { Object.assign(view, beforeFocus); draw(true); }
@@ -640,7 +688,7 @@ function unfocus() {
 }
 {
   const fill = store.get(FILL_KEY, null), f = fill && frames.find((x) => x.id === fill.id);
-  if (f) { beforeFocus = fill.before; requestAnimationFrame(() => lockTo(f, false)); } // selected once the app is up
+  if (f) { beforeFocus = fill.before; lens = { ...lens, ...fill.lens }; requestAnimationFrame(() => lockTo(f, false)); } // selected once the app is up
   else store.set(FILL_KEY, null);
 }
 
@@ -650,25 +698,25 @@ const overCanvas = (e) => e.target instanceof Element && e.target.closest('#work
 stage.addEventListener('wheel', (e) => {
   if (overCanvas(e)) return;
   e.preventDefault();
-  if (focused) return; // locked
   if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.004)), e.clientX, e.clientY);
+  else if (focused) lensPan(-e.deltaX, -e.deltaY); // the canvas is locked: move inside the frame
   else { view.x -= e.deltaX; view.y -= e.deltaY; draw(); }
 }, { passive: false });
 
 // Drag the background (or anything, with Space held) to pan. While a pan is
 // on, the shield keeps the live frames from taking the pointer.
 function setSpace(down) {
-  space = down && !focused; // no pan while a frame fills the window
+  space = down; // while a frame fills the window, Space-drag moves inside it
   document.body.classList.toggle('pg-space', space);
   stage.classList.toggle('grab', space);
   shield.hidden = !space && !pan;
 }
 stage.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || overCanvas(e) || focused) return;
+  if (e.button !== 0 || overCanvas(e)) return;
   const onCover = e.target.closest('.cv-cover');
   const onBg = e.target === stage || e.target === world || e.target === shield;
   if (!space && !onCover && !onBg) return;
-  pan = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, cover: onCover && !space ? onCover : null };
+  pan = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, lx: lens.x, ly: lens.y, moved: false, cover: onCover && !space ? onCover : null };
   shield.hidden = false;
   try { stage.setPointerCapture(e.pointerId); } catch {}
 });
@@ -676,12 +724,14 @@ stage.addEventListener('pointermove', (e) => {
   if (!pan) return;
   const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
   if (Math.abs(dx) + Math.abs(dy) > 4) pan.moved = true;
-  if (pan.moved) { view.x = pan.vx + dx; view.y = pan.vy + dy; draw(); }
+  if (!pan.moved) return;
+  if (focused) { const s0 = clipScale(); lens.x = pan.lx + dx / s0; lens.y = pan.ly + dy / s0; clampLens(); drawLens(); } // the canvas is locked
+  else { view.x = pan.vx + dx; view.y = pan.vy + dy; draw(); }
 });
 const endPan = () => {
   if (!pan) return;
   if (!pan.moved && pan.cover) selectFrame(frames.find((f) => f.el.contains(pan.cover)));
-  else if (!pan.moved && !space) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); }
+  else if (!pan.moved && !space && !focused) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); }
   pan = null;
   shield.hidden = !space;
 };
@@ -692,7 +742,7 @@ function zoomKey(key) {
   const s = stage.getBoundingClientRect();
   if (key === '+' || key === '=') zoomAt(1.25, s.left + s.width / 2, s.top + s.height / 2, true);
   else if (key === '-') zoomAt(0.8, s.left + s.width / 2, s.top + s.height / 2, true);
-  else if (key === '0') zoomAt(1 / view.z, s.left + s.width / 2, s.top + s.height / 2, true);
+  else if (key === '0') zoomAt(1 / (view.z * (focused ? lens.z : 1)), s.left + s.width / 2, s.top + s.height / 2, true);
   else if (key === '!' || key === '1') fitAll();
 }
 const typing = (el) => el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
