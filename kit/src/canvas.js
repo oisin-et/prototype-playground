@@ -72,9 +72,8 @@ const PER_ROW = CFG.canvas?.perRow || 8;
 const GAP = Math.round(W * 0.08);
 const ROW_GAP = Math.round(H * 0.45);
 
-document.getElementById('name').textContent = NAME;
 document.title = `${NAME} · Canvas`;
-document.getElementById('btn-fit').innerHTML = ICON.home;
+document.querySelector('.cv-home-icon').innerHTML = ICON.home;
 document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
 
 // The panels, the classic playground's: Properties, Files and Library at the
@@ -92,17 +91,9 @@ function setPanel(which, on) {
   el?.classList.toggle('min', !on);
   el?.querySelector('.pg-rail')?.setAttribute('aria-expanded', String(on));
   store.set(`${KEY}.panels`, panelsOpen);
-  placeTop();
   if (focused) lockTo(focused); // the frame fills the room the panels leave
 }
-// The floating pieces at the top sit in the room the panels leave, and glide
-// with them.
-function placeTop() {
-  const s = room(), b = stage.getBoundingClientRect();
-  document.documentElement.style.setProperty('--room-l', `${s.x}px`);
-  document.documentElement.style.setProperty('--room-r', `${Math.max(0, b.width - s.x - s.width)}px`);
-}
-addEventListener('resize', () => placeTop());
+
 const togglePanels = () => { const on = !panelsOpen.props || !panelsOpen.chat; setPanel('props', on); setPanel('chat', on); };
 {
   const chat = panelEl('chat');
@@ -111,7 +102,7 @@ const togglePanels = () => { const on = !panelsOpen.props || !panelsOpen.chat; s
 }
 // The part of the stage the panels and the toolbar leave free (x and y:
 // from the stage's left and top).
-const TOOLBAND = 88; // the name and the toolbar over the canvas, and 8px under them
+const TOOLBAND = 60; // the row of round pieces at the top (8 + 44 + 8): the panels start under it
 function room() {
   const s = stage.getBoundingClientRect(), y = TOOLBAND;
   if (narrowView()) return { left: s.left, top: s.top + y, width: s.width, height: s.height - y, x: 0, y };
@@ -534,16 +525,16 @@ function selectFrame(f) {
 // the tools wait, dimmed. It springs to its new width as its name changes.
 const tools = document.getElementById('tools');
 const TOOLS = [
-  '|',
   ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
   ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
   '|',
   ['note', 'Notes: click a part to pin a note (N)', ICON.note],
   ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
 ];
-tools.innerHTML = `<div class="cv-tools-in"><span class="cv-tframe" aria-live="polite"></span>${TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
+tools.innerHTML = `<div class="cv-tools-in">${TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
   : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1])}">${t[2]}</button>`)).join('')}</div>`;
-const toolsIn = tools.firstElementChild, toolsFrame = tools.querySelector('.cv-tframe');
+const toolsIn = tools.firstElementChild, toolsFrame = document.getElementById('name'), homeEl = document.getElementById('btn-fit');
+toolsFrame.textContent = NAME;
 tools.addEventListener('pointerdown', (e) => e.stopPropagation());
 tools.addEventListener('click', (e) => {
   const b = e.target.closest('[data-tool]');
@@ -575,17 +566,23 @@ function drawTools() {
     const t = on ? 'Back to the canvas (Esc)' : 'Fill the window (F)';
     b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(on));
   }
-  const name = f ? (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`) : 'No frame';
+  // Where you are, in Home: the selected frame, else the project.
+  const name = f ? (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`) : NAME;
   if (toolsFrame.textContent !== name) {
     toolsFrame.textContent = name;
     toolsFrame.classList.toggle('main', f?.kind === 'main');
     toolsFrame.classList.toggle('none', !f);
-    toolsFrame.title = f ? `The tools work on ${name}` : 'Click a frame to use the tools on it';
+    toolsFrame.title = f ? `You're on ${name}` : 'No frame selected';
     toolsFrame.classList.remove('swap');
     void toolsFrame.offsetWidth;
     toolsFrame.classList.add('swap');
   }
   tools.style.width = `${toolsIn.offsetWidth}px`;
+  const was = homeEl.offsetWidth;
+  homeEl.style.width = 'auto';
+  const w = homeEl.offsetWidth;
+  if (w !== was) { homeEl.style.width = `${was}px`; void homeEl.offsetWidth; }
+  homeEl.style.width = `${w}px`;
 }
 let aiming = false; // the toolbar's screenshot: one drag, without ⌥
 
@@ -633,7 +630,6 @@ const fitAll = () => {
 };
 const btnFit = document.getElementById('btn-fit');
 btnFit.addEventListener('click', () => { unfocus(); fitAll(); });
-requestAnimationFrame(placeTop);
 // The view is kept, unless the frames have changed since: then all of them.
 const LAYOUT_KEY = `${KEY}.layout`, layout = frames.map((f) => f.id).join(' ');
 if (!store.get(VIEW_KEY, null) || store.get(LAYOUT_KEY, null) !== layout) requestAnimationFrame(fitAll); else draw();
