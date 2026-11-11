@@ -327,53 +327,53 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-pnote.open { -webkit-line-clamp: unset; }
 .cv-pnone { color: var(--page-muted); font-size: 13px; margin: 12px 0; }
 
-/* Design (src/design.js): the picked part's values against the design system. */
-.ds { padding: 10px 0 4px; border-top: 1px solid var(--page-line); }
-.ds h4 { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 8px; font-size: 14px; font-weight: 600; color: #fff; }
-.ds h4 small { font-size: 11.5px; font-weight: 400; color: var(--page-muted); }
-.ds h5 { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--page-muted); letter-spacing: 0.02em; }
-.ds-path { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 12px; color: var(--page-muted); }
-.pg-panel .ds-crumb { min-height: 22px; padding: 0 6px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 6px; }
-.pg-panel .ds-crumb.on { color: var(--accent); background: rgba(37, 195, 255, 0.12); }
-.ds-sum { margin: 10px 0 0; font-size: 12.5px; }
-.ds-sum.ok { color: #5fd08a; }
-.ds-sum.off { color: var(--amber); }
-.ds-row { display: grid; grid-template-columns: 78px 1fr auto; align-items: center; gap: 8px; min-height: 30px; font-size: 13px; }
-.ds-label { color: var(--page-muted); }
-.ds-dial { display: flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); overflow: hidden; }
-.ds-dial:empty { background: none; }
-.ds-dial i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.22); }
-.ds-dial i.on { width: 9px; height: 9px; background: var(--accent); }
-.ds-dial i.near { width: 9px; height: 9px; background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
-.ds-dial i.near.grid { color: var(--amber); }
-.ds-dial i.near.off { color: #ff5a6e; }
-.ds-val { text-align: right; white-space: nowrap; color: var(--page-text); font-variant-numeric: tabular-nums; }
-.ds-val b { font-weight: 600; color: #fff; margin-right: 4px; }
-.ds-val small { display: block; font-size: 11px; color: var(--page-muted); }
-.ds-val.grid { color: var(--amber); }
-.ds-val.off { color: #ff8a98; }
-.ds-swatch { width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); }
-.ds-row:has(.ds-swatch) { grid-template-columns: 78px 22px 1fr; }
-.ds-row:has(.ds-swatch) .ds-val { text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 4px 0; }
-.pg-panel .ds-lib { margin-top: 14px; width: 100%; }
-/* A dial's dots are buttons: a click previews that step. */
-.pg-panel .ds-dot { flex: none; width: 14px; height: 18px; min-height: 0; padding: 0; background: none; box-shadow: none; border-radius: 4px; display: grid; place-items: center; }
-.pg-panel .ds-dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.22); transition: transform 0.2s var(--spring), background-color 0.15s ease; }
-.pg-panel .ds-dot:hover { filter: none; background: rgba(255, 255, 255, 0.08); }
-.pg-panel .ds-dot:hover::before { background: rgba(255, 255, 255, 0.6); }
-.pg-panel .ds-dot.on::before { width: 9px; height: 9px; background: var(--accent); }
-.pg-panel .ds-dot.near::before { width: 9px; height: 9px; background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
-.pg-panel .ds-dot.near.grid { color: var(--amber); }
-.pg-panel .ds-dot.near.off { color: #ff5a6e; }
-.ds-dial:has(.ds-dot) { gap: 0; padding: 0 3px; }
-.ds-changed { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
-.ds-preview { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; color: var(--accent); background: rgba(37, 195, 255, 0.1); }
-.ds-preview span { flex: 1; }
-.pg-panel .ds-preview button { min-height: 26px; padding: 0 10px; font-size: 12px; }
-.ds-preview.busy { color: var(--amber); background: rgba(240, 180, 76, 0.1); }
-.ds-scope { display: flex; gap: 2px; margin: 10px 0 0; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
-.pg-panel .ds-scope button { flex: 1; min-height: 26px; padding: 0 8px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pg-panel .ds-scope button.on { color: #fff; background: rgba(255, 255, 255, 0.1); }
+/* Design (src/design.js), after Graphical UI: big, quiet pads to adjust. */
+.ds { padding: 14px 0 6px; border-top: 1px solid var(--page-line); }
+.ds-path { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 12px; color: var(--page-muted); }
+.ds-path > span { opacity: 0.5; }
+.pg-panel .ds-crumb { min-height: 24px; padding: 0 7px; font-size: 12.5px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
+.pg-panel .ds-crumb.on { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.ds-seg { display: flex; gap: 4px; margin: 14px 0 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); }
+.pg-panel .ds-seg button { flex: 1; min-height: 34px; padding: 0 10px; font-size: 13.5px; font-weight: 500; background: none; box-shadow: none; color: var(--page-muted); border-radius: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-panel .ds-seg button.on { color: #fff; background: rgba(255, 255, 255, 0.12); }
+.ds-sec { padding: 16px 0 14px; border-bottom: 1px solid var(--page-line); }
+.ds-sec h5 { margin: 0 0 12px; font-size: 15px; font-weight: 500; color: #fff; letter-spacing: 0; }
+.ds-row { display: flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 6px; }
+.ds-label { flex: 0 0 76px; font-size: 13.5px; color: var(--page-text); }
+/* A dial: the steps as dots, the knob on the step in use. */
+.dl {
+  --kw: 52px; position: relative; flex: 1; min-width: 0; height: 40px; border-radius: 12px; cursor: pointer; touch-action: none;
+  background: rgba(255, 255, 255, 0.055); outline: none; user-select: none;
+}
+.dl:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.dl-dots { position: absolute; top: 0; bottom: 0; left: calc(4px + var(--kw) / 2); right: calc(4px + var(--kw) / 2); display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.dl-dots i { width: 4px; height: 4px; margin: 0 -2px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); }
+.dl-knob {
+  position: absolute; top: 4px; bottom: 4px; width: var(--kw);
+  left: calc(4px + (100% - 8px - var(--kw)) * var(--i) / (var(--n) - 1));
+  display: grid; place-items: center; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: #fff;
+  background: rgba(255, 255, 255, 0.16); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: left 0.42s var(--spring), background-color 0.2s ease; pointer-events: none; white-space: nowrap;
+}
+.dl.dragging .dl-knob { transition: left 0.16s var(--settle); background: rgba(255, 255, 255, 0.24); }
+.dl.changed .dl-knob { background: rgba(37, 195, 255, 0.28); color: #dff5ff; }
+.dl.grid .dl-knob { color: var(--amber); box-shadow: inset 0 0 0 1.5px rgba(240, 180, 76, 0.6); background: rgba(240, 180, 76, 0.1); }
+.dl.off .dl-knob { color: #ff8a98; box-shadow: inset 0 0 0 1.5px rgba(255, 90, 110, 0.6); background: rgba(255, 90, 110, 0.1); }
+@media (hover: hover) { .dl:hover { background: rgba(255, 255, 255, 0.075); } }
+/* Square icon buttons: padding's sides, undo, the Library. */
+.pg-panel .ds-icon { flex: none; width: 40px; height: 40px; min-height: 0; padding: 0; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 255, 255, 0.055); box-shadow: none; color: var(--page-muted); }
+.pg-panel .ds-icon.on { color: #fff; background: rgba(255, 255, 255, 0.12); }
+.pg-panel .ds-icon:disabled { opacity: 0.35; }
+/* A colour: a pill with its swatch and name, and its opacity beside it. */
+.ds-pill { flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.055); font-size: 13.5px; color: var(--page-text); }
+.ds-pill.off .ds-cname { color: var(--amber); }
+.ds-cname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-sw { flex: none; width: 20px; height: 20px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); }
+.ds-sw.none { background: linear-gradient(135deg, transparent 45%, rgba(255, 255, 255, 0.5) 45% 55%, transparent 55%); }
+.ds-pct { flex: 0 0 64px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 255, 255, 0.055); font-size: 13.5px; color: var(--page-text); font-variant-numeric: tabular-nums; }
+.ds-bar { display: flex; align-items: center; gap: 8px; padding-top: 16px; }
+.ds-where { flex: 1; text-align: right; font-size: 12px; color: var(--page-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-where.busy { color: var(--amber); }
 /* The picked part, outlined on its frame (in the frame's pixels). */
 .cv-picked { position: absolute; z-index: 4; pointer-events: none; border-radius: 2px; box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 0 0 calc(5px * var(--inv)) rgba(37, 195, 255, 0.25); }
 

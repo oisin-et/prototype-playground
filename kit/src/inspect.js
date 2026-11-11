@@ -170,5 +170,5 @@ export const mountInspect = ({ library, hooks, open, onStart }) => {
   // The page under the outline may move (the canvas pans or zooms): let go.
   addEventListener('wheel', () => { if (on) hide(); }, { passive: true, capture: true });
 
-  return { set, get on() { return on; } };
+  return { set, identify, get on() { return on; } };
 };

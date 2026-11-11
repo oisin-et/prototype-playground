@@ -71,10 +71,11 @@ export function mountPanels(o) {
       const l = picked.levels[picked.at], scope = l?.pg ? picked.scope : 'all', sel = selOf(l, scope);
       const entry = picked.saved.find((x) => x.sel === sel);
       html = designHTML(picked.levels, picked.at, {
-        dials: entry?.dials || {}, scope, canOne: !!l?.pg, busy: picked.busy,
+        dials: entry?.dials || {}, scope, canOne: !!l?.pg, busy: picked.busy, sides: picked.sides,
         where: picked.f.kind === 'main'
           ? `Main doesn't change here: the first change starts a new exploration of ${o.screens[picked.f.route?.screen ?? picked.f.screen]?.title || 'this page'}, and saves in it.`
           : `Changes save in ${frameName(picked.f)}, in its design.json.`,
+        whereShort: picked.f.kind === 'main' ? 'A change starts an exploration' : `Saves in ${frameName(picked.f)}`,
       });
     }
     propsEl.querySelector('.cv-props').innerHTML = o.properties(f) + html;
@@ -94,7 +95,7 @@ export function mountPanels(o) {
     : fetch(`/playground/design?playground=${encodeURIComponent(f.pg.id)}&version=${encodeURIComponent(f.v)}`, { cache: 'no-store' })
       .then((r) => r.json()).then((d) => d.styles || []).catch(() => []));
   async function pick(f, levels, at) {
-    picked = { f, levels, at, on: onNow(f), scope: picked?.f === f ? picked.scope : 'one', saved: [] };
+    picked = { f, levels, at, on: onNow(f), scope: picked?.f === f ? picked.scope : 'one', sides: false, saved: [] };
     o.select?.(f);
     open(f, 'props');
     const [, saved] = await Promise.all([loadSystem(), loadSaved(f)]);
@@ -124,8 +125,9 @@ export function mountPanels(o) {
   async function save(dials) {
     const p = picked, l = p?.levels[p.at];
     if (!l || p.busy) return;
+    const [bx, by, bw, bh] = l.box || [0, 0, 0, 0];
     const scope = l.pg ? p.scope : 'all', sel = selOf(l, scope);
-    const props = Object.fromEntries(Object.entries(dials).map(([k, v]) => cssOf(k, v)));
+    const props = Object.fromEntries(Object.entries(dials).flatMap(([k, v]) => cssOf(k, v)));
     const label = `${l.item?.name || l.component}${scope === 'all' ? ', every use' : l.pg ? ` ${l.pg}` : ''}`;
     const body = p.f.kind === 'exp'
       ? { playground: p.f.pg.id, version: p.f.v, sel, label, dials, props }
@@ -136,12 +138,75 @@ export function mountPanels(o) {
       .then((x) => x.json()).catch((e) => ({ error: String(e) }));
     p.busy = false;
     if (r.error) { o.toast(r.error); drawProps(); return; }
-    if (r.made) { o.opened?.(r.playground, r.version); return; } // the canvas lays out again with the new exploration
+    // The canvas lays out again with the new exploration, and picks the same part in it.
+    if (r.made) { o.opened?.(r.playground, r.version, { x: bx + bw / 2, y: by + bh / 2, pg: l.pg, component: l.component, scope: p.scope }); return; }
     if (p !== picked) return;
     p.saved = r.styles || [];
     await o.ask(p.f, { type: 'design' }, 3000).catch(() => null);
     remeasure();
   }
+  // A dial: drag its knob along the steps (it snaps to each), or click a step,
+  // or use the arrow keys. While it moves the part changes live (a preview,
+  // the bridge's restyle); letting go saves it.
+  const dialSteps = (el) => JSON.parse(el.dataset.steps);
+  const dialAt = (el, x) => {
+    const r = el.getBoundingClientRect(), n = dialSteps(el).length, kw = 52;
+    return Math.max(0, Math.min(n - 1, Math.round(((x - r.left - 4 - kw / 2) / (r.width - 8 - kw)) * (n - 1))));
+  };
+  const withStep = (dials, prop, value) => {
+    const next = { ...dials };
+    if (prop === 'p') { delete next.pt; delete next.pr; delete next.pb; delete next.pl; }
+    else if (['pt', 'pr', 'pb', 'pl'].includes(prop) && 'p' in next) { for (const k of ['pt', 'pr', 'pb', 'pl']) next[k] ??= next.p; delete next.p; }
+    next[prop] = value;
+    return next;
+  };
+  let drag = null;
+  function moveDial(el, i) {
+    const steps = dialSteps(el), [value, label] = steps[i];
+    el.style.setProperty('--i', i);
+    el.querySelector('.dl-knob').textContent = label;
+    el.classList.remove('grid', 'off');
+    el.classList.add('on', 'changed');
+    el.setAttribute('aria-valuetext', label);
+    const p = picked, l = p?.levels[p.at];
+    if (!l) return value;
+    const sel = selOf(l, l.pg ? p.scope : 'all');
+    o.ask(p.f, { type: 'restyle', key: `drag:${sel}`, sel, props: Object.fromEntries(cssOf(el.dataset.prop, value)) }, 2000).catch(() => {});
+    return value;
+  }
+  const settle = (el, value) => save(withStep(savedDials(), el.dataset.prop, value))
+    .then(() => (picked ? o.ask(picked.f, { type: 'restyle', clear: true }, 2000).catch(() => {}) : null));
+  propsEl.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.dl');
+    if (!el || !picked || e.button !== 0 || picked.busy) return;
+    e.preventDefault();
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    el.classList.add('dragging');
+    const i = dialAt(el, e.clientX);
+    drag = { el, i, value: moveDial(el, i) };
+  });
+  propsEl.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const i = dialAt(drag.el, e.clientX);
+    if (i !== drag.i) { drag.i = i; drag.value = moveDial(drag.el, i); }
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    const { el, value } = drag;
+    drag = null;
+    el.classList.remove('dragging');
+    settle(el, value);
+  };
+  propsEl.addEventListener('pointerup', endDrag);
+  propsEl.addEventListener('pointercancel', endDrag);
+  propsEl.addEventListener('keydown', (e) => {
+    const el = e.target.closest?.('.dl');
+    if (!el || !picked || picked.busy || !['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(e.key)) return;
+    e.preventDefault();
+    const n = dialSteps(el).length, now = Number(getComputedStyle(el).getPropertyValue('--i'));
+    const i = Math.max(0, Math.min(n - 1, (e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? Math.ceil(now) - 1 : Math.floor(now) + 1)));
+    settle(el, moveDial(el, i));
+  });
   const savedDials = () => {
     const l = picked?.levels[picked.at];
     return { ...(picked?.saved.find((x) => x.sel === selOf(l, l?.pg ? picked.scope : 'all'))?.dials || {}) };
@@ -151,8 +216,7 @@ export function mountPanels(o) {
     if (lv && picked) { picked.at = +lv.dataset.level; drawProps(); outlinePicked(); return; }
     const sc = e.target.closest('[data-scope]');
     if (sc && picked) { picked.scope = sc.dataset.scope; drawProps(); return; }
-    const dot = e.target.closest('[data-prop]');
-    if (dot && picked) { save({ ...savedDials(), [dot.dataset.prop]: Number(dot.dataset.value) }); return; }
+    if (e.target.closest('[data-sides]') && picked) { picked.sides = !picked.sides; drawProps(); return; }
     if (e.target.closest('[data-remove]') && picked) { save({}); return; }
     const lib = e.target.closest('[data-library]');
     if (lib) { open(null, 'library'); library.open(lib.dataset.library); }
@@ -313,6 +377,15 @@ export function mountPanels(o) {
       if (f === o.target() && f.route?.screen) library.onScreen?.(f.route.screen);
     },
     selected(f) { about = f; drawProps(); if (o.shown() && pane === 'files') files.draw(); },
+    // Picks the part at x, y (app pixels) in f again, at the level named by pg and component.
+    async repick(f, { x, y, pg, component, scope }) {
+      const m = await o.ask(f, { type: 'inspect', x, y, library: true, design: true }, 3000).catch(() => null);
+      const chain = inspector.identify?.(m?.chain || []) || m?.chain || [];
+      const at = Math.max(0, chain.findIndex((c) => c.pg === pg && c.component === component));
+      if (!chain.length) return;
+      await pick(f, chain, at);
+      if (picked) { picked.scope = scope || 'one'; drawProps(); }
+    },
     drawProps,
     start() { setPane(pane); },
   };

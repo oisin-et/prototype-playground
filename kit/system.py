@@ -33,8 +33,9 @@ part by its node id, or every use of a component), what the dials say
 (type size 26, padding top 8) and the style properties they set. The app's
 bridge lays each running version's design.json over the app, so the frame,
 its frozen copy and the classic playground all show it. On Main, the first
-change starts a new exploration of the page on show, a copy of main, and is
-saved there: main itself only changes by Commit, which carries a version's
+change starts a new exploration of the page on show that changes nothing in
+code (its version file draws nothing of its own, so it's main exactly), and
+is saved there: main itself only changes by Commit, which carries a version's
 design.json into the app's own source.
 
 Standard library only.
@@ -43,7 +44,7 @@ import json
 import re
 import time
 
-from pglib import CONFIG, DATA, ROOT, add_to_canvas, make_version, number, playground_lock, playgrounds, read_json, screen_meta, screens, write_json
+from pglib import ADAPTER, CONFIG, DATA, ROOT, VERSION_FILE, add_to_canvas, number, playground_lock, playgrounds, read_json, screen_meta, screens, write_json, write_registry
 
 DESIGN = "design.json"
 VERSION = re.compile(r"^v\d+\.\d+$")
@@ -135,19 +136,28 @@ def save(body):
         screen = str(body.get("screen") or "")
         if screen not in screens():
             raise ValueError(f"{screen or 'That page'} isn't one of the app's screens, so it can't be explored.")
+        if ADAPTER != "web":
+            raise ValueError("The Design dials work with web apps only.")
+        name = str(body.get("name") or "Design dials")[:80]
         with playground_lock():
             meta_path, meta = screen_meta(screen)
             n = 1 + max([number(v["id"])[0] for v in meta["versions"] if number(v["id"])] or [0])
             version = f"v{n}.0"
-            try:
-                make_version(screen, "default", version, str(body.get("name") or "Design dials"), meta_path, meta)
-            except SystemExit as e:
-                raise ValueError(str(e))
-            meta = read_json(meta_path)
-            for v in meta["versions"]:
-                if v["id"] == version:
-                    v["note"] = "Changed with the canvas's Design dials: each change is in design.json."
+            folder = DATA / screen / version
+            folder.mkdir(parents=True)
+            (folder / VERSION_FILE).write_text(
+                f"// {meta.get('title', screen)}: {name} ({version}). It changes nothing in code, so it's main\n"
+                "// exactly; what it changes is in design.json, set with the canvas's Design dials, which\n"
+                "// the playground's bridge lays over the app.\n\nexport default { pages: {} };\n")
+            meta["versions"].append({"id": version, "name": name, "date": time.strftime("%Y-%m-%d"),
+                                     "note": "Changed with the canvas's Design dials: each change is in design.json."})
             write_json(meta_path, meta)
+            write_registry()
+            try:
+                import frozen
+                frozen.freeze(f"{screen}/{version}")  # its base: main as it is now
+            except Exception as e:
+                print(f"(The canvas's frozen copy of {screen} {version} wasn't made: {e})")
         pg, made = screen, True
         add_to_canvas([(pg, version)])
     if pg not in playgrounds() or not VERSION.match(str(version)) or not (DATA / pg / version).is_dir():

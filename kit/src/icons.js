@@ -15,6 +15,9 @@ export const ICON = {
   pick: svg('<path d="M8 1.8 14.2 8 8 14.2 1.8 8z"/>'),
   reload: svg('<path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.2"/><path d="M13.4 1.8v3.4H10"/>'),
   fill: svg('<path d="M9.5 2h4.5v4.5M6.5 14H2V9.5M14 2 9.2 6.8M2 14l4.8-4.8"/>'),
+  undo: svg('<path d="M3.5 6.5h6.2a3.3 3.3 0 0 1 0 6.6H6.5"/><path d="M6 3.8 3.3 6.5 6 9.2"/>'),
+  sides: svg('<rect x="2.5" y="2.5" width="11" height="11" rx="2.4"/><rect x="6" y="6" width="4" height="4" rx="0.8"/>'),
+  book: svg('<path d="M3 3.2c1.8-.6 3.5-.4 5 .8v9.5c-1.5-1.2-3.2-1.4-5-.8z"/><path d="M13 3.2c-1.8-.6-3.5-.4-5 .8v9.5c1.5-1.2 3.2-1.4 5-.8z"/>'),
   unfill: svg('<path d="M14 6.5H9.5V2M2 9.5h4.5V14M9.5 6.5 14.2 1.8M6.5 9.5 1.8 14.2"/>'), // fill's arrows turned inward
   branch: svg('<circle cx="4.5" cy="3.5" r="1.6"/><circle cx="4.5" cy="12.5" r="1.6"/><circle cx="11.5" cy="5.5" r="1.6"/><path d="M4.5 5.1v5.8M11.5 7.1c0 2.6-2.4 3-5.6 4"/>'),
   main: svg('<circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v4.3M8 10.2v4.3"/>'),

@@ -280,6 +280,16 @@ const watchApp = async () => {
       wake(main); // main is always live
       const sel = focused || frames.find((f) => f.id === store.get(`${KEY}.selected`));
       if (sel) { selectFrame(sel); }
+      // A dial change on Main made the exploration on show: pick the same part in it.
+      const again = store.get(`${KEY}.repick`, null), rf = again && frames.find((f) => f.id === again.id);
+      store.set(`${KEY}.repick`, null);
+      if (rf) {
+        const t0 = Date.now();
+        const wait = setInterval(() => {
+          if (rf.ready) { clearInterval(wait); setTimeout(() => panels.repick(rf, again), 600); }
+          else if (Date.now() - t0 > 20000) clearInterval(wait);
+        }, 250);
+      }
       fillPictures();
     }
   } else if (s.state === 'starting') setStatus('busy', 'Building the app…');
@@ -1014,8 +1024,9 @@ panels = mountPanels({
   properties, show: (on) => setPanel('props', on), shown: () => panelsOpen.props, select: (f) => selectFrame(f),
   // The dials made a new exploration (a change on Main): open the canvas on it,
   // filling the window if Main did.
-  opened: (pg, v) => {
+  opened: (pg, v, repick) => {
     const id = `${pg}/v${num(v)[0]}`;
+    store.set(`${KEY}.repick`, repick ? { id, ...repick } : null);
     chosen[id] = v;
     store.set(`${KEY}.iteration`, chosen);
     store.set(`${KEY}.selected`, id);
