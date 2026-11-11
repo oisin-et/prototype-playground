@@ -20,6 +20,7 @@
 //               {type: 'restyle', id, key, sel, props} | {type: 'restyle', id, clear}
 //               a preview from the canvas's Design dials: the style props set
 //               on what sel matches, kept and set again after each redraw
+//               {type: 'design', id}   read each running version's design.json again
 //               {type: 'locate', id, nodes, components}   where these are, for the Library
 //               {type: 'picture', id, items: [{key, nodes, components}], size}
 //               a picture of the first of each in view, for the Library
@@ -176,6 +177,7 @@ addEventListener('message', (e) => {
       layers = next;
       stamp++;
       for (const fn of listeners) fn();
+      loadDesigns();
     }
     // After the redraw, so a version that changes the screen on show reports it.
     requestAnimationFrame(() => requestAnimationFrame(report));
@@ -187,6 +189,8 @@ addEventListener('message', (e) => {
     inspect(m);
   } else if (m.type === 'restyle') {
     restyle(m);
+  } else if (m.type === 'design') {
+    loadDesigns().then(() => post({ type: 'designed', id: m.id }));
   } else if (m.type === 'locate') {
     locate(m);
   } else if (m.type === 'picture') {
@@ -294,14 +298,31 @@ function applyRestyles() {
 }
 new MutationObserver(() => { if (restyles.size && !restyleQueued) { restyleQueued = true; requestAnimationFrame(applyRestyles); } })
   .observe(document.documentElement, { childList: true, subtree: true });
+// Takes off the previews whose keys pass `which`, putting back each element's
+// own values, then lays the rest again (they may set the same props).
+function unstyle(which) {
+  for (const [key, { sel, props }] of [...restyles]) {
+    if (!which(key)) continue;
+    let els = [];
+    try { els = document.querySelectorAll(sel); } catch {}
+    for (const el of els) for (const k of Object.keys(props)) el.style[k] = before.get(el)?.[k] ?? '';
+    restyles.delete(key);
+  }
+  applyRestyles();
+}
+// Each running version's design.json (changes saved with the canvas's Design
+// dials, beside its version file), laid over the app under the key
+// "saved:<version>:<selector>".
+async function loadDesigns() {
+  const got = await Promise.all(layers.map((id) => fetch(new URL(`./${id}/design.json`, import.meta.url), { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((d) => [id, d?.styles || []])));
+  unstyle((key) => key.startsWith('saved:'));
+  for (const [id, list] of got) for (const x of list) if (x?.sel && x.props) restyles.set(`saved:${id}:${x.sel}`, { sel: x.sel, props: x.props });
+  applyRestyles();
+}
 function restyle(m) {
   if (m.clear) {
-    for (const { sel, props } of restyles.values()) {
-      let els = [];
-      try { els = document.querySelectorAll(sel); } catch {}
-      for (const el of els) for (const k of Object.keys(props)) el.style[k] = before.get(el)?.[k] ?? '';
-    }
-    restyles.clear();
+    unstyle((key) => !key.startsWith('saved:'));
     post({ type: 'restyled', id: m.id, count: 0 });
     return;
   }

@@ -9,9 +9,10 @@
 // project's grid ("grid": 4), red when it's off both. Each row shows the
 // scale as a dial, one dot a step, the step in use filled.
 //
-// A dot is a button: a click previews that step on the part, live in its
-// frame (the bridge's restyle, kept through the app's redraws), and the row
-// marks it as changed. Previews aren't saved: Reset takes them all back.
+// A dot is a button: a click sets that step on the part and saves it at once
+// in the frame's iteration (system.py's design.json, which the app's bridge
+// lays over the app), or, on Main, in a new exploration. A saved row is
+// marked. A change goes on this part, or on every use of its component.
 // Colours only show for now.
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -49,11 +50,11 @@ export const cssOf = (prop, v) => [CSS[prop], prop === 'weight' ? String(v) : `$
 
 // One row: its name, the dial (the scale's steps up to the value's
 // neighbourhood; each a button when the row has a prop), and the value with
-// its step. changed: the value is a preview.
+// its step. changed: the value is a saved change.
 function row(label, v, scale, { grid, unit = 'px', prop, zero, changed } = {}) {
   if (v == null) return '';
   const m = match(scale, v, grid);
-  const lab = `<span class="ds-label">${esc(label)}${changed ? '<i class="ds-changed" title="Changed: a preview"></i>' : ''}</span>`;
+  const lab = `<span class="ds-label">${esc(label)}${changed ? '<i class="ds-changed" title="Changed with the dials, saved"></i>' : ''}</span>`;
   if (!m) return `<div class="ds-row">${lab}<span class="ds-dial"></span><span class="ds-val">${v === 0 && zero ? esc(zero) : `${esc(v)}${unit}`}</span></div>`;
   const nameOf = (x) => (x.value === 0 && zero ? zero : x.name);
   const shown = (x) => (x.value === PILL ? '' : ` ${x.value}${unit}`);
@@ -98,9 +99,11 @@ function colourRow(label, css, tokens) {
 /**
  * The Design section for a picked part: levels (innermost first, from
  * Inspect: { component, pg, box, style, tokens, item }), at (the one shown),
- * changes ({prop: value}, its previews) and count (how many parts they're on).
+ * and o: { dials (its saved changes: {prop: value}), scope ('one' | 'all'),
+ * canOne (it has a node id), where (where changes save), busy }.
  */
-export function designHTML(levels, at, changes = {}, count = 0) {
+export function designHTML(levels, at, o = {}) {
+  const changes = o.dials || {};
   const l = levels?.[at];
   if (!l) return '';
   const s = system?.scales || {}, grid = system?.grid, st = l.style || {};
@@ -134,7 +137,10 @@ export function designHTML(levels, at, changes = {}, count = 0) {
   return `<section class="ds"><h4>Design <small>${esc(system.name)}${system.modes?.Grid ? ` · ${esc(system.modes.Grid)}` : ''}</small></h4>
     <div class="ds-path">${path}</div>
     <p class="ds-sum ${off ? 'off' : 'ok'}">${off ? `${off} value${off === 1 ? '' : 's'} not on ${esc(system.name)}'s steps` : `Every value is one of ${esc(system.name)}'s steps`}</p>
-    ${n ? `<div class="ds-preview"><span>${n} change${n === 1 ? '' : 's'} in preview${count > 1 ? `, on ${count} parts` : ''}: not saved</span><button type="button" data-reset>Reset</button></div>` : ''}
+    <div class="ds-scope" role="group" aria-label="What a change goes on">
+      <button type="button" data-scope="one" class="${o.scope !== 'all' ? 'on' : ''}"${o.canOne ? '' : ' disabled title="It has no node id: a change goes on every use"'}>This one</button>
+      <button type="button" data-scope="all" class="${o.scope === 'all' ? 'on' : ''}">Every ${esc(l.item?.name || l.component)}</button></div>
+    <div class="ds-preview${o.busy ? ' busy' : ''}"><span>${o.busy ? 'Saving…' : esc(o.where || '')}</span>${n ? `<button type="button" data-remove title="Take this part's saved changes out">Remove ${n} change${n === 1 ? '' : 's'}</button>` : ''}</div>
     ${sections}
     ${l.item ? `<button type="button" class="ds-lib" data-library="${esc(l.item.id)}">Open ${esc(l.item.name)} in the Library</button>` : ''}
   </section>`;

@@ -412,7 +412,7 @@ addEventListener('message', (e) => {
     if (f.kind === 'main') drawFoot(f);
     notes?.drawPins(f);
     panels?.changed(f);
-  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed', 'restyled'].includes(m.type)) {
+  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed', 'restyled', 'designed'].includes(m.type)) {
     const p = pending.get(m.id);
     if (p) { pending.delete(m.id); m.error ? p.fail(new Error(m.error)) : p.ok(m); }
   } else if (m.type === 'errors') {
@@ -1012,6 +1012,17 @@ panels = mountPanels({
   key: KEY, data: CFG.data, W, screens: SCREENS, playgrounds, frames, ask, send, toast,
   target: () => selected, showVersion, notes: () => notes,
   properties, show: (on) => setPanel('props', on), shown: () => panelsOpen.props, select: (f) => selectFrame(f),
+  // The dials made a new exploration (a change on Main): open the canvas on it,
+  // filling the window if Main did.
+  opened: (pg, v) => {
+    const id = `${pg}/v${num(v)[0]}`;
+    chosen[id] = v;
+    store.set(`${KEY}.iteration`, chosen);
+    store.set(`${KEY}.selected`, id);
+    if (focused) store.set(FILL_KEY, { id, before: beforeFocus, lens });
+    toast(`${pg} ${v.slice(1)} is a new exploration with your change: opening it…`);
+    setTimeout(() => location.reload(), 700);
+  },
 });
 // Both panels as they were left (at phone width, both minimised at first).
 setPanel('props', !narrowView() && panelsOpen.props);

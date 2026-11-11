@@ -55,14 +55,29 @@ export function mountPanels(o) {
   propsEl.innerHTML = `<div class="pg-head">${tabs('props')}<button type="button" class="pg-min" data-close aria-label="Minimise the panel" title="Minimise (P)">‹</button></div><div class="cv-props"></div>`;
   propsEl.querySelector('[data-close]').addEventListener('click', () => close());
   // The part picked with Inspect: its frame, the parts around it (innermost
-  // first) and the one shown. It's outlined on its frame.
+  // first), the one shown, and the scope of a change (this one, or every use
+  // of its component). It's outlined on its frame.
   let picked = null;
+  // What a change goes on: this part (its node id and component; a node a
+  // template repeats matches each copy), or every use of its component.
+  const selOf = (l, scope) => (!l ? null : scope === 'all' || !l.pg ? `[data-component="${CSS.escape(l.component)}"]`
+    : `[data-pg="${CSS.escape(l.pg)}"][data-component="${CSS.escape(l.component)}"]`);
+  const frameName = (f) => (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`);
   const drawProps = () => {
     const f = o.target();
     if (picked && picked.f !== f) unpick();
-    const sel = picked && selOf(picked.levels[picked.at]);
-    propsEl.querySelector('.cv-props').innerHTML = o.properties(f)
-      + (picked ? designHTML(picked.levels, picked.at, (sel && picked.f.previews?.[sel]) || {}, picked.count || 0) : '');
+    let html = '';
+    if (picked) {
+      const l = picked.levels[picked.at], scope = l?.pg ? picked.scope : 'all', sel = selOf(l, scope);
+      const entry = picked.saved.find((x) => x.sel === sel);
+      html = designHTML(picked.levels, picked.at, {
+        dials: entry?.dials || {}, scope, canOne: !!l?.pg, busy: picked.busy,
+        where: picked.f.kind === 'main'
+          ? `Main doesn't change here: the first change starts a new exploration of ${o.screens[picked.f.route?.screen ?? picked.f.screen]?.title || 'this page'}, and saves in it.`
+          : `Changes save in ${frameName(picked.f)}, in its design.json.`,
+      });
+    }
+    propsEl.querySelector('.cv-props').innerHTML = o.properties(f) + html;
   };
   const outlinePicked = () => {
     for (const el of document.querySelectorAll('.cv-picked')) el.remove();
@@ -74,21 +89,22 @@ export function mountPanels(o) {
     picked.f.body.append(el);
   };
   const onNow = (f) => `${f.route?.screen ?? f.screen}|${f.v ?? 'main'}`;
-  function pick(f, levels, at) {
-    picked = { f, levels, at, on: onNow(f) };
+  // The changes saved in the frame's iteration (system.py's design.json).
+  const loadSaved = (f) => (f.kind !== 'exp' ? Promise.resolve([])
+    : fetch(`/playground/design?playground=${encodeURIComponent(f.pg.id)}&version=${encodeURIComponent(f.v)}`, { cache: 'no-store' })
+      .then((r) => r.json()).then((d) => d.styles || []).catch(() => []));
+  async function pick(f, levels, at) {
+    picked = { f, levels, at, on: onNow(f), scope: picked?.f === f ? picked.scope : 'one', saved: [] };
     o.select?.(f);
     open(f, 'props');
-    loadSystem().then(() => { drawProps(); outlinePicked(); });
-  }
-  function unpick() {
-    if (picked?.f.previews && Object.keys(picked.f.previews).length) { picked.f.previews = {}; if (picked.f.ready) o.ask(picked.f, { type: 'restyle', clear: true }, 2000).catch(() => {}); }
-    picked = null;
+    const [, saved] = await Promise.all([loadSystem(), loadSaved(f)]);
+    if (picked?.f !== f) return;
+    picked.saved = saved;
+    drawProps();
     outlinePicked();
   }
-  // A part's previews go on what matches its node id and component: this one
-  // (a node a template repeats matches each copy).
-  const selOf = (l) => (l?.pg ? `[data-pg="${CSS.escape(l.pg)}"][data-component="${CSS.escape(l.component)}"]` : null);
-  // After a preview: the part measured again (its box and look), so the
+  function unpick() { picked = null; outlinePicked(); }
+  // After a change: the part measured again (its box and look), so the
   // outline and the values follow it.
   async function remeasure() {
     const p = picked, l = p?.levels[p.at];
@@ -103,27 +119,41 @@ export function mountPanels(o) {
     drawProps();
     outlinePicked();
   }
-  async function preview(prop, value) {
-    const p = picked, l = p?.levels[p.at], sel = selOf(l);
-    if (!sel) { o.toast(`This ${l?.component || 'part'} has no node id, so a change can't be pointed at it.`); return; }
-    p.f.previews ??= {};
-    (p.f.previews[sel] ??= {})[prop] = value;
-    const [k, v] = cssOf(prop, value);
+  // A dial's step, saved at once in the frame's iteration (on Main, in a new
+  // exploration, which the canvas then opens). dials: the part's whole set.
+  async function save(dials) {
+    const p = picked, l = p?.levels[p.at];
+    if (!l || p.busy) return;
+    const scope = l.pg ? p.scope : 'all', sel = selOf(l, scope);
+    const props = Object.fromEntries(Object.entries(dials).map(([k, v]) => cssOf(k, v)));
+    const label = `${l.item?.name || l.component}${scope === 'all' ? ', every use' : l.pg ? ` ${l.pg}` : ''}`;
+    const body = p.f.kind === 'exp'
+      ? { playground: p.f.pg.id, version: p.f.v, sel, label, dials, props }
+      : { screen: p.f.route?.screen ?? p.f.screen, name: `Design: ${l.item?.name || l.component}`, sel, label, dials, props };
+    p.busy = true;
     drawProps();
-    const m = await o.ask(p.f, { type: 'restyle', key: sel, sel, props: { [k]: v } }, 2000).catch(() => null);
-    if (p === picked) { p.count = m?.count || 0; remeasure(); }
+    const r = await fetch('/playground/design', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'design' }, body: JSON.stringify(body) })
+      .then((x) => x.json()).catch((e) => ({ error: String(e) }));
+    p.busy = false;
+    if (r.error) { o.toast(r.error); drawProps(); return; }
+    if (r.made) { o.opened?.(r.playground, r.version); return; } // the canvas lays out again with the new exploration
+    if (p !== picked) return;
+    p.saved = r.styles || [];
+    await o.ask(p.f, { type: 'design' }, 3000).catch(() => null);
+    remeasure();
   }
+  const savedDials = () => {
+    const l = picked?.levels[picked.at];
+    return { ...(picked?.saved.find((x) => x.sel === selOf(l, l?.pg ? picked.scope : 'all'))?.dials || {}) };
+  };
   propsEl.addEventListener('click', (e) => {
     const lv = e.target.closest('[data-level]');
     if (lv && picked) { picked.at = +lv.dataset.level; drawProps(); outlinePicked(); return; }
+    const sc = e.target.closest('[data-scope]');
+    if (sc && picked) { picked.scope = sc.dataset.scope; drawProps(); return; }
     const dot = e.target.closest('[data-prop]');
-    if (dot && picked) { preview(dot.dataset.prop, Number(dot.dataset.value)); return; }
-    if (e.target.closest('[data-reset]') && picked) {
-      picked.f.previews = {};
-      o.ask(picked.f, { type: 'restyle', clear: true }, 2000).catch(() => {}).then(() => remeasure());
-      drawProps();
-      return;
-    }
+    if (dot && picked) { save({ ...savedDials(), [dot.dataset.prop]: Number(dot.dataset.value) }); return; }
+    if (e.target.closest('[data-remove]') && picked) { save({}); return; }
     const lib = e.target.closest('[data-library]');
     if (lib) { open(null, 'library'); library.open(lib.dataset.library); }
   });

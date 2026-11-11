@@ -396,6 +396,10 @@ Rules:
   version you didn't touch is still yours to report, not to fix.
 - Only update a version in place under rule 1 above, or when the person asks for exactly
   that. Never change a version you weren't asked about.
+- A version's folder may hold design.json: changes made with the canvas's Design dials,
+  each a selector, what the dials say (type size, padding …) and the style properties the
+  playground's bridge sets on what the selector matches. Keep it as it is, and don't
+  write one yourself; a change the person asks for goes in the version's own code.
 - Write what the version changes in its "note" in versions.json, in one or two
   plain sentences: for an iteration, what changed since the version it's from.
   Leave "starred" as it is: the person stars versions, and deletes them, in the
@@ -1169,6 +1173,11 @@ playground/README.md, done for them.
   renderer, or the shared part), once, not into each screen, so every screen gets it. If
   it draws a look-alike as the component, point the look-alike's uses at the component
   and remove the look-alike once nothing uses it.
+- A pick's folder may hold design.json: changes made with the canvas's Design dials (each a
+  selector, what the dials say and the style properties they set, all steps of the
+  project's design system). Carry each into the app's own source where that part is drawn,
+  as the system's token where the app has one, for one part or, when the selector names
+  only a component, for every use of it.
 - Don't change the version folders, index.json, picks.json, versions.json or anything under
   playground/. Don't run git: the playground commits when you're done.
 - Move the design, not the version's baggage. A version is built to be tried, not kept,
@@ -1780,6 +1789,11 @@ class Handler(SimpleHTTPRequestHandler):
             # What main is now (frozen.main_stamp): the canvas runs Main again when it changes.
             self.json(200, {"stamp": frozen.main_stamp()})
             return
+        if path == "/playground/design":
+            # A version's dial changes (system.py's design.json).
+            q = urllib.parse.parse_qs(query)
+            self.json(200, {"styles": system.styles(q.get("playground", [""])[0], q.get("version", [""])[0])})
+            return
         if path == "/playground/system":
             # The design system's scales, for the canvas's Properties (system.py).
             try:
@@ -1908,6 +1922,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             port = frozen.open_copy(str(body.get("key", "")))
             self.json(200 if port else 404, {"port": port})
+        elif path == "/playground/design":
+            # The canvas's Design dials: save a part's changes in its version.
+            if not self.from_panel(("design",)):
+                self.send_error(403)
+                return
+            try:
+                body = self.read_json()
+                self.json(200, system.save(body if isinstance(body, dict) else {}))
+            except ValueError as e:
+                self.json(400, {"error": str(e)})
         elif path == "/playground/thumbs":
             if not self.from_panel(("thumbs",)):
                 self.send_error(403)

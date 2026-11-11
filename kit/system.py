@@ -27,12 +27,26 @@ group, else the token's last segment) and its value, smallest first. The
 dials in Properties offer only these values: the system is the only source.
 The playground only reads the system; it never writes to it.
 
+Changes made with the dials are saved in the iteration they're made on, in
+its folder's design.json (save()): each a selector (what it changes: one
+part by its node id, or every use of a component), what the dials say
+(type size 26, padding top 8) and the style properties they set. The app's
+bridge lays each running version's design.json over the app, so the frame,
+its frozen copy and the classic playground all show it. On Main, the first
+change starts a new exploration of the page on show, a copy of main, and is
+saved there: main itself only changes by Commit, which carries a version's
+design.json into the app's own source.
+
 Standard library only.
 """
 import json
 import re
+import time
 
-from pglib import CONFIG, ROOT
+from pglib import CONFIG, DATA, ROOT, add_to_canvas, make_version, number, playground_lock, playgrounds, read_json, screen_meta, screens, write_json
+
+DESIGN = "design.json"
+VERSION = re.compile(r"^v\d+\.\d+$")
 
 _cache = {}
 
@@ -98,3 +112,60 @@ def load():
               "modes": modes, "scales": scales}
     _cache.update(stamp=stamp, out=result)
     return result
+
+
+def styles(pg, version):
+    """The dial changes saved in a version: [{sel, label, dials, props}]."""
+    if pg not in playgrounds() or not VERSION.match(str(version)):
+        return []
+    return read_json(DATA / pg / version / DESIGN, {}).get("styles", [])
+
+
+def save(body):
+    """Saves one part's dial changes in a version (body: playground, version,
+    sel, label, dials {name: value}, props {css property: value}; empty
+    dials remove the part's changes). With no playground (Main), a new
+    exploration of body["screen"] is made first and put on the canvas.
+    Returns {playground, version, made, styles}."""
+    pg, version, made = body.get("playground"), body.get("version"), False
+    sel = str(body.get("sel") or "")
+    if not sel or len(sel) > 500:
+        raise ValueError("No part to change.")
+    if not pg:
+        screen = str(body.get("screen") or "")
+        if screen not in screens():
+            raise ValueError(f"{screen or 'That page'} isn't one of the app's screens, so it can't be explored.")
+        with playground_lock():
+            meta_path, meta = screen_meta(screen)
+            n = 1 + max([number(v["id"])[0] for v in meta["versions"] if number(v["id"])] or [0])
+            version = f"v{n}.0"
+            try:
+                make_version(screen, "default", version, str(body.get("name") or "Design dials"), meta_path, meta)
+            except SystemExit as e:
+                raise ValueError(str(e))
+            meta = read_json(meta_path)
+            for v in meta["versions"]:
+                if v["id"] == version:
+                    v["note"] = "Changed with the canvas's Design dials: each change is in design.json."
+            write_json(meta_path, meta)
+        pg, made = screen, True
+        add_to_canvas([(pg, version)])
+    if pg not in playgrounds() or not VERSION.match(str(version)) or not (DATA / pg / version).is_dir():
+        raise ValueError(f"{pg} {version} isn't a version.")
+    path = DATA / pg / version / DESIGN
+    doc = read_json(path, {})
+    doc.setdefault("$comment", "Changes made with the canvas's Design dials (playground/system.py). The playground's "
+                   "bridge sets each one's style props on what its selector matches, over this version. "
+                   "Commit carries them into the app's own source.")
+    kept = [e for e in doc.get("styles", []) if e.get("sel") != sel]
+    dials = {k: v for k, v in (body.get("dials") or {}).items() if v is not None}
+    props = {k: str(v) for k, v in (body.get("props") or {}).items() if v is not None}
+    if dials:
+        kept.append({"sel": sel, "label": str(body.get("label") or sel)[:120], "dials": dials, "props": props,
+                     "at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    if kept:
+        doc["styles"] = kept
+        write_json(path, doc)
+    else:
+        path.unlink(missing_ok=True)  # no changes left: no file
+    return {"playground": pg, "version": version, "made": made, "styles": kept}
