@@ -598,7 +598,11 @@ function escape(quiet = false) {
   return false;
 }
 
+// What opens over the canvas (the readers of Files and Library) scrolls
+// itself: the wheel and the pointer there are its own, not the canvas's.
+const overCanvas = (e) => e.target instanceof Element && e.target.closest('#workspace > *');
 stage.addEventListener('wheel', (e) => {
+  if (overCanvas(e)) return;
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.004)), e.clientX, e.clientY);
   else { view.x -= e.deltaX; view.y -= e.deltaY; draw(); }
@@ -614,7 +618,7 @@ function setSpace(down) {
   shield.hidden = !down && !pan;
 }
 stage.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || overCanvas(e)) return;
   const onCover = e.target.closest('.cv-cover');
   const onBg = e.target === stage || e.target === world || e.target === shield || e.target.classList.contains('cv-group');
   if (!space && !onCover && !onBg) return;
