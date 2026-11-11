@@ -111,7 +111,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import frozen
-from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, known_versions, playground_lock, rel, write_json, write_registry
+from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, add_to_canvas, known_versions, playground_lock, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
@@ -1127,6 +1127,8 @@ class Chat:
                         emit({"type": "changed", "playground": pg, "version": version, "new": new_ones(known_versions()), "reloaded": reloaded})
             elif kind == "result":
                 new = new_ones(known_versions())
+                if canvas:  # a new exploration made from the canvas goes on it, before the page lays out again
+                    add_to_canvas([(x["playground"], x["version"]) for x in new])
                 emit({
                     "type": "done", "ok": not event.get("is_error"), "session": event.get("session_id"),
                     "summary": event.get("result") or "", "new": new, "updated": [] if new else updated(),
@@ -1135,6 +1137,8 @@ class Chat:
                 })
                 done = True
         proc.wait()
+        if canvas and not done:  # stopped before the end: what it made is still the canvas's
+            add_to_canvas([(x["playground"], x["version"]) for x in new_ones(known_versions())])
         if notes:
             emit({"type": "notes", "notes": note_outcomes(notes_file)})
         errors.seek(0)

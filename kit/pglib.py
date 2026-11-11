@@ -26,6 +26,9 @@ DATA = ROOT / CONFIG["data"]  # the explorations, index.json, picks.json, screen
 INDEX = DATA / "index.json"
 PICKS = DATA / "picks.json"
 SCREENS = DATA / "screens.json"
+# The canvas's own (canvas.html): which explorations it shows. The data folder
+# is the classic playground's too; the canvas shows only its own explorations.
+CANVAS = HERE / "canvas.json"
 # A screen's explorations go across and their iterations down: v4.0 is
 # exploration 4, and v4.1, v4.2 … are its iterations, each from the one before
 # (or whichever it says in "from"). "default" is main, the app as it is.
@@ -89,6 +92,31 @@ def screens():
 
 def playgrounds():
     return read_json(INDEX, {"playgrounds": []}).get("playgrounds", [])
+
+
+def on_canvas():
+    """The explorations on the canvas (<screen>/v<N>), in the order they
+    joined it. Main is always there, and isn't listed."""
+    return [f["id"] for f in read_json(CANVAS, {}).get("frames", []) if isinstance(f, dict) and f.get("id")]
+
+
+def add_to_canvas(made):
+    """Puts the explorations of versions made from the canvas on it: made is
+    [(screen, version id)]. Returns the explorations that joined."""
+    doc = read_json(CANVAS, {})
+    frames = doc.get("frames", [])
+    have = {f.get("id") for f in frames if isinstance(f, dict)}
+    joined = []
+    for pg, vid in made:
+        n = number(vid)
+        key = f"{pg}/v{n[0]}" if n else None
+        if key and key not in have:
+            have.add(key)
+            joined.append(key)
+            frames.append({"id": key, "added": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    if joined:
+        write_json(CANVAS, {**doc, "frames": frames})
+    return joined
 
 
 def number(vid):

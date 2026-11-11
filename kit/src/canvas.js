@@ -9,6 +9,11 @@
 // iterations (v20.0, v20.1 …) stay inside its frame, behind a stepper.
 //
 // The foundation (frozen.py has the server's side):
+// - The canvas shows Main and its own explorations, and nothing else: the ones
+//   in playground/canvas.json, in the order they joined it. An exploration made
+//   from the canvas joins it (serve.py); one made in the classic playground
+//   stays there. Frames aren't sorted by screen: an exploration is a frame
+//   beside main, whatever pages it changes.
 // - A frame is one exploration, on the main it started from (its frozen base);
 //   its iterations stay inside it, each on that same base. Main is a frame too,
 //   the app as it is, and always live.
@@ -98,6 +103,8 @@ const { screens: SCREENS = {} } = await loadOptional('screens.json', DATA, {});
 const { playgrounds: IDS = [] } = await loadOptional('index.json', DATA, {});
 const playgrounds = (await Promise.all(IDS.map((id) => load(`${id}/versions.json`, DATA)
   .then((pg) => ({ ...pg, id, screen: id.split('/')[0] })).catch(() => null)))).filter(Boolean);
+// The explorations on the canvas (serve.py's add_to_canvas), as '<screen>/v<N>'.
+const { frames: ON = [] } = await loadOptional('../canvas.json', import.meta.url, {});
 
 // Frozen copies (frozen.py), filled in once the app is up: see syncFrozen().
 let frozen = {}; // '<screen>/<version>' → { label, commit, date, made }
@@ -111,56 +118,28 @@ const main = {
   screen: CFG.canvas?.mainScreen || Object.keys(SCREENS)[0], iters: [], v: null,
 };
 frames.push(main);
-for (const pg of playgrounds) {
-  const byMajor = new Map();
-  for (const v of pg.versions) {
-    const n = num(v.id);
-    if (!n.length) continue;
-    if (!byMajor.has(n[0])) byMajor.set(n[0], []);
-    byMajor.get(n[0]).push(v);
-  }
-  const majors = [...byMajor.keys()].sort((a, b) => b - a); // newest first
-  for (const major of majors) {
-    const iters = byMajor.get(major).sort((a, b) => num(a.id)[1] - num(b.id)[1]);
-    const id = `${pg.id}/v${major}`;
-    const v = iters.some((x) => x.id === chosen[id]) ? chosen[id] : iters.at(-1).id;
-    frames.push({
-      id, kind: 'exp', pg, major, iters, v,
-      title: iters[0].name, group: pg.title || SCREENS[pg.screen]?.title || pg.id,
-      screen: pg.start || pg.screen || pg.on?.[0],
-    });
-  }
+for (const { id } of ON) {
+  const [pgId, major] = [id.slice(0, id.lastIndexOf('/')), Number(id.slice(id.lastIndexOf('/') + 2))];
+  const pg = playgrounds.find((p) => p.id === pgId);
+  const iters = (pg?.versions || []).filter((v) => num(v.id)[0] === major).sort((a, b) => num(a.id)[1] - num(b.id)[1]);
+  if (!iters.length) continue; // deleted in the classic playground
+  const v = iters.some((x) => x.id === chosen[id]) ? chosen[id] : iters.at(-1).id;
+  frames.push({
+    id, kind: 'exp', pg, major, iters, v,
+    title: iters[0].name, group: pg.title || SCREENS[pg.screen]?.title || pg.id,
+    screen: pg.start || pg.screen || pg.on?.[0],
+  });
 }
 
-// ---- Layout: main on its own row, then a band of rows for each screen ----
+// ---- Layout: main first, then each exploration in the order it joined ----
 const world = document.getElementById('world');
 world.style.setProperty('--fw', `${W}px`);
 const stage = document.getElementById('stage');
 const shield = document.getElementById('shield');
-const labels = [];
-{
-  let y = 0;
-  main.x = 0; main.y = y;
-  y += H + ROW_GAP;
-  let group = null, col = 0;
-  for (const f of frames.slice(1)) {
-    if (f.group !== group) {
-      if (group !== null) y += H + ROW_GAP;
-      group = f.group; col = 0;
-      labels.push({ text: f.group, x: -GAP, y });
-    } else if (col === PER_ROW) {
-      col = 0; y += H + ROW_GAP;
-    }
-    f.x = col * (W + GAP); f.y = y; col++;
-  }
-}
-for (const l of labels) {
-  const el = document.createElement('div');
-  el.className = 'cv-group';
-  el.style.left = `${l.x}px`; el.style.top = `${l.y}px`;
-  el.textContent = l.text;
-  world.append(el);
-}
+frames.forEach((f, i) => {
+  f.x = (i % PER_ROW) * (W + GAP);
+  f.y = Math.floor(i / PER_ROW) * (H + ROW_GAP);
+});
 
 const iterOf = (f) => f.iters.find((x) => x.id === f.v);
 // The canvas's own pictures (serve.py's save_canvas_thumb): key → when it was taken.
@@ -296,7 +275,8 @@ function syncFrozen() {
     const r = await post('/playground/frozen/sync', 'frozen');
     if (r?.enabled) {
       frozen = r.versions || {};
-      for (const f of frames) if (f.kind === 'exp') { drawMode(f); drawFoot(f); }
+      // A sleeping frame's picture is its frozen copy's, known only now.
+      for (const f of frames) if (f.kind === 'exp') { drawMode(f); drawFoot(f); if (!f.iframe) drawPoster(f); }
     }
   })().finally(() => { freezing = null; });
   return freezing;
@@ -606,10 +586,13 @@ function fitBox(x0, y0, x1, y1, pad = 48) {
 }
 const fitAll = () => {
   const xs = frames.map((f) => f.x), ys = frames.map((f) => f.y);
-  fitBox(Math.min(...xs) - GAP * 6, Math.min(...ys) - H * 0.25, Math.max(...xs) + W, Math.max(...ys) + H);
+  fitBox(Math.min(...xs) - GAP, Math.min(...ys) - H * 0.25, Math.max(...xs) + W + GAP, Math.max(...ys) + H);
 };
 document.getElementById('btn-fit').addEventListener('click', () => { escape(true); fitAll(); });
-if (!store.get(VIEW_KEY, null)) requestAnimationFrame(fitAll); else draw();
+// The view is kept, unless the frames have changed since: then all of them.
+const LAYOUT_KEY = `${KEY}.layout`, layout = frames.map((f) => f.id).join(' ');
+if (!store.get(VIEW_KEY, null) || store.get(LAYOUT_KEY, null) !== layout) requestAnimationFrame(fitAll); else draw();
+store.set(LAYOUT_KEY, layout);
 
 // ⤢: the frame fills the window; Esc goes back to where the view was.
 let focused = null, beforeFocus = null;
@@ -657,7 +640,7 @@ function setSpace(down) {
 stage.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || overCanvas(e)) return;
   const onCover = e.target.closest('.cv-cover');
-  const onBg = e.target === stage || e.target === world || e.target === shield || e.target.classList.contains('cv-group');
+  const onBg = e.target === stage || e.target === world || e.target === shield;
   if (!space && !onCover && !onBg) return;
   pan = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, cover: onCover && !space ? onCover : null };
   shield.hidden = false;
@@ -778,7 +761,8 @@ async function afterRun(result) {
       const n = num(v.id);
       if (!n.length) continue;
       const f = frames.find((x) => x.kind === 'exp' && x.pg.id === id && x.major === n[0]);
-      if (!f) { relayout = true; continue; }
+      // A new exploration from this run joins the canvas (serve.py); the screen's others aren't on it.
+      if (!f) { if (made.some((x) => x.playground === id && num(x.version)[0] === n[0])) relayout = true; continue; }
       const i = f.iters.findIndex((x) => x.id === v.id);
       if (i >= 0) f.iters[i] = v; else f.iters.push(v);
       f.iters.sort((a, b) => num(a.id)[1] - num(b.id)[1]);

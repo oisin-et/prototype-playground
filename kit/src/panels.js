@@ -131,7 +131,10 @@ export function mountPanels(o) {
     screenTitle: titleOf,
     openFile: (path) => { library.close(); setPane('files'); files.selected = path; files.reader.show(path); files.draw(); },
     onOpen: () => { if (!files.reader.el.hidden) files.reader.close(); },
-    explorations: (id) => o.playgrounds.filter((pg) => pg.component === id),
+    // A component's explorations on the canvas: the classic playground's other ones aren't frames here.
+    explorations: (id) => o.playgrounds.filter((pg) => pg.component === id)
+      .map((pg) => ({ ...pg, versions: pg.versions.filter((v) => o.frames.some((f) => f.pg?.id === pg.id && f.iters.some((x) => x.id === v.id))) }))
+      .filter((pg) => pg.versions.length),
     picked: () => null, trying: () => null,
     versionName: (pg, v) => `${pg.title || pg.id} ${v.slice(1)}`,
     tryVersion: (pg, v) => o.showVersion(`${pg.id}/${v}`),

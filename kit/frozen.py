@@ -33,8 +33,8 @@ copy takes no room for what git has already:
   playground's plumbing, not the design, so every copy talks to the playground
   as it is now (a new message, such as X-ray's, works on old copies too).
 
-A version that was never frozen (made before this, or by hand) is frozen by
-sync(): from its "from" version's base when that one is frozen; one made
+A version on the canvas that was never frozen (made before this, or by hand)
+is frozen by sync(): from its "from" version's base when that one is frozen; one made
 today, on main as it is now ("frozen"); an older one, on main's last commit of
 its date ("rebuilt"), or today's main when git has nothing that old ("today").
 
@@ -56,7 +56,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from pglib import ADAPTER, CONFIG, DATA, HERE, ROOT, VERSION_FILE, playgrounds, read_json, versions
+from pglib import ADAPTER, CONFIG, DATA, HERE, ROOT, VERSION_FILE, on_canvas, playgrounds, read_json, versions
 
 FROZEN = HERE / "frozen"
 BLOBS = FROZEN / "blobs"
@@ -226,12 +226,13 @@ def freeze(key, source=None, date=None, cache=None):
 
 
 def sync():
-    """Freezes every version that isn't yet (made some other way than new.py
-    and iterate.py, or before they froze). Returns listing()."""
+    """Freezes every version on the canvas that isn't yet (made some other way
+    than new.py and iterate.py, or before they froze). Returns listing()."""
     if not enabled():
         return {}
     today = datetime.date.today().isoformat()
     cache = {}
+    shown = set(on_canvas())
     for pg in playgrounds():
         vs = versions(pg)
         # Sources first, so an iteration can take its source's base.
@@ -241,6 +242,8 @@ def sync():
             key = f"{pg}/{vid}"
             if not re.match(r"^v\d+\.\d+$", vid) or manifest_path(key).exists():
                 continue
+            if f"{pg}/{vid.split('.')[0]}" not in shown:
+                continue  # not on the canvas: the classic playground's only
             date = str(v.get("date", ""))
             if v.get("from") and manifest(f"{pg}/{v['from']}"):
                 freeze(key, v["from"], date, cache)
