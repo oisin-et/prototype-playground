@@ -103,13 +103,15 @@ const togglePanels = () => { const on = !panelsOpen.props || !panelsOpen.chat; s
   chat.querySelector('.pg-rail').addEventListener('click', () => { setPanel('chat', true); chat.querySelector('textarea')?.focus(); });
   chat.querySelector('[data-close]').addEventListener('click', () => setPanel('chat', false));
 }
-// The part of the stage the panels leave free (x: from the stage's left).
+// The part of the stage the panels and the toolbar leave free (x and y:
+// from the stage's left and top).
+const TOOLBAND = 52; // the toolbar, 8px from the top, and 8px under it
 function room() {
-  const s = stage.getBoundingClientRect();
-  if (narrowView()) return { left: s.left, top: s.top, width: s.width, height: s.height, x: 0 };
+  const s = stage.getBoundingClientRect(), y = TOOLBAND;
+  if (narrowView()) return { left: s.left, top: s.top + y, width: s.width, height: s.height - y, x: 0, y };
   const w = (which) => (panelsOpen[which] ? panelEl(which)?.querySelector('.pg-body')?.offsetWidth || 320 : 44);
   const l = 8 + w('props') + 8, r = 8 + w('chat') + 8;
-  return { left: s.left + l, top: s.top, width: Math.max(240, s.width - l - r), height: s.height, x: l };
+  return { left: s.left + l, top: s.top + y, width: Math.max(240, s.width - l - r), height: s.height - y, x: l, y };
 }
 
 const toastEl = document.getElementById('toast');
@@ -476,12 +478,6 @@ function setIteration(f, id) {
 function drawMode(f) {
   if (f === selected) drawTools();
 }
-function toggleMode(f) {
-  f.onMain = !f.onMain;
-  drawMode(f);
-  drawFoot(f);
-  if (f.iframe) rerun(f);
-}
 const step = (f, d) => {
   const i = f.iters.findIndex((x) => x.id === f.v);
   const next = f.iters[Math.max(0, Math.min(f.iters.length - 1, i + d))];
@@ -522,7 +518,11 @@ function selectFrame(f) {
   if (f) wake(f);
 }
 
-// ---- The frame toolbar: above the selected frame, our tools as icons ----------
+// ---- The toolbar: at the top middle, always there --------------------------
+// Its own floating piece, in the panels' colour, for the selected frame: its
+// name, then the tools that work on it (Notes, Inspect, X-ray, Screenshot),
+// then what it does with the frame (fill the window). With no frame selected
+// the tools wait, dimmed. It springs to its new width as its name changes.
 const tools = document.getElementById('tools');
 const TOOLS = [
   ['note', 'Notes: click a part to pin a note (N)', ICON.note],
@@ -530,15 +530,11 @@ const TOOLS = [
   ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
   ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
   '|',
-  ['frozen', '', ICON.frozen, 'exp'],
-  ['pick', '', ICON.pick, 'exp'],
-  '|',
-  ['files', 'The files behind this frame', ICON.files],
-  ['reload', 'Load it again', ICON.reload],
   ['fill', 'Fill the window (F)', ICON.fill],
 ];
-tools.innerHTML = TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
-  : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1] || t[0])}"${t[3] ? ` data-only="${t[3]}"` : ''}>${t[2]}</button>`)).join('');
+tools.innerHTML = `<div class="cv-tools-in"><span class="cv-tframe" aria-live="polite"></span>${TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
+  : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1])}">${t[2]}</button>`)).join('')}</div>`;
+const toolsIn = tools.firstElementChild, toolsFrame = tools.querySelector('.cv-tframe');
 tools.addEventListener('pointerdown', (e) => e.stopPropagation());
 tools.addEventListener('click', (e) => {
   const b = e.target.closest('[data-tool]');
@@ -549,51 +545,35 @@ tools.addEventListener('click', (e) => {
   else if (t === 'inspect') panels.inspector.set(!panels.inspector.on);
   else if (t === 'xray') xray.arm(!xray.armed);
   else if (t === 'shot') { aiming = !aiming; setSnap(aiming); }
-  else if (t === 'frozen') toggleMode(f);
-  else if (t === 'pick') commit?.pick(f.pg.id, f.v);
-  else if (t === 'files') panels.open(f, 'files');
-  else if (t === 'reload') { if (f.iframe) rerun(f); else wake(f); }
   else if (t === 'fill') { if (focused === f) unfocus(); else focusFrame(f); }
   drawTools();
 });
 function drawTools() {
   const f = selected;
-  tools.hidden = !f;
-  if (!f) return;
   const set = (t, on, title) => {
     const b = tools.querySelector(`[data-tool=${t}]`);
-    b.setAttribute('aria-pressed', String(!!on));
+    b.disabled = !f;
+    b.setAttribute('aria-pressed', String(!!(f && on)));
     if (title) { b.title = title; b.setAttribute('aria-label', title); }
   };
-  for (const b of tools.querySelectorAll('[data-only]')) b.hidden = b.dataset.only !== f.kind;
   set('note', notes?.on);
   set('inspect', panels?.inspector.on);
   set('xray', xray?.armed);
   set('shot', snapping);
-  set('fill', focused === f, focused === f ? 'Back to the canvas (Esc)' : 'Fill the window (F)');
-  const fill = tools.querySelector('[data-tool=fill]'), icon = focused === f ? ICON.unfill : ICON.fill;
+  set('fill', f && focused === f, f && focused === f ? 'Back to the canvas (Esc)' : 'Fill the window (F)');
+  const fill = tools.querySelector('[data-tool=fill]'), icon = f && focused === f ? ICON.unfill : ICON.fill;
   if (fill.innerHTML !== icon) fill.innerHTML = icon;
-  if (f.kind === 'exp') {
-    const fz = frozen[`${f.pg.id}/${f.v}`];
-    tools.querySelector('[data-tool=frozen]').hidden = !fz;
-    set('frozen', fz && !f.onMain, f.onMain ? "On today's main: click for its own base" : `On main as it was ${(fz?.base || fz?.date || '').slice(0, 10)}: click to lay it over today's main`);
-    const picked = commit?.picked(f.pg.id) === f.v;
-    set('pick', picked, picked ? 'Picked for main: click to unpick' : 'Pick this iteration for main: Commit moves it into the app');
+  const name = f ? (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`) : 'No frame';
+  if (toolsFrame.textContent !== name) {
+    toolsFrame.textContent = name;
+    toolsFrame.classList.toggle('main', f?.kind === 'main');
+    toolsFrame.classList.toggle('none', !f);
+    toolsFrame.title = f ? `The tools work on ${name}` : 'Click a frame to use the tools on it';
+    toolsFrame.classList.remove('swap');
+    void toolsFrame.offsetWidth;
+    toolsFrame.classList.add('swap');
   }
-  placeTools();
-}
-// Right-aligned over the frame's top edge, kept inside the canvas.
-function placeTools() {
-  const f = selected;
-  if (!f || tools.hidden) return;
-  const s = stage.getBoundingClientRect(), b = f.clip.getBoundingClientRect();
-  const w = tools.offsetWidth, h = tools.offsetHeight;
-  // Fixed to the frame's top right, like its name: it pans with the frame and
-  // never slides along the stage's edge onto the screen.
-  const left = b.right - s.left - w, top = b.top - s.top - h - 10;
-  const off = left + w < 0 || left > s.width || top + h < 0 || top > s.height;
-  tools.style.visibility = off ? 'hidden' : '';
-  tools.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+  tools.style.width = `${toolsIn.offsetWidth}px`;
 }
 let aiming = false; // the toolbar's screenshot: one drag, without ⌥
 
@@ -612,8 +592,6 @@ function draw(glide = false) {
   world.classList.toggle('tiny', W * view.z < 90);
   zoomLabel.textContent = `${Math.round(view.z * (focused ? lens.z : 1) * 100)}%`;
   notes?.moved();
-  if (glide) { const t0 = performance.now(); const follow = () => { placeTools(); if (performance.now() - t0 < 520) requestAnimationFrame(follow); }; requestAnimationFrame(follow); }
-  else placeTools();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
 }
@@ -633,7 +611,7 @@ function fitBox(x0, y0, x1, y1, pad = 48) {
   const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - pad * 2) / (x1 - x0), (s.height - pad * 2 - 80) / (y1 - y0))));
   view.z = z;
   view.x = s.x + (s.width - (x1 - x0) * z) / 2 - x0 * z;
-  view.y = (s.height - (y1 - y0) * z) / 2 - y0 * z;
+  view.y = s.y + (s.height - (y1 - y0) * z) / 2 - y0 * z;
   draw(true);
 }
 const fitAll = () => {
@@ -661,7 +639,7 @@ function lockTo(f, glide = true) {
   setSpace(false);
   const s = room();
   const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - 32) / W, (s.height - 32 - 80) / H)));
-  Object.assign(view, { z, x: s.x + (s.width - W * z) / 2 - f.x * z, y: (s.height - H * z) / 2 - f.y * z });
+  Object.assign(view, { z, x: s.x + (s.width - W * z) / 2 - f.x * z, y: s.y + (s.height - H * z) / 2 - f.y * z });
   draw(glide);
   clampLens();
   drawLens();

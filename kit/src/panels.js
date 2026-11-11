@@ -21,7 +21,7 @@
 import { FilesView } from './files.js';
 import { LibraryView } from './library.js';
 import { mountInspect } from './inspect.js';
-import { cssOf, designHTML, loadSystem } from './design.js';
+import { designHTML, loadSystem, propsOf } from './design.js';
 
 /**
  * o: {
@@ -127,7 +127,7 @@ export function mountPanels(o) {
     if (!l || p.busy) return;
     const [bx, by, bw, bh] = l.box || [0, 0, 0, 0];
     const scope = l.pg ? p.scope : 'all', sel = selOf(l, scope);
-    const props = Object.fromEntries(Object.entries(dials).flatMap(([k, v]) => cssOf(k, v)));
+    const props = propsOf(dials);
     const label = `${l.item?.name || l.component}${scope === 'all' ? ', every use' : l.pg ? ` ${l.pg}` : ''}`;
     const body = p.f.kind === 'exp'
       ? { playground: p.f.pg.id, version: p.f.v, sel, label, dials, props }
@@ -153,8 +153,22 @@ export function mountPanels(o) {
     const r = el.getBoundingClientRect(), n = dialSteps(el).length, kw = 52;
     return Math.max(0, Math.min(n - 1, Math.round(((x - r.left - 4 - kw / 2) / (r.width - 8 - kw)) * (n - 1))));
   };
-  const withStep = (dials, prop, value) => {
+  // A space dial (sl, st, sr, sb: the space to what's left of the part, …)
+  // moves the part: its step is how far, "x" or "y", from where it is now.
+  const asDial = (prop, value) => {
+    const ar = picked?.levels[picked.at]?.style?.around;
+    const k = { sl: 'left', sr: 'right', st: 'top', sb: 'bottom' }[prop];
+    if (!k || !ar) return [prop, value];
+    const d = value - ar[k], [sx, sy] = ar.shift;
+    return k === 'left' ? ['x', sx + d] : k === 'right' ? ['x', sx - d] : k === 'top' ? ['y', sy + d] : ['y', sy - d];
+  };
+  const withStep = (dials, prop0, value0) => {
+    const [prop, value] = asDial(prop0, value0);
     const next = { ...dials };
+    if ((prop === 'x' || prop === 'y') && picked?.levels[picked.at]?.style?.around) {
+      const [sx, sy] = picked.levels[picked.at].style.around.shift;
+      next.x ??= sx; next.y ??= sy;
+    }
     if (prop === 'p') { delete next.pt; delete next.pr; delete next.pb; delete next.pl; }
     else if (['pt', 'pr', 'pb', 'pl'].includes(prop) && 'p' in next) { for (const k of ['pt', 'pr', 'pb', 'pl']) next[k] ??= next.p; delete next.p; }
     next[prop] = value;
@@ -171,7 +185,7 @@ export function mountPanels(o) {
     const p = picked, l = p?.levels[p.at];
     if (!l) return value;
     const sel = selOf(l, l.pg ? p.scope : 'all');
-    o.ask(p.f, { type: 'restyle', key: `drag:${sel}`, sel, props: Object.fromEntries(cssOf(el.dataset.prop, value)) }, 2000).catch(() => {});
+    o.ask(p.f, { type: 'restyle', key: `drag:${sel}`, sel, props: propsOf(withStep(savedDials(), el.dataset.prop, value)) }, 2000).catch(() => {});
     return value;
   }
   const settle = (el, value) => save(withStep(savedDials(), el.dataset.prop, value))

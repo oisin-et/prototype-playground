@@ -253,14 +253,29 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-iter-now::before { content: '/ '; opacity: 0.6; }
 .small .cv-iter-pick, .small .cv-iter-now.main { display: none; }
 
-/* The frame toolbar: over the selected frame's top edge, at its right. */
+/* The toolbar: its own floating piece at the top middle, in the panels'
+   look and colour. It springs to its new width when its frame's name changes. */
 .cv-tools {
-  position: absolute; left: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 3px;
-  background: var(--raised); border-radius: 11px;
-  box-shadow: inset 0 0 0 1px var(--frame-edge), 0 10px 24px -10px rgba(0, 0, 0, 0.8);
+  position: absolute; top: 8px; left: 50%; z-index: 11; transform: translateX(-50%);
+  height: 44px; overflow: hidden; border-radius: 14px;
+  background: var(--chrome); box-shadow: var(--frame-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+  transition: width 560ms var(--spring);
 }
-.cv-tools .cv-icon { width: 30px; height: 30px; }
-.cv-tsep { width: 1px; height: 18px; margin: 0 3px; background: var(--page-line); }
+.cv-tools::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+}
+.cv-tools-in { display: inline-flex; align-items: center; gap: 2px; height: 100%; padding: 0 5px; width: max-content; white-space: nowrap; }
+.cv-tools .cv-icon { width: 34px; height: 34px; border-radius: 10px; }
+.cv-tools .cv-icon:disabled { opacity: 0.35; cursor: default; }
+.cv-tframe { padding: 0 10px 0 9px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.cv-tframe.main { color: var(--amber); }
+.cv-tframe.none { color: var(--page-muted); font-weight: 500; }
+.cv-tframe.swap { animation: cv-tswap 480ms var(--spring) both; }
+@keyframes cv-tswap { from { opacity: 0; transform: translateY(-6px) scale(0.94); } }
+.cv-tsep { width: 1px; height: 20px; margin: 0 4px; background: var(--page-line); }
+@media (prefers-reduced-motion: reduce) { .cv-tools { transition: none; } .cv-tframe.swap { animation: none; } }
 
 /* ---- The chat (src/composer.js), in the Claude panel at the right ----
    Its rules start with .cv-chat: inside a .pg-panel, style.css's tile look

@@ -272,6 +272,38 @@ function styleOf(el) {
     color: own ? s.color : null,
     fill: svg ? s.fill : s.backgroundColor,
     stroke: svg && s.stroke !== 'none' ? s.stroke : null,
+    around: s.position === 'absolute' || s.position === 'fixed' ? aroundOf(el, s) : null,
+  };
+}
+// A part the app places itself (position: absolute, at its own x and y): the
+// space between it and what's next to it on each side, in the part it sits
+// in (the nearest one that side, overlapping it across; else that part's
+// edge), and how far the canvas's dials have moved it ("translate").
+function aroundOf(el, s) {
+  const r = el.getBoundingClientRect(), up = el.parentElement;
+  if (!up || !r.width || !r.height) return null;
+  const k = el.offsetWidth ? r.width / el.offsetWidth : 1, n = (v) => Math.round((v / k) * 100) / 100;
+  const u = up.getBoundingClientRect();
+  const edge = { left: u.left + up.clientLeft * k, top: u.top + up.clientTop * k };
+  edge.right = edge.left + up.clientWidth * k;
+  edge.bottom = edge.top + up.clientHeight * k;
+  const out = { left: r.left - edge.left, right: edge.right - r.right, top: r.top - edge.top, bottom: edge.bottom - r.bottom };
+  const to = { left: null, right: null, top: null, bottom: null };
+  for (const o of up.children) {
+    if (o === el) continue;
+    const b = o.getBoundingClientRect();
+    if (!b.width || !b.height) continue;
+    const name = o.dataset?.component || null;
+    const across = b.top < r.bottom - 0.5 && b.bottom > r.top + 0.5, along = b.left < r.right - 0.5 && b.right > r.left + 0.5;
+    if (across && b.right <= r.left + 0.5 && r.left - b.right < out.left) { out.left = r.left - b.right; to.left = name; }
+    if (across && b.left >= r.right - 0.5 && b.left - r.right < out.right) { out.right = b.left - r.right; to.right = name; }
+    if (along && b.bottom <= r.top + 0.5 && r.top - b.bottom < out.top) { out.top = r.top - b.bottom; to.top = name; }
+    if (along && b.top >= r.bottom - 0.5 && b.top - r.bottom < out.bottom) { out.bottom = b.top - r.bottom; to.bottom = name; }
+  }
+  const t = String(s.translate || 'none').match(/-?[\d.]+/g) || [];
+  return {
+    left: n(out.left), right: n(out.right), top: n(out.top), bottom: n(out.bottom), to,
+    shift: [Math.round((+t[0] || 0) * 100) / 100, Math.round((+t[1] || 0) * 100) / 100],
   };
 }
 

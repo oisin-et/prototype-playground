@@ -27,6 +27,13 @@ const CSS = {
   p: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
 };
 export const cssOf = (prop, v) => (CSS[prop] || []).map((k) => [k, prop === 'weight' ? String(v) : `${v}px`]);
+// A part's whole set of dials as style properties. "x" and "y" (how far the
+// space dials move a part the app places itself) are one: translate.
+export const propsOf = (dials) => {
+  const out = Object.fromEntries(Object.entries(dials).flatMap(([k, v]) => cssOf(k, v)));
+  if ('x' in dials || 'y' in dials) out.translate = `${dials.x || 0}px ${dials.y || 0}px`;
+  return out;
+};
 
 const hex = (css) => {
   const m = String(css || '').match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/);
@@ -46,9 +53,12 @@ function stepsFor(kind, v) {
     return [{ value: 0, label: '0', title: 'Square' }, ...(s.radius || []).map((x) => ({ value: x.value, label: String(x.value), title: `${x.name} · ${x.value}px` })),
       { value: PILL, label: 'Full', title: 'Pill' }];
   }
-  // Spacing: the steps up to 64, or up to the value if it's beyond.
-  const top = Math.max(64, v ?? 0);
-  return (s.space || []).filter((x) => x.value <= top).map((x) => ({ value: x.value, label: String(x.value), title: `${system?.name || ''} ${x.name} · ${x.value}px` }));
+  // Spacing: the steps up to 64, or up to the value if it's beyond. The space
+  // around a part: up to 64, and the value itself when it's further.
+  const top = kind === 'around' ? 64 : Math.max(64, v ?? 0);
+  const out = (s.space || []).filter((x) => x.value <= top).map((x) => ({ value: x.value, label: String(x.value), title: `${system?.name || ''} ${x.name} · ${x.value}px` }));
+  if (kind === 'around' && v > top) out.push({ value: v, label: String(Math.round(v)), title: `${Math.round(v)}px` });
+  return out;
 }
 
 // Where a value sits on its steps: an index (between two when it's off them).
@@ -61,7 +71,7 @@ export function placeOn(steps, v) {
   return { i: lo + (v - steps[lo].value) / (steps[hi].value - steps[lo].value), on: false };
 }
 
-function dial(prop, label, v, kind, { changed, side } = {}) {
+function dial(prop, label, v, kind, { changed, side, about } = {}) {
   if (v == null) return '';
   const steps = stepsFor(kind, v);
   if (steps.length < 2) return '';
@@ -70,7 +80,7 @@ function dial(prop, label, v, kind, { changed, side } = {}) {
   const state = on ? 'on' : grid && Math.abs(v / grid - Math.round(v / grid)) < 0.01 ? 'grid' : 'off';
   const knob = on ? steps[Math.round(i)].label : v === PILL ? 'Full' : String(Math.round(v * 10) / 10);
   const title = on ? steps[Math.round(i)].title : `${v}: not one of ${system?.name || 'the system'}'s steps`;
-  return `<div class="ds-row"><span class="ds-label">${esc(label)}</span>
+  return `<div class="ds-row"><span class="ds-label"${about ? ` title="${esc(about)}"` : ''}>${esc(label)}</span>
     <div class="dl ${state}${changed ? ' changed' : ''}" data-prop="${prop}" data-steps="${esc(JSON.stringify(steps.map((x) => [x.value, x.label])))}"
       style="--n:${steps.length};--i:${i}" role="slider" tabindex="0" aria-label="${esc(label)}" aria-valuetext="${esc(knob)}" title="${esc(title)}">
       <span class="dl-dots">${steps.map(() => '<i></i>').join('')}</span><span class="dl-knob">${esc(knob)}</span>
@@ -118,7 +128,12 @@ export function designHTML(levels, at, o = {}) {
   const sides = o.sides || !even;
   const sideBtn = `<button type="button" class="ds-icon${sides ? ' on' : ''}" data-sides title="${sides ? 'One value for every side' : 'Each side on its own'}" aria-pressed="${sides}">${ICON.sides}</button>`;
   const changed = (...k) => k.some((x) => x in d);
-  const spacing = !pad.length ? '' : sides
+  // The space around a part the app places itself: a dial moves it.
+  const ar = st.around, to = (side) => (ar.to[side] ? `The space to ${ar.to[side]}` : `The space to the edge of ${levels[at + 1]?.item?.name || levels[at + 1]?.component || 'the part it sits in'}`);
+  const around = !ar ? '' : ['left', 'top', 'right', 'bottom'].map((k) => dial(`s${k[0]}`, k[0].toUpperCase() + k.slice(1), ar[k], 'around',
+    { changed: changed(k === 'left' || k === 'right' ? 'x' : 'y'), about: to(k) })).join('');
+  const usePad = pad.length && (!ar || pad.some((x) => x));
+  const spacing = !usePad ? '' : sides
     ? dial('pt', 'Top', pad[0], 'space', { changed: changed('pt', 'p'), side: sideBtn }) + dial('pr', 'Right', pad[1], 'space', { changed: changed('pr', 'p') })
       + dial('pb', 'Bottom', pad[2], 'space', { changed: changed('pb', 'p') }) + dial('pl', 'Left', pad[3], 'space', { changed: changed('pl', 'p') })
     : dial('p', 'Padding', pad[0], 'space', { changed: changed('p', 'pt', 'pr', 'pb', 'pl'), side: sideBtn });
@@ -133,7 +148,8 @@ export function designHTML(levels, at, o = {}) {
       <button type="button" data-scope="all" class="${o.scope === 'all' ? 'on' : ''}" title="Every use of ${name}">Every ${name}</button>
     </div>
     ${sec('Typography', st.text ? dial('size', 'Size', now('size', st.text.size), 'size', { changed: changed('size') }) + dial('weight', 'Weight', now('weight', st.text.weight), 'weight', { changed: changed('weight') }) : '')}
-    ${sec('Spacing', spacing + gap)}
+    ${sec('Space around', around)}
+    ${sec(ar ? 'Padding' : 'Spacing', spacing + gap)}
     ${sec('Shape', dial('radius', 'Radius', now('radius', radius), 'radius', { changed: changed('radius') }))}
     ${sec('Color', (st.text ? colour('Text', st.color, l.tokens) : '') + colour('Fill', st.fill, l.tokens) + colour('Stroke', st.stroke, l.tokens))}
     <div class="ds-bar">
