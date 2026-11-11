@@ -171,6 +171,24 @@ def data_set():
     return sid
 
 
+def main_stamp():
+    """What main is now, in a few characters: its commit, and each file that
+    differs from it (outside the data folder) with when it last changed. It
+    changes whenever main does, however it was changed (a commit, an edit,
+    the classic playground), so the canvas can run Main again."""
+    h = hashlib.sha1(git("rev-parse", "HEAD").encode())
+    changed = git("diff", "--name-only", "-z", "HEAD").split("\0")
+    untracked = git("ls-files", "--others", "--exclude-standard", "-z").split("\0")[:UNTRACKED_MAX]
+    for rel in sorted(filter(None, changed + untracked)):
+        if rel.startswith(f"{DATA_REL}/"):
+            continue
+        try:
+            h.update(f"{rel}:{(ROOT / rel).stat().st_mtime_ns}".encode())
+        except OSError:
+            h.update(f"{rel}:gone".encode())
+    return h.hexdigest()[:12]
+
+
 def dirty_files():
     """The files that differ from HEAD now, kept: {path: blob}. Those git has
     that changed, and those it doesn't track yet (and doesn't ignore), outside

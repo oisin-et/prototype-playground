@@ -1776,6 +1776,10 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/playground/frozen":
             self.json(200, frozen.listing())
             return
+        if path == "/playground/main":
+            # What main is now (frozen.main_stamp): the canvas runs Main again when it changes.
+            self.json(200, {"stamp": frozen.main_stamp()})
+            return
         if path == "/playground/system":
             # The design system's scales, for the canvas's Properties (system.py).
             try:

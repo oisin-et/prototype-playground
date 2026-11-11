@@ -18,7 +18,9 @@
 //   its iterations stay inside it, each on that same base. Main is a frame too,
 //   the app as it is, and always live.
 // - A frame shows what it runs. After a run, every frame on a version the run
-//   made or touched runs again, whatever it runs on.
+//   made or touched runs again, whatever it runs on. Main, and any frame on
+//   today's main, runs again whenever main changes on disk, however it was
+//   changed (the classic playground, a commit, an editor): /playground/main.
 // - A sleeping frame shows its own picture (playground/thumbs/_canvas), taken
 //   from its frozen copy, which never changes; or none. Never a picture taken
 //   of something else. While nobody's using the canvas, frames without one wake
@@ -305,6 +307,19 @@ function syncFrozen() {
   return freezing;
 }
 setInterval(() => { if (!document.hidden && app) syncFrozen(); }, 60000);
+// Main as it is on disk: when it changes, Main and every frame on today's
+// main run again (frozen copies don't change).
+let mainStamp = null;
+setInterval(async () => {
+  if (document.hidden || !app) return;
+  const r = await fetch('/playground/main', { cache: 'no-store' }).then((x) => x.json()).catch(() => null);
+  if (!r?.stamp) return;
+  if (mainStamp && r.stamp !== mainStamp) {
+    for (const f of frames) if (f.iframe && sourceOf(f) === 'live') { f.shots = {}; rerun(f); }
+    toast('Main changed: it runs again.');
+  }
+  mainStamp = r.stamp;
+}, 3000);
 watchApp();
 setInterval(() => { if (!document.hidden) watchApp(); }, 3000);
 
