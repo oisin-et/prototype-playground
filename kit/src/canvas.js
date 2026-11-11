@@ -518,10 +518,11 @@ function placeTools() {
   if (!f || tools.hidden) return;
   const s = stage.getBoundingClientRect(), b = f.body.getBoundingClientRect();
   const w = tools.offsetWidth, h = tools.offsetHeight;
-  const off = b.right < s.left || b.left > s.right || b.bottom < s.top || b.top > s.bottom;
+  // Fixed to the frame's top right, like its name: it pans with the frame and
+  // never slides along the stage's edge onto the screen.
+  const left = b.right - s.left - w, top = b.top - s.top - h - 10;
+  const off = left + w < 0 || left > s.width || top + h < 0 || top > s.height;
   tools.style.visibility = off ? 'hidden' : '';
-  const left = Math.max(8, Math.min(s.width - w - 8, b.right - s.left - w));
-  const top = Math.max(8, b.top - s.top - h - 10);
   tools.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
 }
 let aiming = false; // the toolbar's screenshot: one drag, without ⌥
