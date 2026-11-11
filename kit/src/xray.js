@@ -2,8 +2,8 @@
 // the frame toolbar. Part of the prototype-playground kit. After Gridray.
 //
 // The app's bridge lists every element in the area (`xray`); this draws them
-// over the frame: the area hatched, each element that holds nothing else
-// lit with a sheen and its size, and the space around things as dashed lines
+// over the frame: the area outlined, each element that holds nothing else
+// lit with a sheen (unless it's a background: others sit on it) and its size, and the space around things as dashed lines
 // with their numbers: a container's padding (from its edge to what it holds)
 // and the gaps between neighbours. Every number is in the app's own pixels
 // (its CSS pixels, below any scale), and counts up to its value. The drawing
@@ -113,12 +113,17 @@ export function mountXray(o) {
     const scale = median(els.map((e) => e.s).filter(Boolean)) || 1;
     const parts = [];
 
-    // The area: hatched, with its size below.
+    // The area: outlined, with its size below.
     parts.push(`<div class="cv-xsel" style="left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px"></div>`);
     parts.push(pill('size', 'sel', r.x + r.w / 2, r.y + r.h, [unit(r.w, scale), unit(r.h, scale)]));
 
-    // What holds nothing else: lit with a sheen.
-    const leaves = els.map((e, i) => i).filter((i) => !kids[i].length && overlaps(els[i].box, r));
+    // What holds nothing else: lit with a sheen. Not a background, though (a
+    // part that fills most of the area, or that three or more others are
+    // drawn over): it stays plain, so the parts and their numbers stand out.
+    const covers = (a, b) => a[0] <= b[0] + 0.5 && a[1] <= b[1] + 0.5 && a[0] + a[2] >= b[0] + b[2] - 0.5 && a[1] + a[3] >= b[1] + b[3] - 0.5;
+    const background = (i) => area(clip(els[i].box, r)) >= 0.5 * r.w * r.h
+      || els.filter((e, j) => j !== i && area(e.box) < area(els[i].box) && covers(els[i].box, e.box)).length >= 3;
+    const leaves = els.map((e, i) => i).filter((i) => !kids[i].length && overlaps(els[i].box, r) && !background(i));
     leaves.sort((a, b) => area(els[b].box) - area(els[a].box));
     for (const i of leaves.slice(0, 160)) {
       const [x, y, w, h] = clip(els[i].box, r);
