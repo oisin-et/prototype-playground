@@ -230,7 +230,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-side { position: absolute; top: 8px; bottom: 8px; z-index: 10; display: flex; }
 .cv-side.at-left { left: 8px; }
 .cv-side.at-right { right: 8px; }
-.cv-side > .pg-panel { height: 100%; }
+.cv-side > .pg-panel { height: 100%; background: var(--chrome); } /* the header's colour */
 .cv-side .pg-body { height: 100%; }
 .pg-claude .pg-rail-label { transform: none; }
 
