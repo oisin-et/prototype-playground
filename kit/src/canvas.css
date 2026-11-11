@@ -226,22 +226,28 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-share { margin-left: 6px; }
 .cv-share:disabled { opacity: 0.45; cursor: default; filter: none; }
 
-/* Properties and Files at the left, in the card; the chat at the right, joined to the header. */
-.cv-layout { position: fixed; inset: 48px 0 0 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
-.cv-layout > .cv-left { grid-column: 2; grid-row: 1; }
-.cv-layout > .cv-card { grid-column: 1; grid-row: 1; }
-body.no-left .cv-layout { grid-template-columns: minmax(0, 1fr); }
+/* Both sides are joined to the header: Properties and Files at the left,
+   the chat at the right; the canvas is the card between them. (The ids and
+   classes name what each holds: .cv-right is Properties, .cv-left the chat.) */
+.cv-layout {
+  position: fixed; inset: 48px 0 0 0; display: grid;
+  grid-template-columns: var(--props-w, 300px) minmax(0, 1fr) var(--chat-w, 340px);
+  grid-template-areas: 'props card chat';
+}
+.cv-layout > .cv-right { grid-area: props; }
+.cv-layout > .cv-card { grid-area: card; }
+.cv-layout > .cv-left { grid-area: chat; }
+body.no-left .cv-layout { --chat-w: 0px; }
 body.no-left .cv-left { display: none; }
+body.no-right .cv-layout { --props-w: 0px; }
+body.no-right .cv-right { display: none; }
 .cv-card {
-  position: relative; display: grid; grid-template-columns: 300px minmax(0, 1fr); min-width: 0;
-  margin: 0 0 8px 8px; border-radius: 14px; overflow: hidden;
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0;
+  margin: 0 0 8px; border-radius: 14px; overflow: hidden;
   background: var(--page); box-shadow: inset 0 0 0 1px var(--frame-edge);
 }
-.cv-card > .cv-right { grid-column: 1; grid-row: 1; }
-.cv-card > .cv-stage { grid-column: 2; grid-row: 1; }
+body.no-right .cv-card { margin-left: 8px; }
 body.no-left .cv-card { margin-right: 8px; }
-body.no-right .cv-card { grid-template-columns: 0 minmax(0, 1fr); }
-body.no-right .cv-right { display: none; }
 
 /* ---- The frame: its branch and iteration above it; the rest is in Properties ---- */
 .cv-foot { display: none; }
@@ -319,12 +325,12 @@ body.no-right .cv-right { display: none; }
 .cm-shot button { position: absolute; top: -6px; right: -6px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 12px; }
 
 /* ---- The right panel (src/panels.js): Properties, Files, Library ---- */
-.cv-right { display: flex; min-width: 0; min-height: 0; border-right: 1px solid var(--page-line); background: var(--page); }
+.cv-right { display: flex; min-width: 0; min-height: 0; background: var(--chrome); }
 .cv-right > .pg-panel { flex: 1; width: auto; height: 100%; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .cv-right > .pg-panel::after { display: none; }
 .cv-right .pg-body { width: 100%; }
 .cv-right .pg-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.cv-right .pg-head { padding: 12px 10px 8px 14px; }
+.cv-right .pg-head { padding: 4px 10px 8px 14px; }
 .cv-props { overflow-y: auto; padding: 4px 14px 16px; }
 .cv-props h3 { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; font-size: 14px; font-weight: 600; color: #fff; }
 .cv-props h3 svg { color: var(--accent); }

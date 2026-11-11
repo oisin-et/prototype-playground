@@ -12,8 +12,8 @@
   <!-- The canvas version of the playground (branch "canvas"). Main and every
        exploration are frames on one canvas; each frame is the app itself,
        running its own layers. The chat sits at the right, joined to the
-       header; the canvas is the card beside it, with Properties, Files
-       and Library at its left. Both sides close, to give the canvas room.
+       header; Properties, Files and Library sit at the left, joined to it
+       the same way; the canvas is the card between them. Both sides close, to give the canvas room.
        See src/canvas.js. -->
   <header class="cv-bar" id="subbar">
     <button type="button" class="cv-icon" id="btn-right" aria-label="Show or hide Properties and Files" aria-pressed="true" title="Properties and Files"></button>
@@ -29,7 +29,7 @@
   </header>
 
   <div class="cv-layout">
-    <aside class="cv-left" id="composer" aria-label="Chat with Claude"></aside>
+    <aside class="cv-right" id="right" aria-label="Properties and files"></aside>
     <div class="cv-card">
       <main class="cv-stage" id="stage" aria-label="Canvas">
         <div class="cv-world" id="world"></div>
@@ -39,8 +39,8 @@
         <!-- The readers of Files and Library open over the canvas. -->
         <div class="cv-workspace" id="workspace"></div>
       </main>
-      <aside class="cv-right" id="right" aria-label="Properties and files"></aside>
     </div>
+    <aside class="cv-left" id="composer" aria-label="Chat with Claude"></aside>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
 
