@@ -192,19 +192,31 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber); animation: cv-blink 1s infinite alternate; }
 @keyframes cv-blink { to { opacity: 0.3; } }
 
-/* ---- The layout: header and chat on the chrome, the canvas a card beside them ---- */
-.cv-bar {
-  position: fixed; inset: 0 0 auto 0; height: 48px; z-index: 10;
-  display: flex; align-items: center; gap: 6px; padding: 0 10px;
-  background: var(--chrome);
+/* ---- No header: the floating pieces at the top ----
+   Each is a round card in the panels' look, in the room the panels leave
+   (--room-l, --room-r: canvas.js), gliding with them. */
+:root { --room-l: 336px; --room-r: 396px; }
+.cv-top { position: fixed; inset: 0 0 auto 0; height: 0; z-index: 12; pointer-events: none; }
+.cv-top > * { pointer-events: auto; }
+.cv-float {
+  position: relative; height: 44px; border-radius: 22px;
+  background: var(--chrome); box-shadow: var(--frame-shadow), inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
 }
-.cv-bar h1 { font-size: 14px; font-weight: 600; margin: 0 0 0 4px; color: #fff; white-space: nowrap; }
-.cv-spacer { flex: 1; }
-.cv-status { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; background: var(--amber); }
+.cv-home { position: absolute; top: 34px; left: var(--room-l); display: grid; place-items: center; width: 44px; transition: left 560ms var(--spring); }
+.cv-home .cv-icon { width: 36px; height: 36px; border-radius: 18px; }
+.cv-center {
+  position: absolute; top: 8px; left: calc((var(--room-l) + 100vw - var(--room-r)) / 2); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; transition: left 560ms var(--spring);
+}
+.cv-brand { display: flex; align-items: center; gap: 7px; height: 20px; }
+.cv-brand h1 { font-size: 13px; font-weight: 600; margin: 0; color: #fff; white-space: nowrap; }
+.cv-status { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
 .cv-status[data-state=ready] { background: #5fd08a; }
 .cv-status[data-state=error] { background: #ff5a6e; }
-.cv-zoom { font-size: 12px; color: var(--page-muted); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; margin-right: 2px; }
-.cv-bar .pg-inspect-btn { display: none; } /* the frame toolbar has Inspect */
+.cv-actions { position: absolute; top: 34px; right: var(--room-r); display: flex; gap: 8px; transition: right 560ms var(--spring); }
+#subbar .pg-inspect-btn { display: none; } /* the toolbar has Inspect */
+@media (prefers-reduced-motion: reduce) { .cv-home, .cv-center, .cv-actions { transition: none; } }
 
 /* Icon buttons: the header's and the frame toolbar's. */
 .cv-icon {
@@ -215,17 +227,17 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-icon[aria-pressed=true] { color: var(--accent); background: rgba(37, 195, 255, 0.13); }
 .cv-icon svg { display: block; }
 
-/* Commit is the primary action, Share the secondary one. */
-.cv-commit, .cv-share { min-height: 32px; padding: 0 14px; border-radius: 9px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
-.cv-commit { background: var(--accent); color: #0b0b0d; box-shadow: none; }
+/* Commit is the primary action; Share is a round icon beside it. */
+.cv-commit, .cv-share { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.cv-commit { padding: 0 20px; background: var(--accent); color: #0b0b0d; box-shadow: var(--frame-shadow); }
 .cv-commit .cv-count { background: #0b0b0d; color: var(--accent); }
-.cv-share { margin-left: 6px; }
-.cv-share:disabled { opacity: 0.45; cursor: default; filter: none; }
+.cv-share { width: 44px; padding: 0; color: var(--page-text); }
+.cv-share:disabled { color: var(--page-muted); cursor: default; filter: none; }
 
 /* The canvas fills everything under the header, and the classic
    playground's panels float over it, 8px from everything (style.css has
    .pg-panel: the frosted card, the 44px strip it minimises to, its spring). */
-.cv-layout { position: fixed; inset: 48px 0 0 0; }
+.cv-layout { position: fixed; inset: 0; }
 .cv-card { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); background: var(--page); }
 .cv-side { position: absolute; top: 8px; bottom: 8px; z-index: 10; display: flex; }
 .cv-side.at-left { left: 8px; }
@@ -255,26 +267,16 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 
 /* The toolbar: its own floating piece at the top middle, in the panels'
    look and colour. It springs to its new width when its frame's name changes. */
-.cv-tools {
-  position: absolute; top: 8px; left: 50%; z-index: 11; transform: translateX(-50%);
-  height: 44px; overflow: hidden; border-radius: 14px;
-  background: var(--chrome); box-shadow: var(--frame-shadow);
-  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
-  transition: width 560ms var(--spring);
-}
-.cv-tools::after {
-  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight);
-}
+.cv-tools { overflow: hidden; transition: width 560ms var(--spring); }
 .cv-tools-in { display: inline-flex; align-items: center; gap: 2px; height: 100%; padding: 0 5px; width: max-content; white-space: nowrap; }
-.cv-tools .cv-icon { width: 34px; height: 34px; border-radius: 10px; }
+.cv-tools .cv-icon { width: 36px; height: 36px; border-radius: 18px; }
 .cv-tools .cv-icon:disabled { opacity: 0.35; cursor: default; }
-.cv-tframe { padding: 0 10px 0 9px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.cv-tframe { padding: 0 8px 0 12px; font-size: 13px; font-weight: 600; color: var(--accent); }
 .cv-tframe.main { color: var(--amber); }
 .cv-tframe.none { color: var(--page-muted); font-weight: 500; }
 .cv-tframe.swap { animation: cv-tswap 480ms var(--spring) both; }
 @keyframes cv-tswap { from { opacity: 0; transform: translateY(-6px) scale(0.94); } }
-.cv-tsep { width: 1px; height: 20px; margin: 0 4px; background: var(--page-line); }
+.cv-tsep { width: 1px; height: 20px; margin: 0 6px; background: var(--page-line); }
 @media (prefers-reduced-motion: reduce) { .cv-tools { transition: none; } .cv-tframe.swap { animation: none; } }
 
 /* ---- The chat (src/composer.js), in the Claude panel at the right ----
@@ -438,3 +440,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-xpill.size { background: var(--xb); color: #fff; }
 .cv-xpill.gap { background: #0b1830; color: var(--xl); box-shadow: inset 0 0 0 calc(1px * var(--inv)) rgba(125, 180, 255, 0.35); }
 @media (prefers-reduced-motion: reduce) { .cv-xbox::after { animation: none; } }
+
+/* ⤢ on each frame, at its top right corner: on the selected frame, and on any
+   other while the pointer is over it. */
+.cv-head .cv-fill {
+  flex: none; margin-left: auto; width: calc(24px * var(--inv)); min-height: calc(24px * var(--inv)); height: calc(24px * var(--inv));
+  padding: 0; border-radius: calc(6px * var(--inv)); opacity: 0; transition: opacity 0.15s ease;
+}
+.cv-head .cv-fill svg { width: calc(14px * var(--inv)); height: calc(14px * var(--inv)); }
+.cv-frame:hover .cv-fill, .cv-frame.selected .cv-fill, .cv-frame.focused .cv-fill, .cv-fill:focus-visible { opacity: 1; }

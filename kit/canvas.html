@@ -15,16 +15,22 @@
        and the classic playground's panels float over it: Properties, Files
        and Library at the left, Claude at the right. Each minimises to a strip
        at its edge and springs open again from it. See src/canvas.js. -->
-  <header class="cv-bar" id="subbar">
-    <span class="cv-status" id="status" data-state="busy" title="Starting the app…"></span>
-    <h1 id="name">Playground</h1>
-    <span class="cv-spacer spacer"></span>
-    <span class="cv-zoom" id="zoom-label">100%</span>
-    <button type="button" class="cv-icon" id="btn-fit" aria-label="Show every frame" title="Show every frame (⇧1)"></button>
-    <a class="cv-icon" id="classic" target="_blank" rel="noopener" aria-label="The classic playground" title="The classic playground"></a>
-    <button type="button" class="cv-share" id="btn-share" disabled title="Sharing with the team comes with the team version">Share</button>
-    <button type="button" class="cv-commit" id="btn-commit" title="Move the picked iterations into the app and commit them">Commit</button>
-  </header>
+  <!-- No header: what it held floats over the canvas, in the panels' look,
+       in the room the panels leave. Home (every frame) at the left; the
+       project's name over the toolbar in the middle; Share and Commit at the
+       right. Inspect's own button (inspect.js) waits hidden in #subbar. -->
+  <div class="cv-top" id="subbar">
+    <div class="cv-float cv-home"><button type="button" class="cv-icon" id="btn-fit" aria-label="Show every frame" title="Show every frame (⇧1)"></button></div>
+    <div class="cv-center">
+      <div class="cv-brand"><span class="cv-status" id="status" data-state="busy" title="Starting the app…"></span><h1 id="name">Playground</h1></div>
+      <div class="cv-tools cv-float" id="tools" role="toolbar" aria-label="Tools for the selected frame"></div>
+    </div>
+    <div class="cv-actions">
+      <button type="button" class="cv-float cv-share" id="btn-share" disabled aria-label="Share" title="Sharing with the team comes with the team version"></button>
+      <button type="button" class="cv-float cv-commit" id="btn-commit" title="Move the picked iterations into the app and commit them">Commit</button>
+    </div>
+    <span class="spacer" hidden></span>
+  </div>
 
   <div class="cv-layout">
     <div class="cv-card">
@@ -36,8 +42,6 @@
         <div class="cv-workspace" id="workspace"></div>
       </main>
     </div>
-    <!-- The toolbar, at the top middle: the selected frame's tools. -->
-    <div class="cv-tools" id="tools" role="toolbar" aria-label="Tools for the selected frame"></div>
     <!-- The panels: src/panels.js puts Properties, Files and Library in the left one. -->
     <aside class="cv-side at-left" id="side-props" aria-label="Properties and files"></aside>
     <aside class="cv-side at-right" aria-label="Chat with Claude">

@@ -74,10 +74,7 @@ const ROW_GAP = Math.round(H * 0.45);
 
 document.getElementById('name').textContent = NAME;
 document.title = `${NAME} · Canvas`;
-const classic = document.getElementById('classic');
-if (CFG.canvas?.classic) classic.href = CFG.canvas.classic; else classic.hidden = true;
-classic.innerHTML = ICON.external;
-document.getElementById('btn-fit').innerHTML = ICON.fit;
+document.getElementById('btn-fit').innerHTML = ICON.home;
 document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
 
 // The panels, the classic playground's: Properties, Files and Library at the
@@ -95,8 +92,17 @@ function setPanel(which, on) {
   el?.classList.toggle('min', !on);
   el?.querySelector('.pg-rail')?.setAttribute('aria-expanded', String(on));
   store.set(`${KEY}.panels`, panelsOpen);
+  placeTop();
   if (focused) lockTo(focused); // the frame fills the room the panels leave
 }
+// The floating pieces at the top sit in the room the panels leave, and glide
+// with them.
+function placeTop() {
+  const s = room(), b = stage.getBoundingClientRect();
+  document.documentElement.style.setProperty('--room-l', `${s.x}px`);
+  document.documentElement.style.setProperty('--room-r', `${Math.max(0, b.width - s.x - s.width)}px`);
+}
+addEventListener('resize', () => placeTop());
 const togglePanels = () => { const on = !panelsOpen.props || !panelsOpen.chat; setPanel('props', on); setPanel('chat', on); };
 {
   const chat = panelEl('chat');
@@ -105,7 +111,7 @@ const togglePanels = () => { const on = !panelsOpen.props || !panelsOpen.chat; s
 }
 // The part of the stage the panels and the toolbar leave free (x and y:
 // from the stage's left and top).
-const TOOLBAND = 52; // the toolbar, 8px from the top, and 8px under it
+const TOOLBAND = 88; // the name and the toolbar over the canvas, and 8px under them
 function room() {
   const s = stage.getBoundingClientRect(), y = TOOLBAND;
   if (narrowView()) return { left: s.left, top: s.top + y, width: s.width, height: s.height - y, x: 0, y };
@@ -184,6 +190,7 @@ for (const f of frames) {
       <span class="cv-title">${f.kind === 'main' ? ICON.main : ICON.branch}<b>${esc(f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`)}</b></span>
       ${f.kind === 'exp' ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select></label>` : `<span class="cv-iter-now main"></span>`}
+      <button type="button" class="cv-fill cv-icon"></button>
     </header>
     <div class="cv-body"><div class="cv-lens">
       <img class="cv-poster" alt="" draggable="false">
@@ -204,6 +211,8 @@ for (const f of frames) {
     f.select.addEventListener('change', () => setIteration(f, f.select.value));
   }
   el.querySelector('.cv-head').addEventListener('pointerdown', () => selectFrame(f));
+  el.querySelector('.cv-fill').addEventListener('pointerdown', (e) => e.stopPropagation());
+  el.querySelector('.cv-fill').addEventListener('click', (e) => { e.stopPropagation(); if (focused === f) unfocus(); else { selectFrame(f); focusFrame(f); } });
   world.append(el);
   drawPoster(f);
   drawFoot(f);
@@ -525,12 +534,12 @@ function selectFrame(f) {
 // the tools wait, dimmed. It springs to its new width as its name changes.
 const tools = document.getElementById('tools');
 const TOOLS = [
-  ['note', 'Notes: click a part to pin a note (N)', ICON.note],
+  '|',
   ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
   ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
-  ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
   '|',
-  ['fill', 'Fill the window (F)', ICON.fill],
+  ['note', 'Notes: click a part to pin a note (N)', ICON.note],
+  ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
 ];
 tools.innerHTML = `<div class="cv-tools-in"><span class="cv-tframe" aria-live="polite"></span>${TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
   : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1])}">${t[2]}</button>`)).join('')}</div>`;
@@ -545,7 +554,6 @@ tools.addEventListener('click', (e) => {
   else if (t === 'inspect') panels.inspector.set(!panels.inspector.on);
   else if (t === 'xray') xray.arm(!xray.armed);
   else if (t === 'shot') { aiming = !aiming; setSnap(aiming); }
-  else if (t === 'fill') { if (focused === f) unfocus(); else focusFrame(f); }
   drawTools();
 });
 function drawTools() {
@@ -560,9 +568,13 @@ function drawTools() {
   set('inspect', panels?.inspector.on);
   set('xray', xray?.armed);
   set('shot', snapping);
-  set('fill', f && focused === f, f && focused === f ? 'Back to the canvas (Esc)' : 'Fill the window (F)');
-  const fill = tools.querySelector('[data-tool=fill]'), icon = f && focused === f ? ICON.unfill : ICON.fill;
-  if (fill.innerHTML !== icon) fill.innerHTML = icon;
+  // ⤢ is on each frame, at its top right corner.
+  for (const x of frames) {
+    const b = x.el.querySelector('.cv-fill'), on = focused === x, icon = on ? ICON.unfill : ICON.fill;
+    if (b.innerHTML !== icon) b.innerHTML = icon;
+    const t = on ? 'Back to the canvas (Esc)' : 'Fill the window (F)';
+    b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(on));
+  }
   const name = f ? (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`) : 'No frame';
   if (toolsFrame.textContent !== name) {
     toolsFrame.textContent = name;
@@ -581,7 +593,7 @@ let aiming = false; // the toolbar's screenshot: one drag, without ⌥
 const VIEW_KEY = `${KEY}.view`;
 const view = { x: 40, y: 80, z: 0.12, ...store.get(VIEW_KEY, {}) };
 const ZMIN = 0.02, ZMAX = 2;
-const zoomLabel = document.getElementById('zoom-label');
+const zoomLabel = document.createElement('span'); // no zoom number on show
 let saveTimer = 0;
 function draw(glide = false) {
   world.classList.toggle('glide', glide && !matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -620,7 +632,8 @@ const fitAll = () => {
   fitBox(Math.min(...xs) - GAP, Math.min(...ys) - H * 0.25, Math.max(...xs) + W + GAP, Math.max(...ys) + H);
 };
 const btnFit = document.getElementById('btn-fit');
-btnFit.addEventListener('click', () => fitAll());
+btnFit.addEventListener('click', () => { unfocus(); fitAll(); });
+requestAnimationFrame(placeTop);
 // The view is kept, unless the frames have changed since: then all of them.
 const LAYOUT_KEY = `${KEY}.layout`, layout = frames.map((f) => f.id).join(' ');
 if (!store.get(VIEW_KEY, null) || store.get(LAYOUT_KEY, null) !== layout) requestAnimationFrame(fitAll); else draw();
@@ -644,7 +657,7 @@ function lockTo(f, glide = true) {
   clampLens();
   drawLens();
 }
-const fitTitle = (t) => { btnFit.title = t; btnFit.setAttribute('aria-label', t.replace(/ \(.*\)$/, '')); };
+const fitTitle = () => {}; // Home always shows every frame
 
 // Inside the frame that fills the window: its own zoom, in the frame's pixels,
 // on the layer that holds the app and what's laid over it (notes, X-ray,
@@ -752,7 +765,7 @@ stage.addEventListener('pointermove', (e) => {
 const endPan = () => {
   if (!pan) return;
   if (!pan.moved && pan.cover) selectFrame(frames.find((f) => f.el.contains(pan.cover)));
-  else if (!pan.moved && !space && !focused) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); }
+  else if (!pan.moved && !space && !focused) selectFrame(null);
   pan = null;
   shield.hidden = !space;
 };
@@ -772,7 +785,7 @@ addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); zoomKey(e.key); return; }
   if (typing(e.target)) return;
   if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) { e.preventDefault(); fitAll(); }
-  else if (e.key === 'Escape') { if (readerOpen()) return; if (!unfocus()) { selected?.el.classList.remove('selected'); selected = null; drawTarget(); } }
+  else if (e.key === 'Escape') { if (readerOpen()) return; if (!unfocus()) selectFrame(null); }
   else if (selected && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selected.iters.length > 1) { e.preventDefault(); step(selected, e.key === 'ArrowLeft' ? -1 : 1); }
   else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? unfocus() : focusFrame(selected); }
 });
