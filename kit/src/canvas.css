@@ -397,7 +397,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 /* The readers of Files and Library: over the canvas. */
 .cv-workspace { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
 .cv-workspace > * { pointer-events: auto; }
-.cv-workspace > .pg-reader { top: 60px; bottom: 8px; left: 336px; right: 404px; } /* the panels' height, under the top row */
+.cv-workspace > .pg-reader { top: 60px; bottom: 8px; left: 336px; right: 404px; background: var(--chrome); } /* the panels' height, under the top row */
 .cv-layout:has(.pg-files.min) .cv-workspace > .pg-reader { left: 60px; }
 .cv-layout:has(.pg-claude.min) .cv-workspace > .pg-reader { right: 68px; }
 @media (max-width: 760px) { .cv-layout .cv-workspace > .pg-reader { left: 8px; right: 8px; min-width: 0; } }

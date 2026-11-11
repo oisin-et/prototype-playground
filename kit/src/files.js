@@ -533,7 +533,11 @@ class Reader {
     document.getElementById('workspace')?.append(this.el);
     this.el.addEventListener('click', async (e) => {
       if (e.target.closest('[data-close]')) this.close();
-      if (e.target.closest('[data-reveal]')) { this.files.setMode('all'); this.files.reveal(this.path); }
+      if (e.target.closest('[data-finder]')) {
+        const r = await fetch('/playground/files/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'files' }, body: JSON.stringify({ path: this.path }) })
+          .then((x) => x.json()).catch(() => ({ error: 'The playground isn’t answering' }));
+        if (r.error) this.flash('Couldn’t open');
+      }
       if (e.target.closest('[data-copy]')) {
         try { await navigator.clipboard.writeText(this.path); this.flash('Copied'); } catch { this.flash('Couldn’t copy'); }
       }
@@ -581,7 +585,6 @@ class Reader {
     this.mtime = f?.mtime;
     const old = this.el.querySelector('.r-body');
     const keep = !first && !force && old ? old.scrollTop : 0;
-    const abs = this.files.root ? `${this.files.root}/${path}` : '';
     const isMd = f?.kind === 'text' && MD.test(path);
     const meta = [];
     let body;
@@ -600,9 +603,9 @@ class Reader {
       const shown = all.slice(0, MAX_LINES);
       meta.push(`${all.length} line${all.length === 1 ? '' : 's'}`);
       body = `<pre class="r-text${WRAP.test(path) ? ' wrap' : ''}">${shown.map((l) => `<span>${esc(l) || ' '}</span>`).join('')}</pre>`
-        + (shown.length < all.length ? `<p class="r-note">Showing the first ${shown.length} of ${all.length} lines. Open it in VS Code to see the rest.</p>` : '');
+        + (shown.length < all.length ? `<p class="r-note">Showing the first ${shown.length} of ${all.length} lines. Open it in Finder to see the rest.</p>` : '');
     }
-    if (f?.truncated) body += '<p class="r-note">Only the first megabyte is shown. Open it in VS Code to see the rest.</p>';
+    if (f?.truncated) body += '<p class="r-note">Only the first megabyte is shown. Open it in Finder to see the rest.</p>';
     const mk = f ? this.files.markOf(path, false) : null;
     const chips = (mk ? `<span class="r-chip m-${esc(mk.tone)}" title="From git">${esc(mk.why || mk.letter)}</span>` : '')
       + (f && this.files.isIgnored(path) ? '<span class="r-chip" title="From git">Ignored by git</span>' : '');
@@ -612,8 +615,7 @@ class Reader {
     this.el.innerHTML = `
       <div class="r-head">${iconOf(path)}<span class="r-title"><b title="${esc(path)}">${esc(nameOf(path))}</b>${parentOf(path) ? `<small title="${esc(path)}">${esc(parentOf(path))}</small>` : ''}</span>
         <button type="button" data-copy title="Copy the path, from the project's folder">Copy path</button>
-        <button type="button" data-reveal title="Show it in All files">Show in folder</button>
-        ${abs ? `<a href="vscode://file${esc(encodeURI(abs))}" title="Open it in VS Code">${ICON.editor} Open</a>` : ''}
+        <button type="button" data-finder title="Show it in Finder">Open in Finder</button>
         <button type="button" class="pg-min" data-close aria-label="Close the file" title="Close (Esc)">×</button></div>
       <div class="r-meta"><span>${esc(facts)}</span>${chips}<span class="grow"></span>${seg}</div>
       <div class="r-body">${body}</div>`;

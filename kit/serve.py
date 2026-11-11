@@ -1658,6 +1658,21 @@ def inside(relpath=""):
     return p
 
 
+def reveal(relpath):
+    """Shows a project file in Finder, selected (or in the system's file
+    manager: Explorer, or its folder on Linux)."""
+    p = inside(relpath)
+    if not os.path.exists(p):
+        raise ValueError("No such file")
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", p])
+    elif os.name == "nt":
+        subprocess.Popen(["explorer", f"/select,{p}"])
+    else:
+        subprocess.Popen(["xdg-open", p if os.path.isdir(p) else os.path.dirname(p)])
+    return {"ok": True}
+
+
 def natural(name):
     return [int(s) if s.isdigit() else s.casefold() for s in re.split(r"(\d+)", name)]
 
@@ -1922,6 +1937,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             port = frozen.open_copy(str(body.get("key", "")))
             self.json(200 if port else 404, {"port": port})
+        elif path == "/playground/files/reveal":
+            # The file reader's Open: the file in Finder (or the system's file manager).
+            if not self.from_panel(("files",)):
+                self.send_error(403)
+                return
+            try:
+                body = self.read_json() or {}
+                self.json(200, reveal(str(body.get("path") or "")))
+            except (ValueError, OSError) as e:
+                self.json(400, {"error": str(e)})
         elif path == "/playground/design":
             # The canvas's Design dials: save a part's changes in its version.
             if not self.from_panel(("design",)):
