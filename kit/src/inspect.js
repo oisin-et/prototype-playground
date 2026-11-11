@@ -5,7 +5,8 @@
 // screen's own copy of a part, a copy, a look-alike or a primitive), the
 // parts it sits in, its size, the tokens its drawing uses (with their
 // values) and any colour written out instead of a token. ↑ and ↓ move out to
-// the part it's in and back in. A click opens its page in the Library. I or
+// the part it's in and back in. A click opens its page in the Library (on the
+// canvas, hooks.pick: it picks the part, for Properties' Design). I or
 // Esc stops; it and note mode turn each other off. Part of the
 // prototype-playground kit.
 //
@@ -109,7 +110,7 @@ export const mountInspect = ({ library, hooks, open, onStart }) => {
       <div class="pg-irow dim">${Math.round(w)} × ${Math.round(h)}${l.pg ? ` · <code>${esc(l.pg)}</code>` : ''} · drawn by <code>${esc(l.component)}</code></div>
       ${l.tokens?.length ? `<div class="pg-itokens">${l.tokens.map((t) => `<span title="${esc(t.value)}"><i style="background:${esc(t.value)}"></i>${esc(t.name.replace(/^--/, ''))}</span>`).join('')}</div>` : ''}
       ${l.raw?.length ? `<div class="pg-iraw">${l.raw.length === 1 ? 'A colour' : `${l.raw.length} colours`} not from a token: ${l.raw.map((c) => `<span><i style="background:${esc(c)}"></i>${esc(c)}</span>`).join('')}</div>` : ''}
-      <div class="pg-ihint">${x ? 'Click to open it in the Library' : 'Nothing in the Library for this'}${levels.some((p, i) => i > at && worth(p)) ? ' · ↑ the part it’s in' : ''}${levels.some((p, i) => i < at && worth(p)) ? ' · ↓ back in' : ''}</div>`;
+      <div class="pg-ihint">${hooks.pick ? 'Click to see its design' : x ? 'Click to open it in the Library' : 'Nothing in the Library for this'}${levels.some((p, i) => i > at && worth(p)) ? ' · ↑ the part it’s in' : ''}${levels.some((p, i) => i < at && worth(p)) ? ' · ↓ back in' : ''}</div>`;
     card.hidden = false;
     // Beside the outline: under it if there's room, else over it, kept on the page.
     const cw = card.offsetWidth, ch = card.offsetHeight;
@@ -150,7 +151,8 @@ export const mountInspect = ({ library, hooks, open, onStart }) => {
     e.preventDefault();
     e.stopPropagation();
     const l = levels[at];
-    if (l?.item) open(l.item.id);
+    if (l && hooks.pick) hooks.pick(levels, at);
+    else if (l?.item) open(l.item.id);
     else if (l) hooks.toast(`${l.component} isn’t in the Library’s scan.`);
   }, true);
   document.querySelector('.pg-shield')?.addEventListener('pointerleave', () => { if (on) hide(); });

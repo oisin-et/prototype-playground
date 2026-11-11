@@ -14,12 +14,14 @@
 // - Library (library.js) asks the selected frame's app to point at, picture
 //   and draw components.
 // - Inspect (inspect.js, I): hover any live frame to see which component each
-//   part is; a click opens it in the Library. Inspect and note mode turn each
-//   other off.
+//   part is; a click picks it. Properties then shows its Design (design.js):
+//   each value against the project's design system, with the parts it sits
+//   in to step out to. Inspect and note mode turn each other off.
 
 import { FilesView } from './files.js';
 import { LibraryView } from './library.js';
 import { mountInspect } from './inspect.js';
+import { designHTML, loadSystem } from './design.js';
 
 /**
  * o: {
@@ -52,7 +54,37 @@ export function mountPanels(o) {
   // ---- Properties ----
   propsEl.innerHTML = `<div class="pg-head">${tabs('props')}<button type="button" class="pg-min" data-close aria-label="Minimise the panel" title="Minimise (P)">‹</button></div><div class="cv-props"></div>`;
   propsEl.querySelector('[data-close]').addEventListener('click', () => close());
-  const drawProps = () => { propsEl.querySelector('.cv-props').innerHTML = o.properties(o.target()); };
+  // The part picked with Inspect: its frame, the parts around it (innermost
+  // first) and the one shown. It's outlined on its frame.
+  let picked = null;
+  const drawProps = () => {
+    const f = o.target();
+    if (picked && picked.f !== f) unpick();
+    propsEl.querySelector('.cv-props').innerHTML = o.properties(f) + (picked ? designHTML(picked.levels, picked.at) : '');
+  };
+  const outlinePicked = () => {
+    for (const el of document.querySelectorAll('.cv-picked')) el.remove();
+    const l = picked?.levels[picked.at];
+    if (!l?.box) return;
+    const [x, y, w, h] = l.box, el = document.createElement('div');
+    el.className = 'cv-picked';
+    el.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+    picked.f.body.append(el);
+  };
+  const onNow = (f) => `${f.route?.screen ?? f.screen}|${f.v ?? 'main'}`;
+  function pick(f, levels, at) {
+    picked = { f, levels, at, on: onNow(f) };
+    o.select?.(f);
+    open(f, 'props');
+    loadSystem().then(() => { drawProps(); outlinePicked(); });
+  }
+  function unpick() { picked = null; outlinePicked(); }
+  propsEl.addEventListener('click', (e) => {
+    const lv = e.target.closest('[data-level]');
+    if (lv && picked) { picked.at = +lv.dataset.level; drawProps(); outlinePicked(); return; }
+    const lib = e.target.closest('[data-library]');
+    if (lib) { open(null, 'library'); library.open(lib.dataset.library); }
+  });
   const frameOf = () => (about && o.frames.includes(about) ? about : o.target());
   const nameOf = (f) => (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`);
   const titleOf = (id) => o.screens[id]?.title || id;
@@ -188,9 +220,10 @@ export function mountPanels(o) {
         if (!f) return null;
         inspectAt = f;
         const b = f.iframe.getBoundingClientRect(), k = b.width / o.W;
-        const m = await o.ask(f, { type: 'inspect', x: (cx - b.left) / k, y: (cy - b.top) / k, library: withLibrary }, 2000);
+        const m = await o.ask(f, { type: 'inspect', x: (cx - b.left) / k, y: (cy - b.top) / k, library: withLibrary, design: true }, 2000);
         return { chain: (m.chain || []).map((c) => ({ ...c, rect: toClient(f, c.box) })) };
       },
+      pick: (levels, at) => { if (inspectAt) pick(inspectAt, levels, at); },
     },
     open: (id) => { open(null, 'library'); library.open(id); },
     onStart: () => o.notes()?.set(false),
@@ -202,6 +235,7 @@ export function mountPanels(o) {
     inspector,
     // The selected frame or the one on show in Files changed (an iteration, a screen).
     changed(f) {
+      if (picked?.f === f && picked.on !== onNow(f)) unpick(); // another page or iteration: the part isn't there
       if (f === o.target()) drawProps();
       if (o.shown() && pane === 'files' && (f === frameOf() || f === o.target())) files.draw();
       if (f === o.target() && f.route?.screen) library.onScreen?.(f.route.screen);

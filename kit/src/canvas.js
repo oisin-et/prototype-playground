@@ -996,7 +996,7 @@ function drawSnap() {
 panels = mountPanels({
   key: KEY, data: CFG.data, W, screens: SCREENS, playgrounds, frames, ask, send, toast,
   target: () => selected, showVersion, notes: () => notes,
-  properties, show: (on) => setPanel('props', on), shown: () => panelsOpen.props,
+  properties, show: (on) => setPanel('props', on), shown: () => panelsOpen.props, select: (f) => selectFrame(f),
 });
 // Both panels as they were left (at phone width, both minimised at first).
 setPanel('props', !narrowView() && panelsOpen.props);

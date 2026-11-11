@@ -14,8 +14,9 @@
 //               {type: 'capture', id, rect, scale} draw part of the app
 //               {type: 'capture', id, selector, width} draw the element
 //               (else the whole app) width pixels wide: a version's picture
-//               {type: 'inspect', id, x, y, library?}   the element at a point, for a
-//               note; with library, the components around it too, for Inspect
+//               {type: 'inspect', id, x, y, library?, design?}   the element at a point, for a
+//               note; with library, the components around it too, for Inspect;
+//               with design, each with its look (style), for the canvas's Properties
 //               {type: 'locate', id, nodes, components}   where these are, for the Library
 //               {type: 'picture', id, items: [{key, nodes, components}], size}
 //               a picture of the first of each in view, for the Library
@@ -214,7 +215,7 @@ function inspect(m) {
     type: 'inspected', id: m.id,
     ...(el && el !== document.documentElement && el !== document.body
       ? { box: boxOf(el), widget: nameOf(el), location: locationOf(el), text: textOf(el) } : {}),
-    ...(m.library ? { chain: chainAt(at) } : {}),
+    ...(m.library ? { chain: chainAt(at, m.design) } : {}),
   });
 }
 
@@ -236,12 +237,32 @@ function looksOf(el) {
   }
   return { tokens: [...tokens].slice(0, 12).map(([name, value]) => ({ name, value })), raw: [...raw].slice(0, 8) };
 }
-function chainAt(at) {
+function chainAt(at, design) {
   const out = [];
   for (let el = at?.closest?.('[data-component]'); el && out.length < 8; el = el.parentElement?.closest('[data-component]')) {
-    out.push({ component: el.dataset.component, pg: el.dataset.pg || null, box: boxOf(el), ...looksOf(el) });
+    out.push({ component: el.dataset.component, pg: el.dataset.pg || null, box: boxOf(el), ...looksOf(el), ...(design ? { style: styleOf(el) } : {}) });
   }
   return out;
+}
+// For the canvas's Properties (Design): what an element's look is, as the
+// browser works it out, in the app's own CSS pixels (a transform on a parent
+// doesn't change them). A text's type only when it holds text of its own.
+function styleOf(el) {
+  const s = getComputedStyle(el), n = (v) => { const x = parseFloat(v); return Number.isFinite(x) ? Math.round(x * 100) / 100 : null; };
+  const own = [...el.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()) || (el.children.length === 0 && el.textContent.trim());
+  const svg = el instanceof SVGElement;
+  const box = svg && el.getBBox ? (() => { try { return el.getBBox(); } catch { return null; } })() : null;
+  return {
+    width: box ? n(box.width) : n(s.width), height: box ? n(box.height) : n(s.height),
+    padding: [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].map(n),
+    gap: s.display.includes('flex') || s.display.includes('grid') ? [n(s.rowGap), n(s.columnGap)] : null,
+    radius: n(s.borderTopLeftRadius) ?? n(el.getAttribute?.('rx')),
+    border: n(s.borderTopWidth),
+    text: own ? { size: n(s.fontSize), weight: n(s.fontWeight), line: n(s.lineHeight), spacing: n(s.letterSpacing) || 0 } : null,
+    color: own ? s.color : null,
+    fill: svg ? s.fill : s.backgroundColor,
+    stroke: svg && s.stroke !== 'none' ? s.stroke : null,
+  };
 }
 
 // Where nodes or components are on show, for the Library: elements whose

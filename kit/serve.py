@@ -111,6 +111,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import frozen
+import system
 from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, add_to_canvas, known_versions, playground_lock, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
@@ -1774,6 +1775,13 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/playground/frozen":
             self.json(200, frozen.listing())
+            return
+        if path == "/playground/system":
+            # The design system's scales, for the canvas's Properties (system.py).
+            try:
+                self.json(200, system.load() or {})
+            except (ValueError, KeyError) as e:
+                self.json(200, {"error": f"The design system couldn't be read: {e}"})
             return
         if path == "/playground/thumbs" and "canvas" in urllib.parse.parse_qs(query):
             # The canvas's own pictures: {key: time}, key "main" or <screen>/<version>.

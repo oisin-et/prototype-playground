@@ -327,6 +327,38 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-pnote.open { -webkit-line-clamp: unset; }
 .cv-pnone { color: var(--page-muted); font-size: 13px; margin: 12px 0; }
 
+/* Design (src/design.js): the picked part's values against the design system. */
+.ds { padding: 10px 0 4px; border-top: 1px solid var(--page-line); }
+.ds h4 { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 8px; font-size: 14px; font-weight: 600; color: #fff; }
+.ds h4 small { font-size: 11.5px; font-weight: 400; color: var(--page-muted); }
+.ds h5 { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--page-muted); letter-spacing: 0.02em; }
+.ds-path { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-size: 12px; color: var(--page-muted); }
+.pg-panel .ds-crumb { min-height: 22px; padding: 0 6px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 6px; }
+.pg-panel .ds-crumb.on { color: var(--accent); background: rgba(37, 195, 255, 0.12); }
+.ds-sum { margin: 10px 0 0; font-size: 12.5px; }
+.ds-sum.ok { color: #5fd08a; }
+.ds-sum.off { color: var(--amber); }
+.ds-row { display: grid; grid-template-columns: 78px 1fr auto; align-items: center; gap: 8px; min-height: 30px; font-size: 13px; }
+.ds-label { color: var(--page-muted); }
+.ds-dial { display: flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); overflow: hidden; }
+.ds-dial:empty { background: none; }
+.ds-dial i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.22); }
+.ds-dial i.on { width: 9px; height: 9px; background: var(--accent); }
+.ds-dial i.near { width: 9px; height: 9px; background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.ds-dial i.near.grid { color: var(--amber); }
+.ds-dial i.near.off { color: #ff5a6e; }
+.ds-val { text-align: right; white-space: nowrap; color: var(--page-text); font-variant-numeric: tabular-nums; }
+.ds-val b { font-weight: 600; color: #fff; margin-right: 4px; }
+.ds-val small { display: block; font-size: 11px; color: var(--page-muted); }
+.ds-val.grid { color: var(--amber); }
+.ds-val.off { color: #ff8a98; }
+.ds-swatch { width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); }
+.ds-row:has(.ds-swatch) { grid-template-columns: 78px 22px 1fr; }
+.ds-row:has(.ds-swatch) .ds-val { text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 4px 0; }
+.pg-panel .ds-lib { margin-top: 14px; width: 100%; }
+/* The picked part, outlined on its frame (in the frame's pixels). */
+.cv-picked { position: absolute; z-index: 4; pointer-events: none; border-radius: 2px; box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 0 0 calc(5px * var(--inv)) rgba(37, 195, 255, 0.25); }
+
 /* The readers of Files and Library: over the canvas. */
 .cv-workspace { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
 .cv-workspace > * { pointer-events: auto; }
