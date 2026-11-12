@@ -235,6 +235,7 @@ export function mountXray(o) {
 
   return {
     get armed() { return armed; },
+    get active() { return active(); }, // armed, or ⇧ held
     arm(on) { armed = on; if (!on) drag = null; set(); if (on) o.toast('X-ray: drag over a live frame. Hold ⇧ to x-ray any time.'); },
     shift(down) { shift = down; set(); },
     escape() { if (!shown && !armed) return false; clear(); armed = false; set(); return true; },

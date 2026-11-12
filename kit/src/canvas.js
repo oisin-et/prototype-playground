@@ -590,9 +590,9 @@ function drawTools() {
   };
   set('note', notes?.on);
   const pointer = tools.querySelector('[data-tool=pointer]');
-  pointer.setAttribute('aria-pressed', String(!notes?.on && !panels?.inspector.on && !xray?.armed && !snapping));
+  pointer.setAttribute('aria-pressed', String(!notes?.on && !panels?.inspector.on && !xray?.active && !snapping));
   set('inspect', panels?.inspector.on);
-  set('xray', xray?.armed);
+  set('xray', xray?.active); // armed, or ⇧ held
   set('shot', snapping);
   // ⤢ is on each frame, at its top right corner.
   for (const x of frames) {
@@ -988,6 +988,7 @@ function setSnap(down) {
   document.body.classList.toggle('pg-alt', down);
   stage.classList.toggle('snapping', down || !!snap);
   shield.hidden = !down && !snap && !space && !pan;
+  drawTools(); // Screenshot shows on while ⌥ is held
 }
 addEventListener('keydown', (e) => { if (e.key === 'Alt' && !typing(e.target)) setSnap(true); });
 addEventListener('keyup', (e) => { if (e.key === 'Alt') setSnap(false); });
