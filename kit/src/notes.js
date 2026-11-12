@@ -131,6 +131,7 @@ export function mountNotes(o) {
     o.stage.classList.toggle('noting', on);
     target.hidden = true;
     if (on) o.toast('Notes: click a part of a live frame, or drag over an area. N or Esc to stop.');
+    o.changed();
   }
 
   // Names the part under the pointer, one question to the app at a time.

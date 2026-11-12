@@ -59,6 +59,8 @@ const CFG = await load('../playground.json', import.meta.url);
 // Mounted at the end (composer.js, notes.js, panels.js, commit.js); the frames use them once they're there.
 let composer = null, notes = null, panels = null, commit = null, xray = null;
 let selected = null; // the frame Claude works on (selectFrame)
+let snapping = false, snap = null; // the screenshot (⌥-drag): here, as the toolbar reads it early
+let lastInput = 0, filling = null; // posters filled in while idle
 let focused = null, beforeFocus = null; // the frame that fills the window, and the view to go back to (focusFrame)
 let space = false, pan = null; // Space held; a pan under way (setSpace)
 let lens = { z: 1, x: 0, y: 0 }; // the zoom inside the frame that fills the window, in its pixels (lensZoom)
@@ -861,7 +863,7 @@ notes = mountNotes({
   listEl: composer.notesEl,
   enabled: () => true,
   onStart: () => panels?.inspector.set(false),
-  changed: () => {},
+  changed: () => drawTools(), // the toolbar shows Notes on
   goto(x) {
     const f = frames.find((y) => y.id === x.frame);
     if (!f) return;
@@ -950,7 +952,6 @@ async function afterRun(result) {
 // While nobody's using the canvas, a frame without a picture wakes, has it
 // taken, and sleeps again: one at a time, the nearest to the middle first.
 // A frozen copy's picture is taken once: the copy never changes.
-let lastInput = 0, filling = null;
 for (const type of ['pointerdown', 'wheel', 'keydown']) addEventListener(type, () => { lastInput = Date.now(); }, { capture: true, passive: true });
 const tried = new Set();
 function fillPictures() {
@@ -980,7 +981,6 @@ const snapBox = document.createElement('div');
 snapBox.className = 'cv-snap';
 snapBox.hidden = true;
 stage.append(snapBox);
-let snapping = false, snap = null;
 function setSnap(down) {
   if (!down) aiming = false;
   snapping = down || aiming;
