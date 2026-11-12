@@ -555,6 +555,9 @@ if (embedded) {
     if (e.code === 'Space' && !editable(e.target) && !e.target.closest?.('button, a, summary, [role=button]')) {
       e.preventDefault(); e.stopPropagation(); if (!e.repeat) send({ type: 'key', key: 'Space', down: true }); return;
     }
+    // ⌘ (Ctrl off a Mac) held: the canvas's Inspect; with another key it's a shortcut.
+    if (e.key === 'Meta' || e.key === 'Control') { if (!e.repeat) send({ type: 'key', key: 'Mod', down: true }); }
+    else if (e.metaKey || e.ctrlKey) send({ type: 'key', key: 'ModChord', down: true });
     if (e.key === 'Alt') send({ type: 'key', key: 'Alt', down: true });
     else if (e.key === 'Shift') { if (!e.repeat) send({ type: 'key', key: 'Shift', down: true }); } // X-ray: ⇧-drag
     else if (e.key === 'Escape') send({ type: 'key', key: 'Escape', down: true });
@@ -567,9 +570,10 @@ if (embedded) {
   addEventListener('keyup', (e) => {
     if (e.key === 'Alt') send({ type: 'key', key: 'Alt', down: false });
     if (e.key === 'Shift') send({ type: 'key', key: 'Shift', down: false });
+    if (e.key === 'Meta' || e.key === 'Control') send({ type: 'key', key: 'Mod', down: false });
     if (e.code === 'Space') send({ type: 'key', key: 'Space', down: false });
   }, true);
-  addEventListener('blur', () => { send({ type: 'key', key: 'Alt', down: false }); send({ type: 'key', key: 'Space', down: false }); send({ type: 'key', key: 'Shift', down: false }); });
+  addEventListener('blur', () => { send({ type: 'key', key: 'Alt', down: false }); send({ type: 'key', key: 'Space', down: false }); send({ type: 'key', key: 'Shift', down: false }); send({ type: 'key', key: 'Mod', down: false }); });
   // The page is going away (a dev server's full refresh, a sign-in redirect): until
   // the next one has a bridge, a frame with the focus swallows every key, a
   // dictation's ⌘V too. The playground takes the focus back meanwhile.

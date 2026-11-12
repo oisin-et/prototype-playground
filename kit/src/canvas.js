@@ -441,6 +441,8 @@ addEventListener('message', (e) => {
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
     else if (m.key === 'p') togglePanels();
     else if (m.key === 'v') toPointer();
+    else if (m.key === 'Mod') holdInspect(m.down);
+    else if (m.key === 'ModChord') holdInspect(false);
     else if (m.key === 'Escape' && m.down !== false) {
       if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) unfocus();
     }
@@ -528,7 +530,7 @@ const tools = document.getElementById('tools');
 const TOOLS = [
   ['pointer', 'Pointer: use the app (V)', ICON.pointer],
   '|',
-  ['inspect', 'Inspect: which component each part is (I)', ICON.inspect],
+  ['inspect', 'Inspect: which component each part is (I, or hold ⌘)', ICON.inspect],
   ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
   ['note', 'Notes: click a part to pin a note (N)', ICON.note],
   ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
@@ -551,6 +553,25 @@ tools.addEventListener('click', (e) => {
   else if (t === 'shot') { aiming = !aiming; setSnap(aiming); }
   drawTools();
 });
+// Inspect while ⌘ is held (Ctrl off a Mac): on after a moment, so a
+// shortcut (⌘C, ⌘V, ⌘+) doesn't flash it; off when ⌘ comes up, unless it
+// was on before. A click meanwhile picks the part, as Inspect's click does.
+const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta' : 'Control';
+let modTimer = 0, modHeld = false;
+function holdInspect(down) {
+  clearTimeout(modTimer);
+  if (down) {
+    if (!panels?.inspector.on) modTimer = setTimeout(() => { modHeld = true; panels.inspector.set(true); drawTools(); }, 160);
+    return;
+  }
+  if (modHeld) { modHeld = false; panels?.inspector.set(false); drawTools(); }
+}
+addEventListener('keydown', (e) => {
+  if (e.key === MOD) { if (!e.repeat && !typing(e.target)) holdInspect(true); }
+  else if (e.metaKey || e.ctrlKey) holdInspect(false);
+}, true);
+addEventListener('keyup', (e) => { if (e.key === MOD) holdInspect(false); }, true);
+addEventListener('blur', () => holdInspect(false));
 // The pointer: every tool off, back to using the app (the toolbar's first, or V).
 function toPointer() {
   if (notes?.on) notes.set(false);
