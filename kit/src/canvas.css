@@ -599,3 +599,9 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-findings ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 0.6em; }
 /* Too small to read between the frames: the arrows alone. */
 .tiny .cv-arrow-label, .tiny .cv-board-label, .tiny .cv-case-link { display: none; }
+
+/* ⤢ beside Share while the selected frame's own is out of reach (canvas.js placeFill). */
+.cv-fillfloat { width: 44px; padding: 0; display: inline-grid; place-items: center; color: var(--page-text); animation: pg-pop 260ms var(--spring) both; }
+.cv-fillfloat:hover { filter: none; background: #17191d; }
+/* A board's name, being renamed (double-click it). */
+.cv-board-label b.editing { outline: calc(1.5px * var(--inv)) solid var(--accent); outline-offset: calc(3px * var(--inv)); border-radius: calc(4px * var(--inv)); cursor: text; user-select: text; }

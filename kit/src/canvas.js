@@ -312,7 +312,8 @@ function drawBoards() {
     label.style.cssText = `left:${b.x}px;top:${b.y + LABEL_H}px`; // its bottom sits over the frames' names (canvas.css)
     const KIND = { variants: 'Variants', flow: 'Flow', states: 'States', review: 'Review' };
     label.innerHTML = `<span class="cv-board-kind">${ICON[b.kind] || ''}${esc(KIND[b.kind] || 'Board')}</span><b>${esc(b.title || '')}</b>`;
-    label.title = '⌘-click for its menu';
+    label.title = '⌘-click for its menu; double-click its name to rename it';
+    label.querySelector('b').addEventListener('dblclick', (e) => { e.stopPropagation(); renameBoard(b, e.currentTarget); });
     label.addEventListener('pointerdown', (e) => e.stopPropagation());
     label.addEventListener('click', (e) => { if (menuClick(e)) boardMenu(b, e); });
     label.addEventListener('contextmenu', (e) => { e.preventDefault(); boardMenu(b, e); });
@@ -907,6 +908,7 @@ function drawTools() {
     const t = on ? 'Back to the canvas (Esc)' : 'Fill the window (F)';
     b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(on));
   }
+  placeFill();
   // Where you are, in Home: the selected frame, else the project.
   const name = f ? (f.kind === 'main' ? 'Main' : `${f.group} ${f.v.slice(1)}`) : NAME;
   if (toolsFrame.textContent !== name) {
@@ -966,9 +968,33 @@ function paint() {
     zoomLabel.textContent = `${Math.round(view.z * (focused ? lens.z : 1) * 100)}%`;
   }
   stir(zoomed, glide ? 480 : REST_MS);
+  placeFill();
   notes?.moved();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
+}
+// ⤢ for the selected frame, at the top right beside Share, while the
+// frame's own (at its top right corner) is out of reach: zoomed in on it,
+// or under a panel or the top row. Back in view, only the frame's own shows.
+document.getElementById('btn-fill').addEventListener('click', () => { const f = selected; if (!f) return; if (focused === f) unfocus(); else focusFrame(f); });
+function placeFill() {
+  const f = selected, fillFloat = document.getElementById('btn-fill'); // (paint can run before this part of the file has)
+  let show = false;
+  if (f && !world.classList.contains('tiny')) {
+    const r = room(), s = stage.getBoundingClientRect(), p = onStage(f);
+    const top = r.top - s.top, left = r.x, right = r.x + r.width, bottom = top + r.height;
+    const seen = p.x < right && p.x + p.w > left && p.y < bottom && p.y + p.h > top;
+    const bx = p.x + p.w, by = p.y - 8; // the frame's ⤢: right-aligned over its top edge
+    const reach = bx - 36 >= left && bx <= right && by - 36 >= top && by <= bottom;
+    show = seen && !reach;
+  }
+  if (show) {
+    const on = focused === f, icon = on ? ICON.unfill : ICON.fill, t = on ? 'Back to the canvas (Esc)' : `Fill the window with ${frameTitle(f)} (F)`;
+    if (fillFloat.innerHTML !== icon) fillFloat.innerHTML = icon;
+    fillFloat.title = t; fillFloat.setAttribute('aria-label', t);
+  }
+  if (fillFloat.hidden === !show) return;
+  fillFloat.hidden = !show;
 }
 function stir(zoomed, ms) {
   stage.classList.add('moving');
@@ -1330,6 +1356,33 @@ function frameMenu(f, e) {
 function boardMenu(b, e) {
   const KIND = { variants: 'Variants', flow: 'Flow', states: 'States', review: 'Review' }[b.kind] || 'Board';
   openMenu(e, `${KIND}: ${b.title || ''}`, [{ label: 'Delete board', icon: ICON.trash, danger: true, run: () => remove({ what: 'board', board: b.id }, `The ${KIND.toLowerCase()} board is deleted.`) }]);
+}
+// A board's name: double-click it, type, Enter (Esc keeps the old one).
+function renameBoard(b, el) {
+  if (el.isContentEditable) return;
+  const was = b.title || '';
+  el.contentEditable = 'plaintext-only';
+  el.classList.add('editing');
+  el.focus();
+  getSelection().selectAllChildren(el);
+  let done = false;
+  const finish = async (keep) => {
+    if (done) return;
+    done = true;
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+    const title = el.textContent.replace(/\s+/g, ' ').trim();
+    if (!keep || !title || title === was) { el.textContent = was; return; }
+    const r = await post('/playground/canvas', 'canvas', { what: 'rename', board: b.id, title });
+    if (!r || r.error) { el.textContent = was; toast(r?.error || 'The playground isn’t answering.'); return; }
+    b.title = el.textContent = r.title;
+  };
+  el.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  el.addEventListener('blur', () => finish(true), { once: true });
 }
 async function remove(body, done) {
   const r = await post('/playground/canvas', 'canvas', body);

@@ -1764,12 +1764,23 @@ def canvas_delete(body):
     frame or a board is, into the trash as Explorations' bin does, and takes
     it off canvas.json. body: {"what": "iteration", "frame": "<screen>/v<N>",
     "version": "v<N>.<n>"}, {"what": "exploration", "frame"} (every iteration
-    of it) or {"what": "board", "board": "<id>"}; {"what": "restore", "trash":
+    of it) or {"what": "board", "board": "<id>"}; {"what": "rename", "board", "title"}
+    names a board; {"what": "restore", "trash":
     [stamps], "canvas": {"frames": [...], "boards": [...]}} puts it all back
     (the toast's Undo). Returns (status, reply): reply has the trash stamps
     and the canvas.json entries taken off, for the Undo."""
     what = body.get("what")
     doc = read_json_file(CANVAS) or {}
+    if what == "rename":  # a board's title, double-clicked on the canvas
+        bid, title = str(body.get("board") or ""), " ".join(str(body.get("title") or "").split())[:120]
+        path = BOARDS / f"{bid}.json"
+        board = read_json_file(path) if re.fullmatch(r"[\w-]+", bid) and path.is_file() else None
+        if not isinstance(board, dict):
+            return 404, {"error": "That board isn't there any more."}
+        if not title:
+            return 400, {"error": "A board needs a name."}
+        write_json(path, {**board, "title": title})
+        return 200, {"title": title}
     if what == "restore":
         stamps = [s for s in body.get("trash") or [] if isinstance(s, str)]
         for s in reversed(stamps):  # the last one deleted goes back first, to its place
