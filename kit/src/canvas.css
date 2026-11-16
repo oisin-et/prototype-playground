@@ -602,6 +602,6 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 
 /* ⤢ beside Share while the selected frame's own is out of reach (canvas.js placeFill). */
 .cv-fillfloat { width: 44px; padding: 0; display: inline-grid; place-items: center; color: var(--page-text); animation: pg-pop 260ms var(--spring) both; }
-.cv-fillfloat:hover { filter: none; background: #17191d; }
+.cv-fillfloat:hover { filter: none; background: var(--solid-1, #17191d); } /* as the frame's own ⤢ */
 /* A board's name, being renamed (double-click it). */
 .cv-board-label b.editing { outline: calc(1.5px * var(--inv)) solid var(--accent); outline-offset: calc(3px * var(--inv)); border-radius: calc(4px * var(--inv)); cursor: text; user-select: text; }
