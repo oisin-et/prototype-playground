@@ -329,11 +329,45 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
    Its rules start with .cv-chat: inside a .pg-panel, style.css's tile look
    for every button would win over a bare class. */
 .cv-chat { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0 12px 12px; gap: 10px; }
-.cm-tabs { display: flex; gap: 4px; flex: none; }
-.cv-chat .cm-tabs button { min-height: 26px; min-width: 28px; padding: 0 9px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
-.cv-chat .cm-tabs button:hover { filter: none; color: var(--page-text); background: rgba(var(--fg-rgb, 255, 255, 255), 0.06); }
-.cv-chat .cm-tabs button[aria-selected=true] { color: var(--ink, #fff); background: rgba(var(--fg-rgb, 255, 255, 255), 0.09); }
-.cv-chat .cm-tabs button.busy { color: var(--amber); }
+/* The head: "Chats" and New chat over the stack; Back, the chat's title and + over a chat. */
+.cm-head { flex: none; display: flex; align-items: center; gap: 6px; min-height: 32px; }
+.cm-head h3 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; color: var(--ink, #fff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-chat .cm-head button {
+  flex: none; display: inline-grid; place-items: center; width: 30px; min-height: 30px; padding: 0; border-radius: 9px;
+  background: none; box-shadow: none; color: var(--page-muted);
+}
+.cv-chat .cm-head button:hover { filter: none; color: var(--page-text); background: rgba(var(--fg-rgb, 255, 255, 255), 0.06); }
+.cv-chat .cm-head .cm-back svg { transform: rotate(90deg); }
+.cv-chat .cm-head .cm-new.wide {
+  display: inline-flex; justify-content: center; gap: 6px; width: 100%; min-height: 36px; padding: 0 11px 0 8px; font-size: 13px; font-weight: 600;
+  color: var(--page-text); box-shadow: inset 0 0 0 1px var(--page-line);
+}
+/* The stack: every chat, newest first. Right-click one for Delete. */
+.cm-stack { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cv-chat .cm-row {
+  display: flex; flex-direction: column; align-items: stretch; gap: 3px; width: 100%; min-height: 0; padding: 10px 11px;
+  text-align: left; font: inherit; border-radius: 11px; background: none; box-shadow: none; color: var(--page-text); cursor: pointer;
+}
+.cv-chat .cm-row:hover { filter: none; background: rgba(var(--fg-rgb, 255, 255, 255), 0.05); }
+.cv-chat .cm-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cm-row-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.cm-row-top b { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--ink, #fff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-row-top time { flex: none; font-size: 11.5px; color: var(--page-muted); font-variant-numeric: tabular-nums; }
+.cm-row-last { font-size: 12.5px; line-height: 1.4; color: var(--page-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cm-row.busy .cm-row-last { color: var(--amber); }
+.cm-who { font-size: 11.5px; font-weight: 600; color: var(--page-muted); }
+.cm-menu {
+  position: fixed; z-index: 1002; min-width: 140px; padding: 5px; border-radius: 12px;
+  background: var(--frame); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: inset 0 0 0 1px var(--frame-edge), inset 0 1px 0 var(--frame-highlight), var(--frame-shadow);
+}
+.cm-menu[hidden] { display: none; }
+.cm-menu button {
+  display: block; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; text-align: left;
+  font: inherit; font-size: 13px; color: var(--bad, #c92f45); background: none; cursor: pointer;
+}
+.cm-menu button:hover, .cm-menu button:focus-visible { outline: none; background: rgba(var(--fg-rgb, 255, 255, 255), 0.06); }
+.cm-gate { width: min(420px, calc(100vw - 32px)); }
 .cm-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 2px; font-size: 14px; line-height: 1.5; }
 .cm-empty { margin: auto 0; text-align: center; color: var(--page-muted); font-size: 13px; }
 /* The starting prompts (composer.js's STARTERS), while a chat is empty. */

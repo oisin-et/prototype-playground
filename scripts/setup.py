@@ -49,7 +49,7 @@ what a version's builder returns, what not to touch. Keep it short.
 
 -
 """
-GITIGNORE = ["/playground/attachments/", "/playground/notes/", "/playground/trash/", "/playground/thumbs/", "/playground/frozen/", "/playground/canvas.json", "/playground/__pycache__/"]
+GITIGNORE = ["/playground/attachments/", "/playground/notes/", "/playground/chats/", "/playground/trash/", "/playground/thumbs/", "/playground/frozen/", "/playground/canvas.json", "/playground/__pycache__/"]
 
 
 def kit_version():

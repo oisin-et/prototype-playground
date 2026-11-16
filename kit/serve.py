@@ -117,6 +117,9 @@ from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VER
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
 TRASH = HERE / "trash"  # what was deleted from Explorations, for 14 days
+CHATS = HERE / "chats"  # the canvas's chats (composer.js): one JSON file a chat, kept until deleted
+CHAT_ID = re.compile(r"^c[a-z0-9]{1,30}$")
+MAX_CHAT_BYTES = 4 * 1024 * 1024
 THUMBS = HERE / "thumbs"  # a picture of each version, for the preview in Explorations
 IMAGES = {  # type → (extension, how the file starts)
     "image/png": ("png", (b"\x89PNG\r\n\x1a\n",)),
@@ -1339,7 +1342,7 @@ def changed_files():
         status, path = e[:2], e[3:]
         if "R" in status or "C" in status:
             i += 1  # a rename names its old path next
-        private = path.startswith(("playground/attachments/", "playground/notes/")) or \
+        private = path.startswith(("playground/attachments/", "playground/notes/", "playground/chats/")) or \
             (status == "??" and path.startswith(DATA_REL + "/"))
         if not private:
             out[path] = "A" if status == "??" or "A" in status else "D" if "D" in status else "M"
@@ -1600,6 +1603,72 @@ class Commit:
         if summary.strip():
             emit({"type": "step", "text": summary.strip()})
         return True
+
+
+def chat_author():
+    """Who writes from this computer: git's user.name, else the login name.
+    Each chat message records it, so teammates' messages show as theirs once
+    chats are shared."""
+    global _AUTHOR
+    if _AUTHOR is None:
+        try:
+            name = subprocess.run(["git", "config", "user.name"], cwd=ROOT, capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            name = ""
+        _AUTHOR = name or os.environ.get("USER", "") or "You"
+    return _AUTHOR
+
+
+_AUTHOR = None
+
+
+def list_chats():
+    """Every chat, newest first: the stack in the canvas's chat panel."""
+    out = []
+    for f in CHATS.glob("*.json") if CHATS.is_dir() else []:
+        c = read_json_file(f)
+        if isinstance(c, dict) and CHAT_ID.match(str(c.get("id", ""))) and f.stem == c["id"]:
+            out.append(c)
+    return sorted(out, key=lambda c: str(c.get("updated", "")), reverse=True)
+
+
+def save_chat(body):
+    """Writes one chat (its id, title, Claude session and log). Its first
+    save sets when it was made and by whom."""
+    cid = str(body.get("id", ""))
+    if not CHAT_ID.match(cid) or not isinstance(body.get("log"), list):
+        raise ValueError("Not a chat.")
+    path = CHATS / f"{cid}.json"
+    old = read_json_file(path) or {}
+    now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    chat = {
+        "id": cid,
+        "title": str(body.get("title") or "")[:120],
+        "created": old.get("created") or now,
+        "author": old.get("author") or chat_author(),
+        "updated": now,
+        "session": body.get("session") if isinstance(body.get("session"), str) else None,
+        "log": [m for m in body["log"] if isinstance(m, dict)],
+    }
+    data = json.dumps(chat, indent=1, ensure_ascii=False)
+    if len(data.encode()) > MAX_CHAT_BYTES:
+        raise ValueError("This chat is too long to save. Start a new one.")
+    CHATS.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(data)
+    tmp.replace(path)
+    return {"id": cid, "updated": now, "author": chat["author"]}
+
+
+def delete_chat(cid):
+    """Moves a chat to the trash, where it stays 14 days (clear_old_trash)."""
+    path = CHATS / f"{cid}.json"
+    if not CHAT_ID.match(cid) or not path.exists():
+        raise ValueError("No such chat.")
+    dest = TRASH / f"chat-{unique_stamp()}"
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(path), dest / path.name)
+    return {"deleted": cid, "trash": rel(dest)}
 
 
 def clear_old_trash(days=14):
@@ -1964,6 +2033,9 @@ class Handler(SimpleHTTPRequestHandler):
             why = "off" if self.chat is None else None if self.chat.ready() else "missing"
             self.json(200, {"enabled": why is None, "why": why, "folder": str(ROOT), "notes": True, "tabs": MAX_RUNS})
             return
+        if path == "/playground/chats":
+            self.json(200, {"you": chat_author(), "chats": list_chats()})
+            return
         if path == "/playground/app":
             self.json(200, self.app.status())
             return
@@ -2148,6 +2220,18 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(403)
             else:
                 self.run_commit()
+        elif path in ("/playground/chats/save", "/playground/chats/delete"):
+            # The chat hub (composer.js): works with chat off too, so the stack can be read and tidied.
+            if not self.from_panel(("chats",)):
+                self.send_error(403)
+                return
+            try:
+                body = self.read_json(MAX_CHAT_BYTES + 65536)
+                if not isinstance(body, dict):
+                    raise ValueError("Not a chat.")
+                self.json(200, save_chat(body) if path.endswith("/save") else delete_chat(str(body.get("id", ""))))
+            except (ValueError, OSError) as e:
+                self.json(400, {"error": str(e)})
         elif path in ("/playground/chat", "/playground/chat/stop"):
             if self.chat is None:
                 self.send_error(404, "Chat is off: start the server without --no-chat")

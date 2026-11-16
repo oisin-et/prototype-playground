@@ -1460,9 +1460,9 @@ setPanel('props', !narrowView() && panelsOpen.props);
 setPanel('chat', !narrowView() && panelsOpen.chat);
 // Claude's strip keeps a dot while a chat is working.
 {
-  const dot = panelEl('chat').querySelector('.pg-rail-dot'), tabsEl = document.querySelector('#composer .cm-tabs');
-  const drawDot = () => { const n = tabsEl.querySelectorAll('.busy').length; dot.hidden = !n; dot.title = n ? (n === 1 ? 'Claude is working' : `${n} chats are working`) : ''; };
-  new MutationObserver(drawDot).observe(tabsEl, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+  const dot = panelEl('chat').querySelector('.pg-rail-dot'), chatEl = document.getElementById('composer');
+  const drawDot = () => { const n = +(chatEl.dataset.running || 0); dot.hidden = !n; dot.title = n ? (n === 1 ? 'Claude is working' : `${n} chats are working`) : ''; };
+  new MutationObserver(drawDot).observe(chatEl, { attributes: true, attributeFilter: ['data-running'] });
   drawDot();
 }
 // Inspect's own button would sit in the header: the frame toolbar has it.

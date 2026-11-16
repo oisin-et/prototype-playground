@@ -1,13 +1,18 @@
-// The canvas's chat (src/canvas.js): the panel at the left, joined to the
-// header, that asks Claude for an iteration of the selected frame. Part of
-// the prototype-playground kit.
+// The canvas's chat (src/canvas.js): the panel at the right, joined to the
+// header. It is the hub for everything said about the project: a stack of
+// every chat, newest first, with New chat at the top. Open a chat to read it
+// and to ask Claude for an iteration of the selected frame. Part of the
+// prototype-playground kit.
 //
-// It talks to serve.py's chat (POST /playground/chat, a stream of JSON lines,
-// as the classic Claude panel does) and keeps up to four chats as tabs, each
-// with its own conversation, which carries on between messages. Each message
-// carries a chip with the frame it was about; the box's chip names the
-// selected frame. Screenshots (⌥-drag over a live frame), pasted pictures and
-// notes wait in the box until Send.
+// A chat belongs to the whole canvas, not to one frame: each message records
+// the frame (and the iteration) it was about, and its author. Chats are kept
+// until someone deletes one (right-click, Delete, then confirm); a new subject
+// is a new chat. They live in the project as playground/chats/<id>.json
+// (serve.py's /playground/chats), so they can be shared later. A chat's
+// conversation with Claude carries on between messages (its session). Up to
+// four chats can have a run going at once (serve.py's MAX_RUNS). Screenshots
+// (⌥-drag over a live frame), pasted pictures and notes wait in the box until
+// Send; Send with the stack on show starts a new chat.
 
 import { ICON } from './icons.js';
 
@@ -60,16 +65,17 @@ const store = {
  * }
  */
 export function mountComposer(root, hooks) {
-  const KEY = `${hooks.key}.chats`;
-  const saved = store.get(KEY, null);
-  const chats = saved?.chats?.length ? saved.chats : [{ id: 'c1', session: null, log: [] }];
-  let active = chats.find((c) => c.id === saved?.active) ? saved.active : chats[0].id;
-  let enabled = false, maxTabs = 4;
+  const OLD_KEY = `${hooks.key}.chats`; // where chats lived before the hub: moved to the server once
+  const OPEN_KEY = `${hooks.key}.chat-open`;
+  let chats = []; // every saved chat, newest first (serve.py's list_chats)
+  let draft = null; // a new chat with nothing in it yet: saved with its first message
+  let open = store.get(OPEN_KEY, null); // the chat on show; null shows the stack
+  let you = 'You', loaded = false, enabled = false;
   const running = new Map(); // chat id → { started, status }
   const pending = []; // screenshots waiting: { png, note, url }
 
   root.innerHTML = `
-    <div class="cm-tabs" role="tablist" aria-label="Chats"></div>
+    <div class="cm-head"></div>
     <div class="cm-log" aria-live="polite"></div>
     <div class="cm-run" hidden><span class="cm-status"></span><button type="button" class="cm-stop" aria-label="Stop" title="Stop">${ICON.stop}</button></div>
     <form class="cm-box">
@@ -79,66 +85,173 @@ export function mountComposer(root, hooks) {
       <textarea rows="1" placeholder="Chat" aria-label="Message to Claude"></textarea>
       <button type="submit" class="cm-send" aria-label="Send" title="Send (Enter)">${ICON.send}</button>
     </form>`;
+  const headEl = root.querySelector('.cm-head');
   const logEl = root.querySelector('.cm-log');
   const runEl = root.querySelector('.cm-run');
   const statusEl = root.querySelector('.cm-status');
   const shotsEl = root.querySelector('.cm-shots');
   const form = root.querySelector('form');
-  const tabsEl = root.querySelector('.cm-tabs');
   const targetEl = root.querySelector('.cm-target');
   const input = root.querySelector('textarea');
   const chipOf = (frame, kind) => `<span class="cm-chip">${kind === 'main' ? ICON.main : ICON.branch}${esc(frame)}</span>`;
 
-  const chat = () => chats.find((c) => c.id === active);
-  const keep = () => store.set(KEY, { active, chats: chats.map((c) => ({ ...c, log: c.log.slice(-80) })) });
+  const byId = (id) => (draft?.id === id ? draft : chats.find((c) => c.id === id));
+  const chat = () => (open ? byId(open) : null);
+  const titleOf = (c) => c.title || c.log.find((m) => m.who === 'you')?.text?.replace(/\s+/g, ' ').slice(0, 70) || 'New chat';
+  const when = (iso) => {
+    const d = iso ? new Date(iso) : null;
+    if (!d || Number.isNaN(+d)) return '';
+    return d.toDateString() === new Date().toDateString()
+      ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  };
 
-  function drawTabs() {
-    tabsEl.innerHTML = chats.map((c, i) => `<button type="button" role="tab" data-id="${c.id}" aria-selected="${c.id === active}" class="${running.has(c.id) ? 'busy' : ''}" title="${esc(c.log.find((m) => m.who === 'you')?.text?.slice(0, 80) || `Chat ${i + 1}`)}">${i + 1}</button>`).join('')
-      + (chats.length < maxTabs ? '<button type="button" class="cm-add" aria-label="New chat" title="New chat">+</button>' : '');
+  // ---- Saving: each chat is a file on the server --------------------------
+  const timers = new Map();
+  function save(c) {
+    if (draft === c) { chats.unshift(c); draft = null; } // its first message: it joins the stack
+    c.updated = new Date().toISOString();
+    clearTimeout(timers.get(c.id));
+    timers.set(c.id, setTimeout(() => post('save', { id: c.id, title: c.title || '', session: c.session, log: c.log }), 300));
   }
-  tabsEl.addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    if (b.classList.contains('cm-add')) {
-      const n = chats.length + 1;
-      chats.push({ id: `c${Date.now().toString(36)}`, session: null, log: [] });
-      active = chats.at(-1).id;
-      hooks.toast(`Chat ${n}: a new conversation.`);
-    } else active = b.dataset.id;
-    keep();
-    drawTabs();
-    drawLog();
+  async function post(what, body) {
+    try {
+      const r = await fetch(`/playground/chats/${what}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'chats' }, body: JSON.stringify(body),
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out.error || `The server said no (${r.status}).`);
+      return out;
+    } catch (e) {
+      hooks.toast(`The chat wasn't saved: ${e.message}`);
+      return null;
+    }
+  }
+  function show(id) {
+    if (draft && draft.id !== id) draft = null; // an empty new chat isn't kept
+    open = id;
+    store.set(OPEN_KEY, open);
+    draw();
+  }
+  function newChat() {
+    draft = { id: `c${Date.now().toString(36)}`, title: '', session: null, log: [], author: you };
+    show(draft.id);
     input.focus();
-  });
-  // A tab's ✕ is a long story: a double-click on a tab with no run clears it.
-  tabsEl.addEventListener('dblclick', (e) => {
-    const b = e.target.closest('[data-id]');
-    if (!b || running.has(b.dataset.id) || chats.length < 2) return;
-    chats.splice(chats.findIndex((c) => c.id === b.dataset.id), 1);
-    active = chats[0].id;
-    keep();
-    drawTabs();
-    drawLog();
+    return draft;
+  }
+
+  // ---- The head: the stack's title and New chat, or Back and the chat's title
+  function drawHead() {
+    const c = chat();
+    headEl.innerHTML = c
+      ? `<button type="button" class="cm-back" data-back aria-label="All chats" title="All chats">${ICON.chevron}</button>
+         <h3 title="${esc(titleOf(c))}">${esc(titleOf(c))}</h3>
+         <button type="button" class="cm-new" data-new aria-label="New chat" title="New chat">${ICON.plus}</button>`
+      : `<button type="button" class="cm-new wide" data-new>${ICON.plus}<span>New chat</span></button>`; // the panel's own title says Chats
+  }
+  headEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-new]')) newChat();
+    else if (e.target.closest('[data-back]')) show(null);
   });
 
-  function drawLog() {
+  // ---- The stack, or the chat on show ---------------------------------------
+  function draw() {
+    if (open && !byId(open) && loaded) { open = null; store.set(OPEN_KEY, null); }
+    drawHead();
     const c = chat();
-    logEl.innerHTML = c.log.length ? c.log.map((m) => m.who === 'you'
-      ? `<div class="cm-m you">${m.frame ? chipOf(m.frame, m.kind) : ''}<p>${esc(m.text)}</p></div>`
-      : `<div class="cm-m ${m.who}">${esc(m.text)}${m.view ? ` <button type="button" class="cm-view" data-view="${esc(m.view)}">View</button>` : ''}${m.at ? `<time>${esc(m.at)}</time>` : ''}</div>`).join('')
-      : starters();
-    const r = running.get(active);
+    root.classList.toggle('cm-stacked', !c);
+    root.dataset.running = String(running.size); // the panel's rail shows a dot (canvas.js)
+    if (!c) logEl.innerHTML = stack();
+    else logEl.innerHTML = c.log.length ? c.log.map(message).join('') : starters();
+    const r = c && running.get(c.id);
     runEl.hidden = !r;
     if (r) statusEl.textContent = `${r.status} ${clock(r.started)}`;
-    logEl.scrollTop = logEl.scrollHeight;
+    if (c) logEl.scrollTop = logEl.scrollHeight;
     form.querySelector('.cm-send').disabled = !enabled || !!r;
+    input.placeholder = placeholder();
+  }
+  function stack() {
+    if (!loaded) return '';
+    if (!chats.length) return '<p class="cm-empty">No chats yet. Write below, or start a New chat.</p>';
+    return `<ul class="cm-stack" aria-label="All chats">${chats.map((c) => {
+      const last = [...c.log].reverse().find((m) => m.who === 'you' || m.who === 'claude');
+      return `<li><button type="button" class="cm-row${running.has(c.id) ? ' busy' : ''}" data-open="${c.id}">
+        <span class="cm-row-top"><b>${esc(titleOf(c))}</b><time>${esc(when(c.updated))}</time></span>
+        <span class="cm-row-last">${running.has(c.id) ? 'Claude is working…' : esc(last ? `${last.who === 'claude' ? 'Claude: ' : last.author && last.author !== you ? `${last.author}: ` : ''}${last.text.replace(/\s+/g, ' ').slice(0, 90)}` : '')}</span>
+      </button></li>`;
+    }).join('')}</ul>`;
+  }
+  function message(m) {
+    if (m.who === 'you') {
+      const who = m.author && m.author !== you ? `<span class="cm-who">${esc(m.author)}</span>` : '';
+      return `<div class="cm-m you">${who}${m.frame ? chipOf(m.frame, m.kind) : ''}<p>${esc(m.text)}</p></div>`;
+    }
+    return `<div class="cm-m ${m.who}">${esc(m.text)}${m.view ? ` <button type="button" class="cm-view" data-view="${esc(m.view)}">View</button>` : ''}${m.at ? `<time>${esc(m.at)}</time>` : ''}</div>`;
   }
   logEl.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-open]');
+    if (row) { show(row.dataset.open); input.focus(); return; }
     const b = e.target.closest('[data-view]');
     if (b) hooks.view?.(b.dataset.view);
     const s = STARTERS.find((x) => x.id === e.target.closest('[data-starter]')?.dataset.starter);
     if (s) fillWith(s);
   });
+
+  // ---- Delete: right-click a chat in the stack, then confirm ---------------
+  const menu = document.createElement('div');
+  menu.className = 'cm-menu';
+  menu.hidden = true;
+  menu.setAttribute('role', 'menu');
+  document.body.append(menu);
+  const closeMenu = () => { menu.hidden = true; };
+  logEl.addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('[data-open]');
+    if (!row) return;
+    e.preventDefault();
+    menu.innerHTML = `<button type="button" role="menuitem" data-delete="${row.dataset.open}">Delete</button>`;
+    menu.hidden = false;
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = `${Math.min(e.clientX, innerWidth - w - 8)}px`;
+    menu.style.top = `${Math.min(e.clientY, innerHeight - h - 8)}px`;
+    menu.querySelector('button').focus();
+  });
+  menu.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-delete]');
+    closeMenu();
+    if (b) confirmDelete(b.dataset.delete);
+  });
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); } });
+  addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); }, true);
+  addEventListener('blur', closeMenu);
+
+  const gate = document.createElement('dialog');
+  gate.className = 'pg-modal cm-gate';
+  gate.setAttribute('aria-labelledby', 'cm-gate-title');
+  document.body.append(gate);
+  function confirmDelete(id) {
+    const c = byId(id);
+    if (!c) return;
+    if (running.has(id)) { hooks.toast('Claude is working in this chat. Stop it first, then delete it.'); return; }
+    const n = c.log.filter((m) => m.who === 'you' || m.who === 'claude').length;
+    gate.innerHTML = `<div class="pg-modal-card">
+      <div class="pg-head"><h2 id="cm-gate-title">Delete this chat?</h2></div>
+      <div class="pg-modal-body"><p><b>${esc(titleOf(c))}</b> and its ${n} message${n === 1 ? '' : 's'} will be deleted for everyone who can see this canvas.</p>
+        <p>It stays in the playground's trash for 14 days.</p></div>
+      <div class="pg-modal-foot"><button type="button" data-cancel autofocus>Cancel</button>
+        <button type="button" class="pg-danger" data-confirm>Delete chat</button></div></div>`;
+    gate.showModal();
+    gate.onclick = async (e) => {
+      if (e.target === gate || e.target.closest('[data-cancel]')) { gate.close(); return; }
+      if (!e.target.closest('[data-confirm]')) return;
+      gate.close();
+      clearTimeout(timers.get(id));
+      if (await post('delete', { id })) {
+        chats = chats.filter((x) => x.id !== id);
+        if (open === id) show(null); else draw();
+        hooks.toast('Chat deleted.');
+      }
+    };
+  }
 
   // The starting prompts, while the chat is empty (STARTERS).
   function starters() {
@@ -160,20 +273,25 @@ export function mountComposer(root, hooks) {
     input.setSelectionRange(input.value.length, input.value.length);
   }
   const clock = (t) => { const s = Math.round((Date.now() - t) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-  setInterval(() => { if (running.size) drawLog(); }, 1000);
+  setInterval(() => { if (running.size) draw(); }, 1000);
 
   const say = (c, who, text, view, extra = {}) => {
-    c.log.push({ who, text, view, ...extra });
-    keep();
-    if (c.id === active) drawLog();
+    c.log.push({ who, text, view, t: new Date().toISOString(), ...extra });
+    save(c);
+    if (c.id === open || !open) draw();
   };
 
   function drawTarget() {
     const ctx = hooks.context();
     targetEl.innerHTML = ctx ? chipOf(ctx.chip, ctx.kind) : '';
     targetEl.hidden = !ctx;
-    input.placeholder = !enabled ? (chatWhy || 'Chat is off') : ctx ? 'Ask for an iteration' : 'Ask for a new exploration';
-    if (!chat().log.length) drawLog(); // the starting prompts follow the selection
+    input.placeholder = placeholder();
+    if (chat() && !chat().log.length) draw(); // the starting prompts follow the selection
+  }
+  function placeholder() {
+    if (!enabled) return chatWhy || 'Chat is off';
+    const ctx = hooks.context();
+    return `${ctx ? 'Ask for an iteration' : 'Ask for a new exploration'}${chat() ? '' : ' (starts a new chat)'}`;
   }
 
   function drawShots() {
@@ -195,24 +313,27 @@ export function mountComposer(root, hooks) {
     e.preventDefault();
     const message = input.value.trim();
     const notes = hooks.notes?.();
-    if (!enabled || (!message && !pending.length && !notes?.count()) || running.has(active)) return;
+    if (!enabled || (!message && !pending.length && !notes?.count()) || (open && running.has(open))) return;
+    const c = chat() || newChat(); // Send from the stack starts a new chat
     input.value = '';
     input.style.height = '';
     const shots = pending.splice(0);
     drawShots();
     const batch = notes?.take() || [];
     notes?.set(false);
-    send(chat(), message || (batch.length ? `Work through ${batch.length === 1 ? 'this note' : `these ${batch.length} notes`}.` : 'See the screenshot.'), shots, batch);
+    send(c, message || (batch.length ? `Work through ${batch.length === 1 ? 'this note' : `these ${batch.length} notes`}.` : 'See the screenshot.'), shots, batch);
   });
 
   async function send(c, message, shots, batch = []) {
     const ctx = hooks.context();
     const extra = [shots.length && `${shots.length} screenshot${shots.length > 1 ? 's' : ''}`, batch.length && `${batch.length} note${batch.length > 1 ? 's' : ''}`].filter(Boolean);
-    say(c, 'you', message + (extra.length ? ` (${extra.join(', ')})` : ''), undefined, ctx ? { frame: ctx.chip, kind: ctx.kind } : {});
+    say(c, 'you', message + (extra.length ? ` (${extra.join(', ')})` : ''), undefined, {
+      author: you,
+      ...(ctx ? { frame: ctx.chip, kind: ctx.kind, playground: ctx.body?.playground, version: ctx.body?.version } : {}),
+    });
     let answered = false;
     running.set(c.id, { started: Date.now(), status: 'Working' });
-    drawTabs();
-    drawLog();
+    draw();
     let result = null;
     try {
       const r = await fetch('/playground/chat', {
@@ -263,9 +384,8 @@ export function mountComposer(root, hooks) {
         say(c, 'error', "The notes didn't reach Claude, so they wait above the box again.");
       }
       running.delete(c.id);
-      keep();
-      drawTabs();
-      drawLog();
+      save(c);
+      draw();
     }
     if (result) {
       const made = [...(result.new || []), ...(result.updated || [])];
@@ -278,7 +398,7 @@ export function mountComposer(root, hooks) {
     }
   }
   runEl.querySelector('.cm-stop').addEventListener('click', () => {
-    fetch('/playground/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'chat' }, body: JSON.stringify({ tab: active }) });
+    fetch('/playground/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Playground': 'chat' }, body: JSON.stringify({ tab: open }) });
   });
 
   // Pasting and dictation (VoiceInk and the like paste with ⌘V, then put the
@@ -345,16 +465,30 @@ export function mountComposer(root, hooks) {
   let chatWhy = '';
   fetch('/playground/chat', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((s) => {
     enabled = !!s?.enabled;
-    maxTabs = Math.min(4, s?.tabs || 4);
     chatWhy = s?.why === 'off' ? 'Chat is off: start serve.py without --no-chat' : s?.why === 'missing' ? "Claude Code isn't installed on this computer" : '';
     input.disabled = !enabled;
-    drawTabs();
     drawTarget();
-    drawLog();
+    draw();
   }).catch(() => {});
 
-  drawTabs();
-  drawLog();
+  // The chats, from the server. Chats kept in this browser before the hub move
+  // there once, then leave the browser.
+  fetch('/playground/chats', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then(async (s) => {
+    if (!s) return;
+    you = s.you || you;
+    chats = (s.chats || []).filter((c) => Array.isArray(c.log));
+    const old = store.get(OLD_KEY, null)?.chats?.filter((c) => c.log?.length) || [];
+    for (const c of old.reverse()) {
+      if (chats.some((x) => x.id === c.id)) continue;
+      const moved = { id: /^c[a-z0-9]{1,30}$/.test(c.id) ? c.id : `c${Date.now().toString(36)}${chats.length}`, title: '', session: c.session || null, log: c.log };
+      if (await post('save', moved)) chats.unshift({ ...moved, updated: new Date().toISOString() });
+    }
+    if (old.length) { try { localStorage.removeItem(OLD_KEY); } catch {} }
+    loaded = true;
+    draw();
+  }).catch(() => {});
+
+  draw();
   drawTarget();
   function addShot(png, note) {
     pending.push({ png, note, url: `data:image/png;base64,${png}` });
