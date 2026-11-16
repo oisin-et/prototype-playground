@@ -7,6 +7,7 @@ export const ICON = {
   left: svg('<rect x="1.5" y="2.5" width="13" height="11" rx="2.2"/><path d="M6 2.5v11"/>'),
   right: svg('<rect x="1.5" y="2.5" width="13" height="11" rx="2.2"/><path d="M10 2.5v11"/>'),
   pointer: svg('<path d="M3.2 2.2 12.6 7l-4.1 1.2-1.8 4.3z"/>'),
+  trash: svg('<path d="M2.8 4.2h10.4M6.3 4.2V2.8h3.4v1.4M4.2 4.2l.7 8.8c.1.6.5 1 1.1 1h4c.6 0 1-.4 1.1-1l.7-8.8"/>'),
   note: svg('<path d="M8 14.2s-4.4-4-4.4-7.2a4.4 4.4 0 0 1 8.8 0c0 3.2-4.4 7.2-4.4 7.2z"/><circle cx="8" cy="7" r="1.4"/>'),
   inspect: svg('<circle cx="8" cy="8" r="4.6"/><path d="M8 1.2v2.4M8 12.4v2.4M1.2 8h2.4M12.4 8h2.4"/>'),
   shot: svg('<path d="M2 5V3.2C2 2.5 2.5 2 3.2 2H5M11 2h1.8c.7 0 1.2.5 1.2 1.2V5M14 11v1.8c0 .7-.5 1.2-1.2 1.2H11M5 14H3.2C2.5 14 2 13.5 2 12.8V11"/><circle cx="8" cy="8" r="2"/>'),

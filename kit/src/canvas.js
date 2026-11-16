@@ -291,7 +291,9 @@ for (const f of frames) {
     f.select.value = f.v;
     f.select.addEventListener('change', () => setIteration(f, f.select.value));
   }
-  el.querySelector('.cv-head').addEventListener('pointerdown', () => selectFrame(f));
+  el.querySelector('.cv-head').addEventListener('pointerdown', (e) => { if (!menuClick(e)) selectFrame(f); });
+  el.querySelector('.cv-head').addEventListener('click', (e) => { if (menuClick(e)) frameMenu(f, e); });
+  el.querySelector('.cv-head').addEventListener('contextmenu', (e) => { e.preventDefault(); frameMenu(f, e); });
   el.querySelector('.cv-fill').addEventListener('pointerdown', (e) => e.stopPropagation());
   el.querySelector('.cv-fill').addEventListener('click', (e) => { e.stopPropagation(); if (focused === f) unfocus(); else { selectFrame(f); focusFrame(f); } });
   world.append(el);
@@ -310,6 +312,10 @@ function drawBoards() {
     label.style.cssText = `left:${b.x}px;top:${b.y + LABEL_H}px`; // its bottom sits over the frames' names (canvas.css)
     const KIND = { variants: 'Variants', flow: 'Flow', states: 'States', review: 'Review' };
     label.innerHTML = `<span class="cv-board-kind">${ICON[b.kind] || ''}${esc(KIND[b.kind] || 'Board')}</span><b>${esc(b.title || '')}</b>`;
+    label.title = '⌘-click for its menu';
+    label.addEventListener('pointerdown', (e) => e.stopPropagation());
+    label.addEventListener('click', (e) => { if (menuClick(e)) boardMenu(b, e); });
+    label.addEventListener('contextmenu', (e) => { e.preventDefault(); boardMenu(b, e); });
     world.append(label);
     if (b.kind === 'flow') {
       const steps = b.frames.filter((f) => !f.isCase);
@@ -1282,6 +1288,74 @@ function showVersion(key) {
 // What a run said before the page laid out again.
 const NOTICE_KEY = `${KEY}.notice`;
 { const n = store.get(NOTICE_KEY, null); if (n) { store.set(NOTICE_KEY, null); setTimeout(() => toast(n), 800); } }
+
+// ---- The ⌘-click menu (or right-click): delete what a frame or board is ----
+// On a frame's name: its iteration, or the whole exploration; on a board's
+// title: the board. What goes is moved to the trash (serve.py's
+// canvas_delete), the canvas lays out again, and a toast offers Undo.
+const UNDO_KEY = `${KEY}.undo`;
+const menuClick = (e) => e.button === 0 && (e.metaKey || e.ctrlKey);
+let menuEl = null;
+function closeMenu() { menuEl?.remove(); menuEl = null; }
+function openMenu(e, title, items) {
+  closeMenu();
+  e.preventDefault(); e.stopPropagation();
+  menuEl = document.createElement('div');
+  menuEl.className = 'cv-menu';
+  menuEl.setAttribute('role', 'menu');
+  menuEl.innerHTML = `<div class="cv-menu-title">${esc(title)}</div>` + items.map((x, i) => (x.note
+    ? `<div class="cv-menu-note">${esc(x.note)}</div>`
+    : `<button type="button" role="menuitem" class="${x.danger ? 'danger' : ''}" data-i="${i}">${x.icon || ''}<span>${esc(x.label)}</span></button>`)).join('');
+  document.body.append(menuEl);
+  const w = menuEl.offsetWidth, h = menuEl.offsetHeight;
+  menuEl.style.left = `${Math.min(e.clientX, innerWidth - w - 8)}px`;
+  menuEl.style.top = `${Math.min(e.clientY + 4, innerHeight - h - 8)}px`;
+  menuEl.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  menuEl.addEventListener('click', (ev) => { const b = ev.target.closest('[data-i]'); if (b) { const x = items[+b.dataset.i]; closeMenu(); x.run(); } });
+  menuEl.querySelector('button')?.focus();
+}
+addEventListener('pointerdown', () => closeMenu());
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuEl) { e.stopImmediatePropagation(); closeMenu(); } }, true);
+addEventListener('blur', () => closeMenu());
+function frameMenu(f, e) {
+  if (f.board) { boardMenu(f.board, e); return; }
+  if (f.kind === 'main') { openMenu(e, 'Main', [{ note: 'Main is the app itself: it can’t be deleted.' }]); return; }
+  const name = `${f.group} ${f.major}`, it = `${f.group} ${f.v.slice(1)}`;
+  const items = [];
+  if (f.iters.length > 1) items.push({ label: `Delete iteration ${f.v.slice(1)}`, icon: ICON.trash, danger: true, run: () => remove({ what: 'iteration', frame: f.id, version: f.v }, `${it} is deleted.`) });
+  items.push({ label: f.iters.length > 1 ? `Delete exploration (${f.iters.length} iterations)` : 'Delete exploration', icon: ICON.trash, danger: true,
+    run: () => remove({ what: 'exploration', frame: f.id }, `${name} is deleted.`) });
+  openMenu(e, name, items);
+}
+function boardMenu(b, e) {
+  const KIND = { variants: 'Variants', flow: 'Flow', states: 'States', review: 'Review' }[b.kind] || 'Board';
+  openMenu(e, `${KIND}: ${b.title || ''}`, [{ label: 'Delete board', icon: ICON.trash, danger: true, run: () => remove({ what: 'board', board: b.id }, `The ${KIND.toLowerCase()} board is deleted.`) }]);
+}
+async function remove(body, done) {
+  const r = await post('/playground/canvas', 'canvas', body);
+  if (!r || r.error) { toast(r?.error || 'The playground isn’t answering.'); return; }
+  store.set(UNDO_KEY, { text: done, trash: r.trash, canvas: r.canvas });
+  location.reload();
+}
+// After a delete: the toast, with Undo, for 8 seconds.
+{
+  const u = store.get(UNDO_KEY, null);
+  if (u) {
+    store.set(UNDO_KEY, null);
+    setTimeout(() => {
+      toast(u.text);
+      clearTimeout(toastTimer);
+      toastEl.insertAdjacentHTML('beforeend', ' <button type="button" class="cv-undo">Undo</button>');
+      toastEl.querySelector('.cv-undo').addEventListener('click', async () => {
+        const r = await post('/playground/canvas', 'canvas', { what: 'restore', trash: u.trash, canvas: u.canvas });
+        if (!r || r.error) { toast(r?.error || 'It couldn’t be put back.'); return; }
+        store.set(NOTICE_KEY, 'It’s back.');
+        location.reload();
+      });
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 8000);
+    }, 800);
+  }
+}
 
 // After a run: the versions it made or changed. A new iteration joins its
 // frame; a new exploration needs a place on the canvas, so the page lays out

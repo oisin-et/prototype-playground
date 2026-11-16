@@ -112,7 +112,7 @@ from pathlib import Path
 
 import frozen
 import system
-from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, add_boards, add_to_canvas, board_explorations, known_versions, playground_lock, rel, write_json, write_registry
+from pglib import ADAPTER, BOARDS, CANVAS, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, add_boards, add_to_canvas, board_explorations, known_versions, playground_lock, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
@@ -1759,6 +1759,71 @@ def delete(pg, version):
     return tidy(pg, do) if version is None or version != "default" else (400, {"error": "main is the app itself: it can't be deleted."})
 
 
+def canvas_delete(body):
+    """The canvas's ⌘-click menu (POST /playground/canvas): deletes what a
+    frame or a board is, into the trash as Explorations' bin does, and takes
+    it off canvas.json. body: {"what": "iteration", "frame": "<screen>/v<N>",
+    "version": "v<N>.<n>"}, {"what": "exploration", "frame"} (every iteration
+    of it) or {"what": "board", "board": "<id>"}; {"what": "restore", "trash":
+    [stamps], "canvas": {"frames": [...], "boards": [...]}} puts it all back
+    (the toast's Undo). Returns (status, reply): reply has the trash stamps
+    and the canvas.json entries taken off, for the Undo."""
+    what = body.get("what")
+    doc = read_json_file(CANVAS) or {}
+    if what == "restore":
+        stamps = [s for s in body.get("trash") or [] if isinstance(s, str)]
+        for s in reversed(stamps):  # the last one deleted goes back first, to its place
+            if (TRASH / s / "board.json").is_file():
+                rec = read_json_file(TRASH / s / "deleted.json") or {}
+                BOARDS.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(TRASH / s / "board.json"), str(BOARDS / f"{rec.get('board')}.json"))
+                shutil.rmtree(TRASH / s, ignore_errors=True)
+            else:
+                status, reply = restore(s)
+                if status != 200:
+                    return status, reply
+        back = body.get("canvas") or {}
+        doc = read_json_file(CANVAS) or {}
+        for key in ("frames", "boards"):
+            have = {x.get("id") for x in doc.get(key, []) if isinstance(x, dict)}
+            add = [x for x in back.get(key, []) if isinstance(x, dict) and x.get("id") not in have]
+            if add:
+                doc[key] = sorted(doc.get(key, []) + add, key=lambda x: str(x.get("added", "")))
+        write_json(CANVAS, doc)
+        return 200, {"ok": True}
+    if what == "board":
+        bid = str(body.get("board") or "")
+        if not re.fullmatch(r"[\w-]+", bid) or not (BOARDS / f"{bid}.json").is_file():
+            return 404, {"error": "That board isn't there any more."}
+        stamp = unique_stamp()
+        (TRASH / stamp).mkdir(parents=True, exist_ok=True)
+        shutil.move(str(BOARDS / f"{bid}.json"), str(TRASH / stamp / "board.json"))
+        write_json(TRASH / stamp / "deleted.json", {"kind": "board", "board": bid})
+        taken = [b for b in doc.get("boards", []) if isinstance(b, dict) and b.get("id") == bid]
+        write_json(CANVAS, {**doc, "boards": [b for b in doc.get("boards", []) if b not in taken]})
+        return 200, {"trash": [stamp], "canvas": {"boards": taken}}
+    frame = str(body.get("frame") or "")
+    pg, _, major = frame.rpartition("/")
+    if what not in ("iteration", "exploration") or not re.fullmatch(r"[\w.-]+", pg) or not re.fullmatch(r"v\d+", major):
+        return 400, {"error": "That isn't a frame on the canvas."}
+    meta = read_json_file(DATA / pg / "versions.json") or {}
+    mine = [v["id"] for v in meta.get("versions", []) if isinstance(v, dict) and str(v.get("id", "")).startswith(major + ".")]
+    gone = mine if what == "exploration" else [v for v in mine if v == body.get("version")]
+    if not gone:
+        return 404, {"error": f"{frame} has no {body.get('version') or 'iterations'} to delete."}
+    stamps = []
+    for v in gone:
+        status, reply = delete(pg, v)
+        if status != 200:
+            return status, {**reply, "trash": stamps}
+        stamps.append(reply["trash"])
+    taken = []
+    if len(gone) == len(mine):  # nothing of it left: off the canvas too
+        taken = [f for f in doc.get("frames", []) if isinstance(f, dict) and f.get("id") == frame]
+        write_json(CANVAS, {**doc, "frames": [f for f in doc.get("frames", []) if f not in taken]})
+    return 200, {"trash": stamps, "canvas": {"frames": taken}}
+
+
 def restore(stamp):
     """Puts back what a delete moved to the trash, where it was."""
     if not re.fullmatch(r"[\w-]+", str(stamp)):
@@ -2210,6 +2275,24 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(403)
             else:
                 self.save_thumb()
+        elif path == "/playground/canvas":
+            # The canvas's ⌘-click menu: delete an iteration, an exploration or a board, and Undo.
+            if not self.from_panel(("canvas",)):
+                self.send_error(403)
+                return
+            if self.commit.lock.locked():
+                self.json(409, {"error": "A commit is running. Wait for it to finish."})
+                return
+            try:
+                body = self.read_json()
+                assert isinstance(body, dict)
+            except (ValueError, AssertionError):
+                self.send_error(400)
+                return
+            status, reply = canvas_delete(body)
+            if status == 200:
+                self.log_message("Canvas: %s %s", body.get("what"), body.get("frame") or body.get("board") or "")
+            self.json(status, reply)
         elif path == "/playground/explorations":
             if not self.from_panel(("explorations",)):
                 self.send_error(403)
