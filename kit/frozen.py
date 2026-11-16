@@ -209,7 +209,13 @@ def manifest_path(key):
 
 
 def manifest(key):
-    return read_json(manifest_path(key), None) if KEY.match(str(key or "")) else None
+    """A frozen copy's manifest, or None when it has none (never frozen, or removed)."""
+    if not KEY.match(str(key or "")):
+        return None
+    try:
+        return read_json(manifest_path(key))
+    except (OSError, ValueError):
+        return None
 
 
 def base_now(cache=None):

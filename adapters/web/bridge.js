@@ -10,7 +10,7 @@
 //
 //   host → app  {type: 'layers', layers: ['settings/v4.2', …]}
 //               the versions to run, in <data>/index.json order
-//               {type: 'show', screen}             open that screen
+//               {type: 'show', screen, params?}    open that screen (params: the state, as `where` gives it)
 //               {type: 'capture', id, rect, scale} draw part of the app
 //               {type: 'capture', id, selector, width} draw the element
 //               (else the whole app) width pixels wide: a version's picture
@@ -80,7 +80,8 @@ let hooks = { show: null, where: null, draw: null };
 const post = (m) => { if (embedded) window.parent.postMessage(JSON.stringify(m), origin); };
 
 /**
- * Called once by the app. show(screen) opens a screen by id; where() says
+ * Called once by the app. show(screen, params) opens a screen by id (params,
+ * when a canvas board asks for one state of it, as `where` reports them); where() says
  * which is on show, as {screen, params, title?}. draw(node, [w, h]), if the
  * app has it, draws one component on its own, as the app would, for the
  * Library's specimens: node is as the app's screens place it (its frame at
@@ -182,7 +183,7 @@ addEventListener('message', (e) => {
     // After the redraw, so a version that changes the screen on show reports it.
     requestAnimationFrame(() => requestAnimationFrame(report));
   } else if (m.type === 'show') {
-    hooks.show?.(String(m.screen));
+    hooks.show?.(String(m.screen), m.params && typeof m.params === 'object' ? m.params : {});
   } else if (m.type === 'capture') {
     capture(m);
   } else if (m.type === 'inspect') {

@@ -128,8 +128,9 @@ const { screens: SCREENS = {} } = await loadOptional('screens.json', DATA, {});
 const { playgrounds: IDS = [] } = await loadOptional('index.json', DATA, {});
 const playgrounds = (await Promise.all(IDS.map((id) => load(`${id}/versions.json`, DATA)
   .then((pg) => ({ ...pg, id, screen: id.split('/')[0] })).catch(() => null)))).filter(Boolean);
-// The explorations on the canvas (serve.py's add_to_canvas), as '<screen>/v<N>'.
-const { frames: ON = [] } = await loadOptional('../canvas.json', import.meta.url, {});
+// The explorations on the canvas (serve.py's add_to_canvas), as '<screen>/v<N>',
+// and the boards the starting prompts made (see "Boards" below).
+const { frames: ON = [], boards: BOARD_IDS = [] } = await loadOptional('../canvas.json', import.meta.url, {});
 
 // Frozen copies (frozen.py), filled in once the app is up: see syncFrozen().
 let frozen = {}; // '<screen>/<version>' → { label, commit, date, made }
@@ -156,32 +157,119 @@ for (const { id } of ON) {
   });
 }
 
+// ---- Boards: what a starting prompt made (composer.js's STARTERS) ---------
+// A board is one run's answer to a starting prompt, laid out as a group under
+// the frames above, with its title over it: three variants in a row; a flow's
+// steps in a row, an arrow from each to the next, and each step's edge cases
+// under it; the states side by side; a review's before and after, with what it
+// found beside them. Its file is <data>/boards/<id>.json (serve.py's
+// add_boards), and canvas.json lists the boards in the order they were made.
+// Each item is a frame of its own, on one version ("main" or
+// "<screen>/v4.2"), opened on its screen. A variant is an exploration to carry
+// on, so it keeps its iterations behind the stepper; every other item shows
+// the one version it names, always.
+const boards = (await Promise.all(BOARD_IDS.map(({ id }) => load(`boards/${id}.json`, DATA)
+  .then((b) => ({ ...b, id })).catch(() => null)))).filter((b) => b && Array.isArray(b.items) && b.items.length);
+function itemFrame(board, item, id) {
+  const ref = String(item?.version || 'main');
+  const base = {
+    id, board, caption: String(item?.title || ''), note: String(item?.note || ''),
+    params: item?.params && typeof item.params === 'object' ? item.params : null,
+  };
+  if (ref === 'main') {
+    return { ...base, kind: 'main', iters: [], v: null, title: base.caption || 'Main', screen: item?.screen || main.screen };
+  }
+  const cut = ref.lastIndexOf('/'), pgId = ref.slice(0, cut), vid = ref.slice(cut + 1), [major] = num(vid);
+  const pg = playgrounds.find((p) => p.id === pgId);
+  const all = (pg?.versions || []).filter((v) => num(v.id)[0] === major).sort((a, b) => num(a.id)[1] - num(b.id)[1]);
+  if (!pg || !all.some((x) => x.id === vid)) return null; // deleted since
+  const free = board.kind === 'variants';
+  const iters = free ? all : all.filter((x) => x.id === vid);
+  const v = free ? (iters.some((x) => x.id === chosen[id]) ? chosen[id] : iters.at(-1).id) : vid;
+  return {
+    ...base, kind: 'exp', pg, major, iters, v, fixed: !free,
+    title: all[0].name, group: pg.title || SCREENS[pg.screen]?.title || pg.id,
+    screen: item?.screen || pg.start || pg.screen || pg.on?.[0],
+  };
+}
+for (const b of boards) {
+  b.frames = [];
+  b.items.forEach((item, i) => {
+    const f = itemFrame(b, item, `${b.id}#${i + 1}`);
+    if (!f) return;
+    f.cases = [];
+    frames.push(f);
+    b.frames.push(f);
+    if (b.kind !== 'flow') return;
+    (Array.isArray(item.cases) ? item.cases : []).forEach((c, j) => {
+      const cf = itemFrame(b, c, `${b.id}#${i + 1}.${j + 1}`);
+      if (cf) { cf.isCase = true; f.cases.push(cf); frames.push(cf); }
+    });
+  });
+}
+
 // ---- Layout: main first, then each exploration in the order it joined ----
+// The boards come under them, one band each, newest last.
 const world = document.getElementById('world');
 world.style.setProperty('--fw', `${W}px`);
 const stage = document.getElementById('stage');
 const shield = document.getElementById('shield');
-frames.forEach((f, i) => {
+const loose = frames.filter((f) => !f.board);
+loose.forEach((f, i) => {
   f.x = (i % PER_ROW) * (W + GAP);
   f.y = Math.floor(i / PER_ROW) * (H + ROW_GAP);
 });
+const FLOW_GAP = Math.round(W * 0.5); // room for an arrow and its words between two steps
+const CASE_GAP = Math.round(H * 0.6); // room for a dashed line between the names
+const LABEL_H = Math.round(H * 0.42); // a board's title, over its frames
+const extras = []; // what a board draws besides its frames: {x, y, w, h}, for Home's fit
+{
+  let top = Math.ceil(loose.length / PER_ROW) * (H + ROW_GAP) + Math.round(H * 0.2);
+  for (const b of boards) {
+    if (!b.frames.length) continue;
+    b.x = 0; b.y = top;
+    const y0 = top + LABEL_H;
+    let bottom = y0 + H;
+    if (b.kind === 'flow') {
+      const steps = b.frames.filter((f) => !f.isCase);
+      steps.forEach((f, i) => {
+        f.x = i * (W + FLOW_GAP); f.y = y0;
+        f.cases.forEach((c, j) => { c.x = f.x; c.y = y0 + (j + 1) * (H + CASE_GAP); bottom = Math.max(bottom, c.y + H); });
+      });
+    } else {
+      const cells = [...b.frames, ...(b.kind === 'review' && b.findings?.length ? ['findings'] : [])];
+      cells.forEach((f, i) => {
+        const x = (i % PER_ROW) * (W + GAP), y = y0 + Math.floor(i / PER_ROW) * (H + ROW_GAP);
+        if (f === 'findings') b.card = { x, y }; else { f.x = x; f.y = y; }
+        bottom = Math.max(bottom, y + H);
+      });
+    }
+    top = bottom + ROW_GAP;
+  }
+}
 
 const iterOf = (f) => f.iters.find((x) => x.id === f.v);
 // The canvas's own pictures (serve.py's save_canvas_thumb): key → when it was taken.
 const pictures = await loadOptional('/playground/thumbs?canvas=1', location.href, {});
 // A frame's picture: main's, or its frozen copy's. One running on today's main has none kept.
-const pictureKey = (f) => (f.kind === 'main' ? 'main' : frozenOf(f) ? `${f.pg.id}/${f.v}` : null);
+// A board's item has its own: it opens on its own screen and state, not the version's first.
+const pictureKey = (f) => (f === main ? 'main' : f.board ? `board/${f.id.replace(/[^\w-]/g, '-')}` : frozenOf(f) ? `${f.pg.id}/${f.v}` : null);
 const pictureUrl = (key) => new URL(`thumbs/_canvas/${key}.png?t=${pictures[key]}`, location.href).href;
+// Pictures in two sizes (see drawPoster): declared here, as the frames below draw theirs as they're made.
+const SMALL = 320; // the small picture's width
+const PICTURE_W = Math.min(W, CFG.canvas?.pictureWidth || 1600); // the full one's
+const sets = new Map(); // picture id → { large, small (a promise), own: [blob URLs] }
+let shotCount = 0;
 
 for (const f of frames) {
   const el = document.createElement('section');
-  el.className = `cv-frame ${f.kind}`;
+  el.className = `cv-frame ${f.kind}${f.board ? ' on-board' : ''}${f.isCase ? ' case' : ''}`;
   el.style.cssText = `left:${f.x}px;top:${f.y}px;width:${W}px;height:${H}px`;
   el.dataset.id = f.id;
   el.innerHTML = `
     <header class="cv-head">
-      <span class="cv-title">${f.kind === 'main' ? ICON.main : ICON.branch}<b>${esc(f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`)}</b></span>
-      ${f.kind === 'exp' ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
+      <span class="cv-title">${f.kind === 'main' ? ICON.main : ICON.branch}<b>${esc(f.caption || (f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`))}</b></span>
+      ${f.kind === 'exp' && !f.fixed ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select></label>` : `<span class="cv-iter-now main"></span>`}
       <button type="button" class="cv-fill cv-icon"></button>
     </header>
@@ -210,13 +298,150 @@ for (const f of frames) {
   drawPoster(f);
   drawFoot(f);
 }
+drawBoards();
 
-function drawPoster(f) {
+// Each board's title, its flow's arrows, and its review's findings.
+function drawBoards() {
+  const NS = 'http://www.w3.org/2000/svg';
+  for (const b of boards) {
+    if (!b.frames.length) continue;
+    const label = document.createElement('div');
+    label.className = `cv-board-label ${esc(b.kind)}`;
+    label.style.cssText = `left:${b.x}px;top:${b.y + LABEL_H}px`; // its bottom sits over the frames' names (canvas.css)
+    const KIND = { variants: 'Variants', flow: 'Flow', states: 'States', review: 'Review' };
+    label.innerHTML = `<span class="cv-board-kind">${ICON[b.kind] || ''}${esc(KIND[b.kind] || 'Board')}</span><b>${esc(b.title || '')}</b>`;
+    world.append(label);
+    if (b.kind === 'flow') {
+      const steps = b.frames.filter((f) => !f.isCase);
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'cv-arrows');
+      const right = Math.max(...steps.map((f) => f.x + W)), down = Math.max(...b.frames.map((f) => f.y + H));
+      svg.setAttribute('width', right); svg.setAttribute('height', down);
+      svg.style.cssText = 'left:0;top:0';
+      const head = Math.round(W * 0.018);
+      let paths = '';
+      steps.forEach((f, i) => {
+        const next = steps[i + 1];
+        if (next) {
+          const y = f.y + H / 2, x0 = f.x + W + W * 0.03, x1 = next.x - W * 0.03;
+          paths += `<path class="line" d="M${x0} ${y}H${x1 - head * 0.6}"/><path class="head" d="M${x1 - head} ${y - head * 0.7}L${x1} ${y}L${x1 - head} ${y + head * 0.7}z"/>`;
+          const words = Array.isArray(b.arrows) ? b.arrows[i] : '';
+          if (words) {
+            const t = document.createElement('div');
+            t.className = 'cv-arrow-label';
+            t.textContent = String(words);
+            t.style.cssText = `left:${(x0 + x1) / 2}px;top:${y}px;--gap:${x1 - x0}px`;
+            world.append(t);
+          }
+        }
+        // Each edge case hangs from its step: a dashed line that stops short of the names (canvas.css).
+        f.cases.forEach((c, j) => {
+          const link = document.createElement('div');
+          link.className = 'cv-case-link';
+          link.style.cssText = `left:${f.x + W / 2}px;--top:${(j ? f.cases[j - 1].y : f.y) + H}px;--gap:${CASE_GAP}px`;
+          world.append(link);
+        });
+      });
+      svg.innerHTML = paths;
+      world.prepend(svg);
+    }
+    if (b.card) {
+      const card = document.createElement('section');
+      card.className = 'cv-findings';
+      card.style.cssText = `left:${b.card.x}px;top:${b.card.y}px;width:${W}px;height:${H}px`;
+      card.innerHTML = `<h4>What the review found</h4><ol>${b.findings.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`;
+      world.append(card);
+      extras.push({ x: b.card.x, y: b.card.y, w: W, h: H });
+    }
+  }
+}
+
+// A frame's picture comes in two sizes: a small one for when the frame is
+// small on screen or off it, and the full one (the app's own width) for when
+// it's big. Which one shows is chosen when the view comes to rest (rest()),
+// never while it moves, and the next one is decoded before it's swapped in,
+// so a frame never blinks. Pictures taken here are Blobs, not data URLs: their
+// URLs are let go when a newer picture replaces them.
+// (SMALL, PICTURE_W, sets and shotCount are declared before the frames are made.)
+const b64ToBlob = (b64, type = 'image/png') => {
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+};
+// Draws a smaller copy of a picture, as WebP where the browser makes it (PNG otherwise).
+async function shrink(src) {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const w = Math.min(SMALL, img.naturalWidth), h = Math.max(1, Math.round(img.naturalHeight * (w / img.naturalWidth)));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise((ok) => c.toBlob(ok, 'image/webp', 0.86));
+  return blob ? URL.createObjectURL(blob) : src;
+}
+function pictureSet(id, large, own = []) {
+  let s = sets.get(id);
+  if (!s) {
+    s = { large, own, small: null };
+    s.small = shrink(large).then((u) => { if (u !== large) s.own.push(u); return u; }).catch(() => large);
+    sets.set(id, s);
+  }
+  return s;
+}
+function dropSet(id) {
+  const s = sets.get(id);
+  if (!s) return;
+  sets.delete(id);
+  s.small.then(() => { for (const u of s.own) URL.revokeObjectURL(u); });
+}
+// The picture a frame should show now: its own (taken this session), or the server's.
+function pictureOf(f) {
   const shot = f.shots?.[`${f.kind === 'exp' ? sourceOf(f) : 'live'}|${f.v ?? 'main'}`];
+  if (shot) return shot;
   const key = pictureKey(f);
-  if (shot) f.poster.src = shot;
-  else if (key && pictures[key]) f.poster.src = pictureUrl(key);
-  else { f.poster.removeAttribute('src'); f.el.classList.remove('has-poster'); }
+  if (key && pictures[key]) {
+    const id = `srv:${key}:${pictures[key]}`;
+    if (sets.has(id)) return sets.get(id);
+    for (const [k, s] of sets) if (k.startsWith(`srv:${key}:`) && s !== f.posterSet) dropSet(k); // an older one of the same
+    return pictureSet(id, pictureUrl(key));
+  }
+  return null;
+}
+function drawPoster(f) {
+  const set = pictureOf(f);
+  if (!set) {
+    f.posterSet = null;
+    f.poster.removeAttribute('src');
+    f.el.classList.remove('has-poster');
+    return;
+  }
+  const lod = f.lod || 'small', token = (f.posterToken = (f.posterToken || 0) + 1);
+  (lod === 'large' ? Promise.resolve(set.large) : set.small).then(async (src) => {
+    if (f.posterToken !== token || f.poster.getAttribute('src') === src) return;
+    const next = new Image();
+    next.src = src;
+    await next.decode().catch(() => {});
+    if (f.posterToken !== token) return;
+    f.poster.src = src;
+    f.posterSet = set;
+  });
+}
+// Keeps a picture this page took: replaces (and lets go of) the one it took before.
+function keepShot(f, slot, png) {
+  const old = f.shots?.[slot];
+  const url = URL.createObjectURL(b64ToBlob(png));
+  const id = `shot:${f.id}:${slot}:${++shotCount}`;
+  (f.shots ??= {})[slot] = pictureSet(id, url, [url]);
+  if (old) for (const [k, s] of sets) if (s === old) dropSet(k);
+}
+// Forgets what a frame's pictures showed (it changed): they're let go once nothing shows them.
+function forgetShots(f) {
+  const old = Object.values(f.shots || {});
+  f.shots = {};
+  for (const [k, s] of sets) if (old.includes(s) && s !== f.posterSet) dropSet(k);
 }
 // Takes the frame's picture once it has settled: kept for this page, and, for
 // main or a frozen copy, on the server for the next time.
@@ -225,8 +450,8 @@ async function takePicture(f) {
   await new Promise((r) => setTimeout(r, 2500));
   if (!f.ready || f.source !== source || (f.v ?? 'main') !== v) return false;
   try {
-    const shot = await ask(f, { type: 'capture', width: 960 }, 8000);
-    (f.shots ??= {})[`${source}|${v}`] = `data:image/png;base64,${shot.png}`;
+    const shot = await ask(f, { type: 'capture', width: PICTURE_W }, 12000);
+    keepShot(f, `${source}|${v}`, shot.png);
     if (key && pictureKey(f) === key) {
       await post('/playground/thumbs', 'thumbs', { canvas: key, png: shot.png });
       pictures[key] = Date.now();
@@ -323,27 +548,40 @@ function syncFrozen() {
 setInterval(() => { if (!document.hidden && app) syncFrozen(); }, 60000);
 // Main as it is on disk: when it changes, Main and every frame on today's
 // main run again (frozen copies don't change).
-let mainStamp = null;
-setInterval(async () => {
-  if (document.hidden || !app) return;
-  const r = await fetch('/playground/main', { cache: 'no-store' }).then((x) => x.json()).catch(() => null);
-  if (!r?.stamp) return;
-  if (mainStamp && r.stamp !== mainStamp) {
-    for (const f of frames) if (f.iframe && sourceOf(f) === 'live') { f.shots = {}; rerun(f); }
+let mainStamp = null, laterStamp = null; // laterStamp: a change that came while the page was hidden
+function mainChanged(stamp) {
+  if (!stamp) return;
+  if (document.hidden) { laterStamp = stamp; return; }
+  if (!app) { mainStamp = stamp; return; }
+  if (mainStamp && stamp !== mainStamp) {
+    for (const f of frames) if (f.iframe && sourceOf(f) === 'live') { forgetShots(f); rerun(f); }
     toast('Main changed: it runs again.');
   }
-  mainStamp = r.stamp;
+  mainStamp = stamp;
+}
+let pushed = false; // the server tells us (serve.py's /playground/events); without it, we ask every 3 s
+try {
+  const events = new EventSource('/playground/events');
+  events.addEventListener('main', (e) => { pushed = true; try { mainChanged(JSON.parse(e.data).stamp); } catch {} });
+  events.onerror = () => { pushed = false; }; // it connects again by itself
+} catch {}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && laterStamp) { const s = laterStamp; laterStamp = null; mainChanged(s); } });
+setInterval(async () => {
+  if (pushed || document.hidden || !app) return;
+  const r = await fetch('/playground/main', { cache: 'no-store' }).then((x) => x.json()).catch(() => null);
+  mainChanged(r?.stamp);
 }, 3000);
 watchApp();
 setInterval(() => { if (!document.hidden) watchApp(); }, 3000);
 
 const send = (f, m) => { if (f.iframe && f.origin) f.iframe.contentWindow?.postMessage(JSON.stringify(m), f.origin); };
+// Opens the frame's screen: a board's item, with the params of the state it shows.
+const showScreen = (f) => { if (f.screen) send(f, { type: 'show', screen: f.screen, ...(f.params ? { params: f.params } : {}) }); };
 const layersOf = (f) => (f.kind === 'main' ? [] : [`${f.pg.id}/${f.v}`]);
 
 const liveOrder = [];
-async function wake(f) {
-  if (!app) { toast('The app is still starting.'); return; }
-  if (f.iframe) { if (f !== main) { liveOrder.splice(liveOrder.indexOf(f), 1); liveOrder.push(f); } return; }
+// Where a frame's app runs: the live app, or its frozen copy's own server.
+async function frameSrc(f) {
   const source = sourceOf(f);
   let origin = app.origin;
   if (source !== 'live') {
@@ -351,13 +589,21 @@ async function wake(f) {
     if (!r?.port) { toast(`The frozen copy of ${f.v.slice(1)} isn't there: it runs on today's main.`); f.onMain = true; drawMode(f); }
     else origin = `http://127.0.0.1:${r.port}`;
   }
-  if (f.iframe) return; // woken twice while waiting
-  const iframe = document.createElement('iframe');
-  iframe.title = f.kind === 'main' ? 'Main' : `${f.group} ${f.major}: ${f.title}`;
   const u = new URL(app.path, origin);
   u.searchParams.set('playground', location.origin);
-  iframe.src = u.href;
-  f.iframe = iframe; f.ready = false; f.origin = origin; f.source = sourceOf(f);
+  return { origin, href: u.href, source: sourceOf(f) };
+}
+const frameTitle = (f) => (f.caption ? `${f.board.title || ''}: ${f.caption}` : f.kind === 'main' ? 'Main' : `${f.group} ${f.major}: ${f.title}`);
+async function wake(f) {
+  if (!app) { toast('The app is still starting.'); return; }
+  f.awaySince = null;
+  if (f.iframe) { if (f !== main) { liveOrder.splice(liveOrder.indexOf(f), 1); liveOrder.push(f); } return; }
+  const src = await frameSrc(f);
+  if (f.iframe) return; // woken twice while waiting
+  const iframe = document.createElement('iframe');
+  iframe.title = frameTitle(f);
+  iframe.src = src.href;
+  f.iframe = iframe; f.ready = false; f.origin = src.origin; f.source = src.source;
   f.body.append(iframe);
   f.el.classList.add('live', 'loading');
   if (f === main) return; // always live, and not counted
@@ -371,12 +617,13 @@ async function wake(f) {
 async function sleep(f, picture = true) {
   const i = liveOrder.indexOf(f);
   if (i >= 0) liveOrder.splice(i, 1);
+  dropStandby(f);
   if (f.ready && picture) {
     // A picture of it as it was, so the frame looks the same asleep.
     const v = f.v ?? 'main', src = f.source;
     try {
-      const shot = await ask(f, { type: 'capture', width: 960 });
-      (f.shots ??= {})[`${src}|${v}`] = `data:image/png;base64,${shot.png}`;
+      const shot = await ask(f, { type: 'capture', width: PICTURE_W }, 8000);
+      keepShot(f, `${src}|${v}`, shot.png);
     } catch {}
   }
   f.iframe?.remove();
@@ -385,16 +632,61 @@ async function sleep(f, picture = true) {
   drawPoster(f);
 }
 // Runs the frame again from what it should run now (another frozen copy, or live).
+// A live frame that has loaded keeps showing while the new one loads behind
+// it, on standby; the two swap once the new one's bridge says hello (see
+// promote()), so a change never shows as a blank or a stale picture.
 let reloadTimers = new Map();
+const STANDBY_MAX_MS = 30000; // a standby that never says hello is given up, and the frame reloads in place
 function rerun(f) {
-  f.el.classList.add('loading');
-  drawPoster(f);
   clearTimeout(reloadTimers.get(f));
   reloadTimers.set(f, setTimeout(async () => {
+    if (f.iframe && f.ready && app) { await standby(f); return; }
+    f.el.classList.add('loading');
+    drawPoster(f);
     const wasLive = !!f.iframe;
     if (wasLive) await sleep(f, false);
     if (wasLive || f === selected || f === focused) wake(f);
   }, 250));
+}
+async function standby(f) {
+  dropStandby(f);
+  const src = await frameSrc(f);
+  if (!f.iframe) return; // put to sleep meanwhile
+  const iframe = document.createElement('iframe');
+  iframe.title = frameTitle(f);
+  iframe.className = 'cv-standby';
+  iframe.tabIndex = -1;
+  iframe.src = src.href;
+  const timer = setTimeout(() => {
+    if (f.next?.iframe !== iframe) return;
+    dropStandby(f);
+    f.el.classList.add('loading');
+    sleep(f, false).then(() => wake(f));
+  }, STANDBY_MAX_MS);
+  f.next = { iframe, origin: src.origin, source: src.source, timer };
+  f.body.insertBefore(iframe, f.iframe); // under the one on show: it loads and draws, out of sight
+}
+function dropStandby(f) {
+  if (!f.next) return;
+  clearTimeout(f.next.timer);
+  f.next.iframe.remove();
+  f.next = null;
+}
+// The standby has loaded: it becomes the frame's app. The old one stays on top
+// a moment longer, while the new one lays its versions over its screen.
+const SWAP_MS = 350;
+function promote(f) {
+  const n = f.next, old = f.iframe;
+  clearTimeout(n.timer);
+  f.next = null;
+  const hadFocus = document.activeElement === old;
+  f.iframe = n.iframe; f.origin = n.origin; f.source = n.source; f.ready = false;
+  n.iframe.classList.remove('cv-standby');
+  n.iframe.removeAttribute('tabindex');
+  if (old) {
+    old.classList.add('cv-leaving'); // on top, but the pointer goes through to the new one
+    setTimeout(() => { old.remove(); if (hadFocus) n.iframe.focus(); }, SWAP_MS);
+  }
 }
 
 const pending = new Map();
@@ -407,19 +699,25 @@ const ask = (f, m, wait = 2500) => new Promise((ok, fail) => {
 });
 
 addEventListener('message', (e) => {
-  const f = frames.find((x) => x.iframe && x.iframe.contentWindow === e.source);
-  if (!f || e.origin !== f.origin) return;
+  let f = frames.find((x) => x.iframe && x.iframe.contentWindow === e.source);
+  const waiting = !f && frames.find((x) => x.next && x.next.iframe.contentWindow === e.source);
+  if (waiting && e.origin === waiting.next.origin) f = waiting; // the standby: it's heard once it says hello
+  if (!f || e.origin !== (f === waiting ? f.next.origin : f.origin)) return;
   let m;
   try { m = JSON.parse(e.data); } catch { return; }
+  if (f === waiting) {
+    if (m.type !== 'hello') return;
+    promote(f);
+  }
   if (m.type === 'hello') {
     f.registry = m.versions || {};
     f.ready = true;
     f.el.classList.remove('loading');
     send(f, { type: 'layers', layers: layersOf(f) });
-    if (f.screen) send(f, { type: 'show', screen: f.screen });
+    showScreen(f);
     drawFoot(f);
     const key = pictureKey(f);
-    if (f === main || (key && (!pictures[key] || f.repicture))) takePicture(f).then((ok) => { if (ok) f.repicture = false; f.pictured?.(ok); });
+    if (f.kind === 'main' || (key && (!pictures[key] || f.repicture))) takePicture(f).then((ok) => { if (ok) f.repicture = false; f.pictured?.(ok); });
   } else if (m.type === 'where') {
     f.where = m.title || SCREENS[m.screen]?.title || m.screen;
     f.route = { screen: m.screen, params: m.params || {} };
@@ -463,7 +761,7 @@ addEventListener('message', (e) => {
 
 // ---- Iterations -------------------------------------------------------------
 function setIteration(f, id) {
-  if (!f.iters.some((x) => x.id === id) || f.v === id) return;
+  if (f.fixed || !f.iters.some((x) => x.id === id) || f.v === id) return;
   f.v = id;
   chosen[f.id] = id;
   store.set(`${KEY}.iteration`, chosen);
@@ -471,7 +769,7 @@ function setIteration(f, id) {
   if (f.iframe && sourceOf(f) !== f.source) rerun(f);
   else if (f.ready) {
     send(f, { type: 'layers', layers: layersOf(f) });
-    if (f.screen) send(f, { type: 'show', screen: f.screen });
+    showScreen(f);
   } else drawPoster(f);
   drawMode(f);
   drawFoot(f);
@@ -503,9 +801,9 @@ function context() {
     screenTitle: (f.route && f.where) || SCREENS[screen]?.title || screen,
     files: SCREENS[screen]?.file ? [SCREENS[screen].file] : [],
   };
-  if (f.kind === 'main') return { chip: 'Main', kind: 'main', body: { ...page, frame: 'main' } };
+  if (f.kind === 'main') return { chip: f.caption || 'Main', page: `Main · ${page.screenTitle}`, kind: 'main', body: { ...page, frame: 'main' } };
   return {
-    chip: `${f.group} ${f.v.slice(1)}`, kind: 'exp',
+    chip: `${f.group} ${f.v.slice(1)}`, page: `${f.v.slice(1)} · ${iterOf(f)?.name || f.title}`, kind: 'exp',
     body: { ...page, frame: 'exp', playground: f.pg.id, version: f.v, name: iterOf(f)?.name, onMain: !frozenOf(f) },
   };
 }
@@ -629,18 +927,94 @@ const view = { x: 40, y: 80, z: 0.12, ...store.get(VIEW_KEY, {}) };
 const ZMIN = 0.02, ZMAX = 2;
 const zoomLabel = document.createElement('span'); // no zoom number on show
 let saveTimer = 0;
+// The view moves once a frame, however many wheel and pointer events come in
+// it: draw() asks for the next frame, paint() moves the world. A glide (a fit,
+// a zoom key) paints at once, as its transition starts from there.
+//
+// While the view moves, the stage is "moving" (and "zooming" while the zoom
+// changes): the world is its own layer, live frames don't take the wheel or
+// the pointer (a scroll that passes over one keeps moving the canvas), and the
+// frames' soft shadows are left out (they'd be drawn again at every step of a
+// zoom). What can wait waits for rest(): which frames keep only their names,
+// which picture each one shows, and which live frames go to sleep.
+const REST_MS = 140; // this long without a move, the view is at rest
+let paintAsked = false, glideAsked = false, paintedZ = null, restTimer = 0;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function draw(glide = false) {
-  world.classList.toggle('glide', glide && !matchMedia('(prefers-reduced-motion: reduce)').matches);
-  world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
-  world.style.setProperty('--inv', String(1 / view.z));
-  // Small frames keep only their names; tiny ones not even those.
-  world.classList.toggle('small', W * view.z < 420);
-  world.classList.toggle('tiny', W * view.z < 90);
-  zoomLabel.textContent = `${Math.round(view.z * (focused ? lens.z : 1) * 100)}%`;
+  glideAsked ||= glide;
+  if (glide) { paint(); return; }
+  if (paintAsked) return;
+  paintAsked = true;
+  requestAnimationFrame(paint);
+}
+function paint() {
+  paintAsked = false;
+  const glide = glideAsked && !reduceMotion.matches;
+  glideAsked = false;
+  world.classList.toggle('glide', glide);
+  world.style.transform = `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.z})`;
+  const zoomed = view.z !== paintedZ;
+  if (zoomed) {
+    paintedZ = view.z;
+    world.style.setProperty('--inv', String(1 / view.z));
+    zoomLabel.textContent = `${Math.round(view.z * (focused ? lens.z : 1) * 100)}%`;
+  }
+  stir(zoomed, glide ? 480 : REST_MS);
   notes?.moved();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => store.set(VIEW_KEY, { x: view.x, y: view.y, z: view.z }), 300);
 }
+function stir(zoomed, ms) {
+  stage.classList.add('moving');
+  if (zoomed) stage.classList.add('zooming');
+  clearTimeout(restTimer);
+  restTimer = setTimeout(rest, ms);
+}
+function rest() {
+  stage.classList.remove('moving', 'zooming');
+  // Small frames keep only their names; tiny ones not even those.
+  world.classList.toggle('small', W * view.z < 420);
+  world.classList.toggle('tiny', W * view.z < 90);
+  choosePictures();
+  awayFrames();
+}
+// Where a frame is on the stage now, in screen pixels (from the stage's left and top).
+function onStage(f) {
+  const z = view.z;
+  return { x: f.x * z + view.x, y: f.y * z + view.y, w: W * z, h: H * z };
+}
+const inView = (f, margin = 0) => {
+  const r = onStage(f), sw = stage.clientWidth, sh = stage.clientHeight;
+  return r.x + r.w > -margin && r.y + r.h > -margin && r.x < sw + margin && r.y < sh + margin;
+};
+// Each frame's picture: the full one when the frame is big on screen, the small one otherwise.
+function choosePictures() {
+  const dpr = devicePixelRatio || 1;
+  for (const f of frames) {
+    const lod = inView(f, 200) && W * view.z * dpr > SMALL * 1.5 ? 'large' : 'small';
+    if (lod === f.lod) continue;
+    f.lod = lod;
+    if (!f.iframe || f.el.classList.contains('loading')) drawPoster(f);
+  }
+}
+// A live exploration that has been out of view, or too small on screen to
+// use, for a while goes to sleep (with a picture of itself): only what's in
+// use keeps running. Main, the selected frame and the
+// one that fills the window stay live. "awayMs": 0 in playground.json's
+// "canvas" turns it off.
+const AWAY_MS = CFG.canvas?.awayMs ?? 6000;
+const USABLE_PX = 240; // narrower than this on screen, a frame can't be used live
+function awayFrames() {
+  if (!AWAY_MS || focused) return;
+  const now = Date.now(), usable = W * view.z >= USABLE_PX;
+  for (const f of [...liveOrder]) {
+    if (f === selected || f === filling) { f.awaySince = null; continue; }
+    if (usable && inView(f)) { f.awaySince = null; continue; }
+    f.awaySince ??= now;
+    if (now - f.awaySince >= AWAY_MS) { f.awaySince = null; sleep(f); }
+  }
+}
+setInterval(() => { if (!document.hidden && !stage.classList.contains('moving')) awayFrames(); }, 2000);
 function zoomAt(k, px, py, glide = false) {
   if (focused) { lensZoom(k, px, py); return; } // the canvas is locked: the frame zooms
   const s = stage.getBoundingClientRect();
@@ -663,13 +1037,27 @@ function fitBox(x0, y0, x1, y1, pad = 48) {
 const fitAll = () => {
   if (focused) { resetLens(); return; } // the canvas is locked: the frame fits
   const xs = frames.map((f) => f.x), ys = frames.map((f) => f.y);
-  fitBox(Math.min(...xs) - GAP, Math.min(...ys) - H * 0.25, Math.max(...xs) + W + GAP, Math.max(...ys) + H);
+  fitBox(Math.min(...xs) - GAP, Math.min(...ys) - H * 0.25, Math.max(...xs, ...extras.map((e) => e.x)) + W + GAP, Math.max(...ys) + H);
 };
+// Fits one board: the one a run has just made.
+const BOARD_KEY = `${KEY}.board`;
+function fitBoard(id) {
+  const b = boards.find((x) => x.id === id);
+  if (!b?.frames.length) return false;
+  const xs = b.frames.map((f) => f.x), ys = b.frames.map((f) => f.y);
+  fitBox(Math.min(...xs) - GAP, b.y - H * 0.1, Math.max(...xs, ...(b.card ? [b.card.x] : [])) + W + GAP, Math.max(...ys) + H);
+  return true;
+}
 const btnFit = document.getElementById('btn-fit');
 btnFit.addEventListener('click', () => { unfocus(); fitAll(); });
 // The view is kept, unless the frames have changed since: then all of them.
 const LAYOUT_KEY = `${KEY}.layout`, layout = frames.map((f) => f.id).join(' ');
-if (!store.get(VIEW_KEY, null) || store.get(LAYOUT_KEY, null) !== layout) requestAnimationFrame(fitAll); else draw();
+{
+  const fresh = store.get(BOARD_KEY, null);
+  store.set(BOARD_KEY, null);
+  if (fresh && boards.some((b) => b.id === fresh)) requestAnimationFrame(() => fitBoard(fresh));
+  else if (!store.get(VIEW_KEY, null) || store.get(LAYOUT_KEY, null) !== layout) requestAnimationFrame(fitAll); else draw();
+}
 store.set(LAYOUT_KEY, layout);
 
 // ⤢: the frame fills the window, and the canvas is locked until the same ⤢
@@ -879,7 +1267,7 @@ notes = mountNotes({
 function showVersion(key) {
   const [pgId, v] = [key.slice(0, key.lastIndexOf('/')), key.slice(key.lastIndexOf('/') + 1)];
   const major = num(v)[0];
-  const f = frames.find((x) => x.kind === 'exp' && x.pg.id === pgId && x.major === major);
+  const f = frames.find((x) => x.kind === 'exp' && !x.fixed && x.pg.id === pgId && x.major === major);
   if (!f) return false;
   setIteration(f, v);
   if (focused && f !== focused) {
@@ -901,6 +1289,14 @@ const NOTICE_KEY = `${KEY}.notice`;
 // touched runs again, whatever it runs on, and has its picture taken again.
 async function afterRun(result) {
   const made = [...(result.new || []), ...(result.updated || [])];
+  if (result.boards?.length) {
+    // A starting prompt's board: the canvas lays out again, on it.
+    store.set(NOTICE_KEY, `${result.boards.length === 1 ? 'The board is' : `${result.boards.length} boards are`} on the canvas, under the frames.`);
+    store.set(BOARD_KEY, result.boards.at(-1));
+    toast('The board is ready: laying the canvas out again…');
+    setTimeout(() => location.reload(), 1200);
+    return;
+  }
   if (!made.length) return;
   if (result.updated?.length) toast(`Claude changed ${result.updated.map((x) => `${x.playground} ${x.version.slice(1)}`).join(', ')} in place.`);
   await syncFrozen(); // new.py and iterate.py froze theirs as they made them
@@ -913,7 +1309,7 @@ async function afterRun(result) {
     for (const v of fresh.versions) {
       const n = num(v.id);
       if (!n.length) continue;
-      const f = frames.find((x) => x.kind === 'exp' && x.pg.id === id && x.major === n[0]);
+      const f = frames.find((x) => x.kind === 'exp' && !x.fixed && x.pg.id === id && x.major === n[0]);
       // A new exploration from this run joins the canvas (serve.py); the screen's others aren't on it.
       if (!f) { if (made.some((x) => x.playground === id && num(x.version)[0] === n[0])) relayout = true; continue; }
       const i = f.iters.findIndex((x) => x.id === v.id);
@@ -939,12 +1335,12 @@ async function afterRun(result) {
     if (f.select) f.select.value = f.v;
     if (!touched.has(`${f.pg.id}/${f.v}`)) continue;
     // What it showed is out of date: forget its pictures, and run it again.
-    f.shots = {};
+    forgetShots(f);
     f.repicture = true;
     if (f.iframe) rerun(f); else drawPoster(f);
   }
-  // The live app compiles its versions in as it loads: main loads again too.
-  if (main.iframe) rerun(main);
+  // The live app compiles its versions in as it loads: main loads again too, and a board's frames on main.
+  for (const f of frames) if (f.kind === 'main' && f.iframe) rerun(f);
   if (showVersion(key) !== 'locked') toast(`${first.playground} ${first.version.slice(1)} is ready.`);
 }
 
@@ -959,7 +1355,7 @@ function fillPictures() {
     if (filling || focused || document.hidden || !app || Date.now() - lastInput < 4000) return;
     const s = stage.getBoundingClientRect();
     const cx = (s.width / 2 - view.x) / view.z, cy = (s.height / 2 - view.y) / view.z;
-    const todo = frames.filter((f) => f.kind === 'exp' && !f.iframe && !tried.has(f.id + f.v)
+    const todo = frames.filter((f) => (f.kind === 'exp' || f.board) && !f.iframe && !tried.has(f.id + f.v)
       && pictureKey(f) && (!pictures[pictureKey(f)] || f.repicture));
     if (!todo.length) return;
     const dist = (f) => Math.hypot(f.x + W / 2 - cx, f.y + H / 2 - cy);

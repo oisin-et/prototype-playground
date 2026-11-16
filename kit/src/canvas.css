@@ -1,21 +1,52 @@
 /* The canvas version of the playground (src/canvas.js). Part of the
-   prototype-playground kit. Same colours and materials as src/style.css. */
+   prototype-playground kit. The same materials as src/style.css, in light:
+   a white canvas, off-white panels. style.css's colours are variables whose
+   fallbacks are the classic playground's dark ones, so only this page changes. */
 
 :root {
-  --page: #17181c;
-  --chrome: #0f1013;
-  --raised: #1d1f24;
-  --page-text: #c9ccd2;
-  --page-muted: #7c818b;
-  --page-line: #2a2c31;
-  --accent: #25c3ff;
-  --amber: #f0b44c;
-  --frame: rgba(30, 31, 36, 0.78);
-  --frame-edge: rgba(255, 255, 255, 0.08);
-  --tile: linear-gradient(180deg, #2d2f35 0%, #212328 100%);
-  --tile-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 4px 10px -4px rgba(0, 0, 0, 0.7);
+  color-scheme: light;
+  --page: #ffffff;            /* the canvas */
+  --chrome: #f6f6f3;          /* behind it */
+  --raised: #fbfbf9;
+  --page-text: #26282d;
+  --page-muted: #6c717b;
+  --page-line: #e4e4df;
+  --ink: #111316;             /* strong text: names, headings, what's selected */
+  --accent: #0a84d0;
+  --accent-rgb: 10, 132, 208;
+  --accent-ink: #ffffff;      /* text on the accent */
+  --amber: #c98800;
+  --amber-rgb: 201, 136, 0;
+  --ok: #168a47;
+  --bad: #c92f45;
+  --fg-rgb: 0, 0, 0;          /* the tints over the page: dark on light */
+  --shade: 0.32;              /* shadows, lighter than on dark */
+  --solid-0: #ffffff;         /* what was the darkest fill: frames, wells for pictures */
+  --solid-1: #efefeb;
+  --sent-bg: #9aa0aa;
+
+  /* The materials: frosted off-white panels with a fine rim; raised white tiles; recessed wells. */
+  --frame: rgba(250, 250, 247, 0.9);
+  --frame-edge: rgba(0, 0, 0, 0.08);
+  --frame-highlight: rgba(255, 255, 255, 0.9);
+  --frame-shadow: 0 22px 44px -22px rgba(0, 0, 0, 0.22), 0 6px 16px -8px rgba(0, 0, 0, 0.12);
+  --tile: linear-gradient(180deg, #ffffff 0%, #f4f4f1 100%);
+  --tile-edge: rgba(0, 0, 0, 0.09);
+  --tile-highlight: rgba(255, 255, 255, 1);
+  --tile-shadow: 0 2px 6px -3px rgba(0, 0, 0, 0.18);
+  --tile-rim: inset 0 0 0 1px var(--tile-edge), inset 0 1px 0 var(--tile-highlight), var(--tile-shadow);
+  --well: rgba(0, 0, 0, 0.035);
+  --hover-fill: rgba(0, 0, 0, 0.04);
   --settle: cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* Wells that show the app's own pictures stay dark: a component cut from a
+   dark app is light on transparent, and would vanish on white. */
+.l-thumb, .l-hero-img, .l-spec-img, .pg-peek-shot, .pg-shots img { background: #17181b; }
+.l-thumb .l-dot { box-shadow: 0 0 0 2px #17181b; }
+/* File-type tints, darker so they read on white. */
+.t-blue { color: #2f7fc1; } .t-yellow { color: #a8860a; } .t-teal { color: #13878f; }
+.t-orange { color: #c2581f; } .t-purple { color: #7a55b5; } .t-red { color: #c92f45; } .t-green { color: #168a47; }
+.ficon.folder { color: #8a8f98; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
@@ -36,7 +67,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-stage {
   position: relative; overflow: hidden; min-width: 0;
   background-color: var(--page);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(var(--fg-rgb, 255, 255, 255), 0.06) 1px, transparent 1px);
   background-size: 22px 22px;
   touch-action: none;
 }
@@ -50,12 +81,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-frame { position: absolute; }
 .cv-body {
   position: absolute; inset: 0; overflow: hidden;
-  background: #0b0b0d;
+  background: var(--solid-0, #0b0b0d);
   border-radius: calc(6px * var(--inv));
-  box-shadow: 0 0 0 calc(1px * var(--inv)) var(--frame-edge), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 calc(1px * var(--inv)) var(--frame-edge), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, calc(0.5 * var(--shade, 1)));
 }
-.cv-frame.selected .cv-body { box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, 0.5); }
-.cv-frame.main .cv-body { box-shadow: 0 0 0 calc(1.5px * var(--inv)) rgba(240, 180, 76, 0.55), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, 0.5); }
+.cv-frame.selected .cv-body { box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, calc(0.5 * var(--shade, 1))); }
+.cv-frame.main .cv-body { box-shadow: 0 0 0 calc(1.5px * var(--inv)) rgba(var(--amber-rgb, 240, 180, 76), 0.55), 0 calc(20px * var(--inv)) calc(40px * var(--inv)) rgba(0, 0, 0, calc(0.5 * var(--shade, 1))); }
 .cv-frame.main.selected .cv-body { box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent); }
 /* What's in a frame: zoomed on its own while the frame fills the window; .cv-body clips it. */
 .cv-lens { position: absolute; inset: 0; transform-origin: 0 0; }
@@ -68,8 +99,12 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-empty b { color: var(--page-text); font-size: calc(var(--fw) * 0.032); }
 .has-poster .cv-empty { display: none; }
 .cv-cover { position: absolute; inset: 0; cursor: pointer; }
-.cv-cover:hover { background: rgba(37, 195, 255, 0.05); }
-.cv-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0b0b0d; }
+.cv-cover:hover { background: rgba(var(--accent-rgb, 37, 195, 255), 0.05); }
+.cv-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--solid-0, #0b0b0d); }
+/* A frame running again: the new app loads under the one on show (.cv-standby)
+   and, once it's up, the old one stays on top a moment longer (.cv-leaving)
+   without taking the pointer. */
+.cv-frame iframe.cv-standby, .cv-frame iframe.cv-leaving { pointer-events: none; }
 .cv-frame.live .cv-cover, .cv-frame.live .cv-poster, .cv-frame.live .cv-empty { display: none; }
 .cv-frame.live.loading .cv-poster { display: block; }
 .cv-frame.live.loading iframe { opacity: 0; }
@@ -82,7 +117,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-head { bottom: 100%; padding-bottom: calc(6px * var(--inv)); }
 .cv-foot { top: 100%; padding-top: calc(6px * var(--inv)); color: var(--page-muted); overflow: hidden; }
 .cv-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--page-text); }
-.cv-title b { color: #fff; margin-right: calc(4px * var(--inv)); }
+.cv-title b { color: var(--ink, #fff); margin-right: calc(4px * var(--inv)); }
 .cv-frame.main .cv-title b { color: var(--amber); }
 .cv-head button, .cv-head select {
   font-size: calc(12px * var(--inv)); min-height: calc(24px * var(--inv)); padding: 0 calc(8px * var(--inv));
@@ -92,11 +127,22 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-steps { display: flex; gap: calc(3px * var(--inv)); }
 .cv-foot > * { overflow: hidden; text-overflow: ellipsis; }
 .cv-iter { color: var(--page-text); min-width: 0; }
-.cv-iter b { color: #fff; }
+.cv-iter b { color: var(--ink, #fff); }
 .cv-from.jump { color: var(--accent); }
-.cv-merged { color: #5fd08a; }
+.cv-merged { color: var(--ok, #5fd08a); }
 .cv-warn { color: var(--amber); }
 .cv-date { margin-left: auto; flex: none; }
+
+/* While the view moves (canvas.js's paint()): the world is its own layer, and
+   live frames don't take the wheel or the pointer, so a scroll that passes over
+   one keeps moving the canvas. While it zooms, the frames keep their edge and
+   ring but leave out the soft shadow, which would be drawn again at every step. */
+.cv-stage.moving .cv-world { will-change: transform; }
+.cv-stage.moving iframe, .cv-stage.moving .cv-cover { pointer-events: none; }
+.cv-stage.moving .cv-cover:hover { background: none; }
+.cv-stage.zooming .cv-body { box-shadow: 0 0 0 calc(1px * var(--inv)) var(--frame-edge); }
+.cv-stage.zooming .cv-frame.main .cv-body { box-shadow: 0 0 0 calc(1.5px * var(--inv)) rgba(var(--amber-rgb, 240, 180, 76), 0.55); }
+.cv-stage.zooming .cv-frame.selected .cv-body { box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent); }
 
 /* Zoomed out: names only; further out, nothing but the frames. */
 .small .cv-steps, .small .cv-full, .small .cv-foot { display: none; }
@@ -107,7 +153,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 
 /* ⌥-drag: a screenshot of part of a live frame. */
 .cv-stage.snapping, .cv-stage.snapping * { cursor: crosshair !important; }
-.cv-snap { position: absolute; z-index: 6; border: 1.5px solid var(--accent); background: rgba(37, 195, 255, 0.08); border-radius: 4px; pointer-events: none; }
+.cv-snap { position: absolute; z-index: 6; border: 1.5px solid var(--accent); background: rgba(var(--accent-rgb, 37, 195, 255), 0.08); border-radius: 4px; pointer-events: none; }
 
 #toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px); z-index: 11;
@@ -126,7 +172,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-stage.noting .cv-frame.live .cv-body { cursor: crosshair; }
 .cv-target {
   position: fixed; z-index: 7; pointer-events: none; border-radius: 3px;
-  outline: 1.5px solid var(--amber); background: rgba(240, 180, 76, 0.08);
+  outline: 1.5px solid var(--amber); background: rgba(var(--amber-rgb, 240, 180, 76), 0.08);
 }
 .cv-target::after {
   content: attr(data-name); position: absolute; left: -1.5px; bottom: 100%; margin-bottom: 4px;
@@ -134,13 +180,13 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   background: var(--amber); color: #141518; font-weight: 600;
 }
 .cv-target[data-name=""]::after { display: none; }
-.cv-snap.note { z-index: 7; border-color: var(--amber); background: rgba(240, 180, 76, 0.08); }
+.cv-snap.note { z-index: 7; border-color: var(--amber); background: rgba(var(--amber-rgb, 240, 180, 76), 0.08); }
 .cv-pins { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .cv-pin {
   position: absolute; pointer-events: auto; transform: translate(-50%, -50%);
   width: calc(24px * var(--inv)); height: calc(24px * var(--inv)); min-height: 0; padding: 0;
   border-radius: 50% 50% 50% 0; font-size: calc(12px * var(--inv)); font-weight: 700;
-  background: var(--amber); color: #141518; box-shadow: 0 calc(2px * var(--inv)) calc(6px * var(--inv)) rgba(0, 0, 0, 0.5);
+  background: var(--amber); color: #141518; box-shadow: 0 calc(2px * var(--inv)) calc(6px * var(--inv)) rgba(0, 0, 0, calc(0.5 * var(--shade, 1)));
 }
 .cv-pin.sent { background: #8a8f99; }
 .cv-pin.question { background: var(--accent); }
@@ -149,10 +195,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-pop {
   position: fixed; z-index: 12; width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
   background: var(--frame); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-radius: 14px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, 0.8);
+  border-radius: 14px; box-shadow: inset 0 0 0 1px var(--frame-edge), 0 22px 44px -20px rgba(0, 0, 0, calc(0.8 * var(--shade, 1)));
 }
 .cv-pop-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.cv-pop-head b { color: #fff; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-pop-head b { color: var(--ink, #fff); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-pop-head small { color: var(--page-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-pop-where { margin: 0; font-size: 11px; color: var(--page-muted); }
 .cv-pin-n {
@@ -160,19 +206,19 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   background: var(--amber); color: #141518; font-size: 11px; font-weight: 700;
 }
 .cv-pop textarea {
-  resize: vertical; font: inherit; font-size: 13px; color: var(--page-text); background: rgba(255, 255, 255, 0.05);
+  resize: vertical; font: inherit; font-size: 13px; color: var(--page-text); background: rgba(var(--fg-rgb, 255, 255, 255), 0.05);
   border: 0; border-radius: 8px; padding: 8px 10px;
 }
-.cv-pop textarea:focus { outline: 1px solid rgba(240, 180, 76, 0.6); }
+.cv-pop textarea:focus { outline: 1px solid rgba(var(--amber-rgb, 240, 180, 76), 0.6); }
 .cv-intents { display: flex; gap: 4px; }
 .cv-intents button { flex: 1; min-height: 26px; font-size: 12px; color: var(--page-muted); }
-.cv-intents button[aria-checked=true] { color: #fff; box-shadow: inset 0 0 0 1px var(--amber); }
+.cv-intents button[aria-checked=true] { color: var(--ink, #fff); box-shadow: inset 0 0 0 1px var(--amber); }
 .cv-pop-row { display: flex; gap: 6px; }
 .cv-pop-row span { flex: 1; }
 .cv-pop-row button { min-height: 28px; font-size: 12px; }
 .cv-use { color: #141518 !important; background: var(--amber) !important; font-weight: 600; }
-.cv-answer { margin: 0; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); }
-.cv-answer.done b { color: #5fd08a; }
+.cv-answer { margin: 0; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: rgba(var(--fg-rgb, 255, 255, 255), 0.05); }
+.cv-answer.done b { color: var(--ok, #5fd08a); }
 .cv-answer.question b { color: var(--accent); }
 .cv-answer.skipped b, .cv-answer.sent b { color: var(--page-muted); }
 .cm-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 30vh; overflow-y: auto; }
@@ -181,14 +227,14 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left;
   background: none; box-shadow: none; padding: 4px 6px; min-height: 0;
 }
-.cv-chat .cv-noted:hover { background: rgba(255, 255, 255, 0.05); filter: none; }
+.cv-chat .cv-noted:hover { background: rgba(var(--fg-rgb, 255, 255, 255), 0.05); filter: none; }
 .cv-noted-text { min-width: 0; display: flex; flex-direction: column; }
 .cv-noted-text b, .cv-noted-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-noted-text b { font-weight: 500; color: #fff; }
+.cv-noted-text b { font-weight: 500; color: var(--ink, #fff); }
 .cv-noted-text small { color: var(--page-muted); font-size: 11px; }
 .cv-chat .cv-unnote { flex: none; min-height: 24px; width: 24px; padding: 0; background: none; box-shadow: none; color: var(--page-muted); }
 
-.cv-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px; font-size: 11px; background: var(--accent); color: #0b0b0d; }
+.cv-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px; font-size: 11px; background: var(--accent); color: var(--accent-ink, #0b0b0d); }
 .cv-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber); animation: cv-blink 1s infinite alternate; }
 @keyframes cv-blink { to { opacity: 0.3; } }
 
@@ -210,7 +256,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   transition: width 560ms var(--spring);
 }
 .cv-top .cv-home-icon { flex: none; width: 36px; height: 36px; border-radius: 18px; }
-.cv-where { font-weight: 600; color: #fff; cursor: default; user-select: none; }
+.cv-where { font-weight: 600; color: var(--ink, #fff); cursor: default; user-select: none; }
 .cv-where.main { color: var(--amber); }
 .cv-where.swap { animation: cv-tswap 480ms var(--spring) both; }
 .cv-status { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
@@ -227,14 +273,14 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   display: inline-grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0;
   background: none; box-shadow: none; border-radius: 8px; color: var(--page-muted); text-decoration: none;
 }
-.cv-icon:hover { filter: none; background: rgba(255, 255, 255, 0.07); color: var(--page-text); }
-.cv-icon[aria-pressed=true] { color: var(--accent); background: rgba(37, 195, 255, 0.13); }
+.cv-icon:hover { filter: none; background: rgba(var(--fg-rgb, 255, 255, 255), 0.07); color: var(--page-text); }
+.cv-icon[aria-pressed=true] { color: var(--accent); background: rgba(var(--accent-rgb, 37, 195, 255), 0.13); }
 .cv-icon svg { display: block; }
 
 /* Commit is the primary action; Share is a round icon beside it. */
 .cv-commit, .cv-share { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; }
-.cv-commit { padding: 0 20px; background: var(--accent); color: #0b0b0d; box-shadow: var(--frame-shadow); }
-.cv-commit .cv-count { background: #0b0b0d; color: var(--accent); }
+.cv-commit { padding: 0 20px; background: var(--accent); color: var(--accent-ink, #0b0b0d); box-shadow: var(--frame-shadow); }
+.cv-commit .cv-count { background: var(--solid-0, #0b0b0d); color: var(--accent); }
 .cv-share { width: 44px; padding: 0; color: var(--page-text); }
 .cv-share:disabled { color: var(--page-muted); cursor: default; filter: none; }
 
@@ -285,23 +331,42 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-chat { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0 12px 12px; gap: 10px; }
 .cm-tabs { display: flex; gap: 4px; flex: none; }
 .cv-chat .cm-tabs button { min-height: 26px; min-width: 28px; padding: 0 9px; font-size: 12px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
-.cv-chat .cm-tabs button:hover { filter: none; color: var(--page-text); background: rgba(255, 255, 255, 0.06); }
-.cv-chat .cm-tabs button[aria-selected=true] { color: #fff; background: rgba(255, 255, 255, 0.09); }
+.cv-chat .cm-tabs button:hover { filter: none; color: var(--page-text); background: rgba(var(--fg-rgb, 255, 255, 255), 0.06); }
+.cv-chat .cm-tabs button[aria-selected=true] { color: var(--ink, #fff); background: rgba(var(--fg-rgb, 255, 255, 255), 0.09); }
 .cv-chat .cm-tabs button.busy { color: var(--amber); }
 .cm-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 2px; font-size: 14px; line-height: 1.5; }
 .cm-empty { margin: auto 0; text-align: center; color: var(--page-muted); font-size: 13px; }
+/* The starting prompts (composer.js's STARTERS), while a chat is empty. */
+.cm-starters { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.cm-starters h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink, #fff); }
+.cm-starters > p { margin: 0 0 6px; font-size: 13px; line-height: 1.45; color: var(--page-muted); }
+.cv-chat .cm-starter {
+  display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 0; padding: 12px; text-align: left;
+  font: inherit; color: var(--page-text); border-radius: 12px; cursor: pointer;
+  background: var(--solid-0, #1d1f24); box-shadow: inset 0 0 0 1px var(--page-line);
+}
+.cv-chat .cm-starter:hover { filter: none; box-shadow: inset 0 0 0 1px rgba(var(--fg-rgb, 255, 255, 255), 0.16); }
+.cv-chat .cm-starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cv-chat .cm-starter:disabled { opacity: 0.5; cursor: default; }
+.cm-starter-icon {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(var(--fg-rgb, 255, 255, 255), 0.06); color: var(--page-text);
+}
+.cm-starter-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cm-starter-text b { font-size: 13.5px; font-weight: 600; color: var(--ink, #fff); }
+.cm-starter-text span { font-size: 12.5px; line-height: 1.4; color: var(--page-muted); }
 .cm-m { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cm-m.you { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.cm-m.you p { margin: 0; padding: 9px 13px; border-radius: 14px; background: rgba(255, 255, 255, 0.07); color: #fff; }
+.cm-m.you p { margin: 0; padding: 9px 13px; border-radius: 14px; background: rgba(var(--fg-rgb, 255, 255, 255), 0.07); color: var(--ink, #fff); }
 .cm-m.claude { color: var(--page-text); }
 .cm-m.step { color: var(--page-muted); font-size: 12px; margin-top: -8px; }
-.cm-m.error { color: #ff8a98; }
-.cm-m.done { color: #5fd08a; }
+.cm-m.error { color: var(--bad, #ff8a98); }
+.cm-m.done { color: var(--ok, #5fd08a); }
 .cm-m time { display: block; margin-top: 4px; font-size: 11px; color: var(--page-muted); }
 .cv-chat .cm-view { min-height: 22px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
 .cm-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 9px; border-radius: 8px;
-  font-size: 12.5px; color: var(--accent); background: rgba(37, 195, 255, 0.12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12.5px; color: var(--accent); background: rgba(var(--accent-rgb, 37, 195, 255), 0.12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cm-chip svg { flex: none; width: 13px; height: 13px; }
 .cm-run { flex: none; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--amber); padding: 0 4px; }
@@ -317,10 +382,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 }
 .cm-box textarea:focus { outline: none; }
 .cm-box textarea:disabled { opacity: 0.6; }
-.cm-box:focus-within { box-shadow: inset 0 0 0 1px rgba(37, 195, 255, 0.45); }
+.cm-box:focus-within { box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb, 37, 195, 255), 0.45); }
 .cv-chat .cm-send {
   position: absolute; right: 10px; bottom: 10px; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%;
-  display: grid; place-items: center; background: var(--accent); color: #0b0b0d; box-shadow: none;
+  display: grid; place-items: center; background: var(--accent); color: var(--accent-ink, #0b0b0d); box-shadow: none;
 }
 .cv-chat .cm-send:disabled { opacity: 0.35; cursor: default; filter: none; }
 .cm-shots { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -331,7 +396,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 /* ---- The left panel (src/panels.js): Properties, Files, Library ---- */
 .cv-side .pg-pane { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .cv-props { overflow-y: auto; padding: 4px 14px 16px; }
-.cv-props h3 { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; font-size: 14px; font-weight: 600; color: #fff; }
+.cv-props h3 { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; font-size: 14px; font-weight: 600; color: var(--ink, #fff); }
 .cv-props h3 svg { color: var(--accent); }
 .cv-props section { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--page-line); }
 .cv-prow { display: grid; grid-template-columns: 16px 84px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 30px; font-size: 13px; }
@@ -339,7 +404,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-plabel { color: var(--page-muted); }
 .cv-pval { color: var(--page-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-pval .cv-on { color: var(--accent); }
-.cv-pval .cv-ok { color: #5fd08a; }
+.cv-pval .cv-ok { color: var(--ok, #5fd08a); }
 .cv-pnote { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--page-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; cursor: pointer; }
 .cv-pnote.open { -webkit-line-clamp: unset; }
 .cv-pnone { color: var(--page-muted); font-size: 13px; margin: 12px 0; }
@@ -349,50 +414,50 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .ds-path { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 12px; color: var(--page-muted); }
 .ds-path > span { opacity: 0.5; }
 .pg-panel .ds-crumb { min-height: 24px; padding: 0 7px; font-size: 12.5px; background: none; box-shadow: none; color: var(--page-muted); border-radius: 7px; }
-.pg-panel .ds-crumb.on { color: #fff; background: rgba(255, 255, 255, 0.1); }
-.ds-seg { display: flex; gap: 4px; margin: 14px 0 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); }
+.pg-panel .ds-crumb.on { color: var(--ink, #fff); background: rgba(var(--fg-rgb, 255, 255, 255), 0.1); }
+.ds-seg { display: flex; gap: 4px; margin: 14px 0 4px; padding: 4px; border-radius: 14px; background: rgba(var(--fg-rgb, 255, 255, 255), 0.05); }
 .pg-panel .ds-seg button { flex: 1; min-height: 34px; padding: 0 10px; font-size: 13.5px; font-weight: 500; background: none; box-shadow: none; color: var(--page-muted); border-radius: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pg-panel .ds-seg button.on { color: #fff; background: rgba(255, 255, 255, 0.12); }
+.pg-panel .ds-seg button.on { color: var(--ink, #fff); background: rgba(var(--fg-rgb, 255, 255, 255), 0.12); }
 .ds-sec { padding: 16px 0 14px; border-bottom: 1px solid var(--page-line); }
-.ds-sec h5 { margin: 0 0 12px; font-size: 15px; font-weight: 500; color: #fff; letter-spacing: 0; }
+.ds-sec h5 { margin: 0 0 12px; font-size: 15px; font-weight: 500; color: var(--ink, #fff); letter-spacing: 0; }
 .ds-row { display: flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 6px; }
 .ds-label { flex: 0 0 76px; font-size: 13.5px; color: var(--page-text); }
 /* A dial: the steps as dots, the knob on the step in use. */
 .dl {
   --kw: 52px; position: relative; flex: 1; min-width: 0; height: 40px; border-radius: 12px; cursor: pointer; touch-action: none;
-  background: rgba(255, 255, 255, 0.055); outline: none; user-select: none;
+  background: rgba(var(--fg-rgb, 255, 255, 255), 0.055); outline: none; user-select: none;
 }
 .dl:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 .dl-dots { position: absolute; top: 0; bottom: 0; left: calc(4px + var(--kw) / 2); right: calc(4px + var(--kw) / 2); display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
-.dl-dots i { width: 4px; height: 4px; margin: 0 -2px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); }
+.dl-dots i { width: 4px; height: 4px; margin: 0 -2px; border-radius: 50%; background: rgba(var(--fg-rgb, 255, 255, 255), 0.28); }
 .dl-knob {
   position: absolute; top: 4px; bottom: 4px; width: var(--kw);
   left: calc(4px + (100% - 8px - var(--kw)) * var(--i) / (var(--n) - 1));
-  display: grid; place-items: center; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: #fff;
-  background: rgba(255, 255, 255, 0.16); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  display: grid; place-items: center; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: var(--ink, #fff);
+  background: rgba(var(--fg-rgb, 255, 255, 255), 0.16); box-shadow: 0 2px 6px rgba(0, 0, 0, calc(0.35 * var(--shade, 1)));
   transition: left 0.42s var(--spring), background-color 0.2s ease; pointer-events: none; white-space: nowrap;
 }
-.dl.dragging .dl-knob { transition: left 0.16s var(--settle); background: rgba(255, 255, 255, 0.24); }
-.dl.changed .dl-knob { background: rgba(37, 195, 255, 0.28); color: #dff5ff; }
-.dl.grid .dl-knob { color: var(--amber); box-shadow: inset 0 0 0 1.5px rgba(240, 180, 76, 0.6); background: rgba(240, 180, 76, 0.1); }
-.dl.off .dl-knob { color: #ff8a98; box-shadow: inset 0 0 0 1.5px rgba(255, 90, 110, 0.6); background: rgba(255, 90, 110, 0.1); }
-@media (hover: hover) { .dl:hover { background: rgba(255, 255, 255, 0.075); } }
+.dl.dragging .dl-knob { transition: left 0.16s var(--settle); background: rgba(var(--fg-rgb, 255, 255, 255), 0.24); }
+.dl.changed .dl-knob { background: rgba(var(--accent-rgb, 37, 195, 255), 0.28); color: var(--ink, #dff5ff); }
+.dl.grid .dl-knob { color: var(--amber); box-shadow: inset 0 0 0 1.5px rgba(var(--amber-rgb, 240, 180, 76), 0.6); background: rgba(var(--amber-rgb, 240, 180, 76), 0.1); }
+.dl.off .dl-knob { color: var(--bad, #ff8a98); box-shadow: inset 0 0 0 1.5px rgba(255, 90, 110, 0.6); background: rgba(255, 90, 110, 0.1); }
+@media (hover: hover) { .dl:hover { background: rgba(var(--fg-rgb, 255, 255, 255), 0.075); } }
 /* Square icon buttons: padding's sides, undo, the Library. */
-.pg-panel .ds-icon { flex: none; width: 40px; height: 40px; min-height: 0; padding: 0; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 255, 255, 0.055); box-shadow: none; color: var(--page-muted); }
-.pg-panel .ds-icon.on { color: #fff; background: rgba(255, 255, 255, 0.12); }
+.pg-panel .ds-icon { flex: none; width: 40px; height: 40px; min-height: 0; padding: 0; display: grid; place-items: center; border-radius: 12px; background: rgba(var(--fg-rgb, 255, 255, 255), 0.055); box-shadow: none; color: var(--page-muted); }
+.pg-panel .ds-icon.on { color: var(--ink, #fff); background: rgba(var(--fg-rgb, 255, 255, 255), 0.12); }
 .pg-panel .ds-icon:disabled { opacity: 0.35; }
 /* A colour: a pill with its swatch and name, and its opacity beside it. */
-.ds-pill { flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.055); font-size: 13.5px; color: var(--page-text); }
+.ds-pill { flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 12px; background: rgba(var(--fg-rgb, 255, 255, 255), 0.055); font-size: 13.5px; color: var(--page-text); }
 .ds-pill.off .ds-cname { color: var(--amber); }
 .ds-cname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ds-sw { flex: none; width: 20px; height: 20px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); }
-.ds-sw.none { background: linear-gradient(135deg, transparent 45%, rgba(255, 255, 255, 0.5) 45% 55%, transparent 55%); }
-.ds-pct { flex: 0 0 64px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 255, 255, 0.055); font-size: 13.5px; color: var(--page-text); font-variant-numeric: tabular-nums; }
+.ds-sw { flex: none; width: 20px; height: 20px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(var(--fg-rgb, 255, 255, 255), 0.18); }
+.ds-sw.none { background: linear-gradient(135deg, transparent 45%, rgba(var(--fg-rgb, 255, 255, 255), 0.5) 45% 55%, transparent 55%); }
+.ds-pct { flex: 0 0 64px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(var(--fg-rgb, 255, 255, 255), 0.055); font-size: 13.5px; color: var(--page-text); font-variant-numeric: tabular-nums; }
 .ds-bar { display: flex; align-items: center; gap: 8px; padding-top: 16px; }
 .ds-where { flex: 1; text-align: right; font-size: 12px; color: var(--page-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ds-where.busy { color: var(--amber); }
 /* The picked part, outlined on its frame (in the frame's pixels). */
-.cv-picked { position: absolute; z-index: 4; pointer-events: none; border-radius: 2px; box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 0 0 calc(5px * var(--inv)) rgba(37, 195, 255, 0.25); }
+.cv-picked { position: absolute; z-index: 4; pointer-events: none; border-radius: 2px; box-shadow: 0 0 0 calc(2px * var(--inv)) var(--accent), 0 0 0 calc(5px * var(--inv)) rgba(var(--accent-rgb, 37, 195, 255), 0.25); }
 
 /* The readers of Files and Library: over the canvas. */
 .cv-workspace { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
@@ -446,7 +511,43 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   padding: 0; border-radius: 50%; opacity: 0; transition: opacity 0.15s ease;
   background: var(--chrome); box-shadow: inset 0 0 0 calc(1px * var(--inv)) var(--frame-edge), inset 0 calc(1px * var(--inv)) 0 var(--frame-highlight);
 }
-.cv-head .cv-fill:hover { background: #17191d; }
+.cv-head .cv-fill:hover { background: var(--solid-1, #17191d); }
 .cv-head .cv-fill[aria-pressed=true] { background: var(--chrome); color: var(--accent); }
 .cv-head .cv-fill svg { width: calc(16px * var(--inv)); height: calc(16px * var(--inv)); }
 .cv-frame:hover .cv-fill, .cv-frame.selected .cv-fill, .cv-frame.focused .cv-fill, .cv-fill:focus-visible { opacity: 1; }
+
+/* ---- Boards (canvas.js's "Boards"): what a starting prompt made ----
+   In the world's pixels, like the frames; words keep their size on screen. */
+.cv-board-label {
+  /* Its top is where the board's frames start: it sits over their names. */
+  position: absolute; display: flex; flex-direction: column; gap: calc(4px * var(--inv));
+  transform: translateY(calc(-100% - 40px * var(--inv)));
+  font-size: calc(18px * var(--inv)); color: var(--page-muted); white-space: nowrap; pointer-events: none;
+}
+.cv-board-label b { color: var(--ink, #fff); font-weight: 600; }
+.cv-board-kind { display: inline-flex; align-items: center; gap: calc(6px * var(--inv)); font-size: calc(12px * var(--inv)); text-transform: uppercase; letter-spacing: 0.06em; }
+.cv-board-kind svg { width: calc(14px * var(--inv)); height: calc(14px * var(--inv)); }
+.cv-arrows { position: absolute; overflow: visible; pointer-events: none; }
+.cv-arrows .line { fill: none; stroke: var(--page-muted); stroke-width: calc(1.5px * var(--inv)); }
+/* From under a step's (or a case's) name line to over the next case's name. */
+.cv-case-link {
+  position: absolute; top: calc(var(--top) + 28px * var(--inv)); height: calc(var(--gap) - 64px * var(--inv));
+  border-left: calc(1.5px * var(--inv)) dashed var(--page-muted); opacity: 0.7; pointer-events: none;
+}
+.cv-arrows .head { fill: var(--page-muted); }
+.cv-arrow-label {
+  position: absolute; transform: translate(-50%, calc(-100% - 8px * var(--inv))); text-align: center;
+  width: max-content; max-width: var(--gap);
+  font-size: calc(12px * var(--inv)); color: var(--page-text); white-space: normal; pointer-events: none;
+}
+.cv-frame.case .cv-title b { color: var(--amber); }
+.cv-findings {
+  /* Sized with the frames (--fw, a frame's width), not the screen: it's a frame of words. */
+  position: absolute; box-sizing: border-box; overflow: auto; padding: calc(var(--fw) * 0.03);
+  border-radius: calc(6px * var(--inv)); background: var(--raised); box-shadow: 0 0 0 calc(1px * var(--inv)) var(--frame-edge);
+  font-size: calc(var(--fw) * 0.017); line-height: 1.5; color: var(--page-text);
+}
+.cv-findings h4 { margin: 0 0 0.8em; font-size: 1.25em; color: var(--ink, #fff); }
+.cv-findings ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 0.6em; }
+/* Too small to read between the frames: the arrows alone. */
+.tiny .cv-arrow-label, .tiny .cv-board-label, .tiny .cv-case-link { display: none; }

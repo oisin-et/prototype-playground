@@ -11,6 +11,39 @@
 
 import { ICON } from './icons.js';
 
+// The starting prompts: shown while a chat is empty. A click fills the box
+// for the selected frame and sends nothing. While the box still starts with a
+// prompt's own words, Send tells serve.py which one it is (`starter`), and
+// serve.py adds that prompt's rules: what Claude makes, and the board it
+// writes so the canvas lays the result out (variants in a row, the flow with
+// its arrows and edge cases, the states side by side, the review before and
+// after). An edited prompt is still that prompt while its start is the same.
+export const STARTERS = [
+  {
+    id: 'variants', icon: 'variants', title: 'Create 3 variants',
+    blurb: 'Three working versions of this page, each with a different layout and hierarchy.',
+    text: (page) => `Create 3 variants of this page, each with a different layout and hierarchy. This page: “${page}”.`,
+  },
+  {
+    id: 'flow', icon: 'flow', title: 'Map out the entire flow',
+    blurb: 'Every step of the journey as live pages, with arrows and the edge cases under each step.',
+    text: (page) => `Map out the entire flow that starts from this page, with the edge cases under each step. This page: “${page}”.`,
+  },
+  {
+    id: 'states', icon: 'states', title: 'Show me all the states',
+    blurb: 'Every state this page can show, from its data to what a click opens, side by side.',
+    text: (page) => `Show me all the states of this page, side by side: the ones its code has (data, empty, loading, error, signed out, a plan) and the ones a click opens (a menu, a dialog, an open section). This page: “${page}”.`,
+  },
+  {
+    id: 'review', icon: 'review', title: 'Review and fix',
+    blurb: 'A short UX and accessibility review, with the top issues fixed.',
+    text: (page) => `Review this page for UX and accessibility issues, then fix the top ones. This page: “${page}”.`,
+  },
+];
+// The words a prompt starts with, which say it's still that prompt.
+const opening = (s) => s.text('').split(/[,.:]/)[0];
+const starterOf = (message) => STARTERS.find((s) => message.startsWith(opening(s)))?.id || null;
+
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const store = {
   get: (k, fallback) => { try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch { return fallback; } },
@@ -93,7 +126,7 @@ export function mountComposer(root, hooks) {
     logEl.innerHTML = c.log.length ? c.log.map((m) => m.who === 'you'
       ? `<div class="cm-m you">${m.frame ? chipOf(m.frame, m.kind) : ''}<p>${esc(m.text)}</p></div>`
       : `<div class="cm-m ${m.who}">${esc(m.text)}${m.view ? ` <button type="button" class="cm-view" data-view="${esc(m.view)}">View</button>` : ''}${m.at ? `<time>${esc(m.at)}</time>` : ''}</div>`).join('')
-      : '<p class="cm-empty">Select a frame, then ask for an iteration.</p>';
+      : starters();
     const r = running.get(active);
     runEl.hidden = !r;
     if (r) statusEl.textContent = `${r.status} ${clock(r.started)}`;
@@ -103,7 +136,29 @@ export function mountComposer(root, hooks) {
   logEl.addEventListener('click', (e) => {
     const b = e.target.closest('[data-view]');
     if (b) hooks.view?.(b.dataset.view);
+    const s = STARTERS.find((x) => x.id === e.target.closest('[data-starter]')?.dataset.starter);
+    if (s) fillWith(s);
   });
+
+  // The starting prompts, while the chat is empty (STARTERS).
+  function starters() {
+    const ctx = hooks.context();
+    return `<section class="cm-starters" aria-labelledby="cm-starters-h">
+      <h3 id="cm-starters-h">Starting prompts</h3>
+      <p>${ctx ? 'Pick one to fill in the message for the page you selected. Nothing sends until you do.' : 'Select a frame on the canvas, then pick one to fill in the message for its page.'}</p>
+      ${STARTERS.map((s) => `<button type="button" class="cm-starter" data-starter="${s.id}"${ctx ? '' : ' disabled'}>
+        <span class="cm-starter-icon">${ICON[s.icon]}</span><span class="cm-starter-text"><b>${esc(s.title)}</b><span>${esc(s.blurb)}</span></span></button>`).join('')}
+    </section>`;
+  }
+  // Fills the box with a prompt for the selected frame's page, and sends nothing.
+  function fillWith(s) {
+    const ctx = hooks.context();
+    if (!ctx || input.disabled) return;
+    input.value = s.text(ctx.page || ctx.chip);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
   const clock = (t) => { const s = Math.round((Date.now() - t) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   setInterval(() => { if (running.size) drawLog(); }, 1000);
 
@@ -118,6 +173,7 @@ export function mountComposer(root, hooks) {
     targetEl.innerHTML = ctx ? chipOf(ctx.chip, ctx.kind) : '';
     targetEl.hidden = !ctx;
     input.placeholder = !enabled ? (chatWhy || 'Chat is off') : ctx ? 'Ask for an iteration' : 'Ask for a new exploration';
+    if (!chat().log.length) drawLog(); // the starting prompts follow the selection
   }
 
   function drawShots() {
@@ -166,6 +222,7 @@ export function mountComposer(root, hooks) {
           message, tab: c.id, session: c.session,
           attachments: shots.map((s) => ({ type: 'image/png', data: s.png, note: s.note })),
           notes: batch,
+          starter: starterOf(message),
           ...(ctx?.body || {}),
         }),
       });

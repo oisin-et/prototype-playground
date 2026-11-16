@@ -10,7 +10,8 @@ export const ICON = {
   note: svg('<path d="M8 14.2s-4.4-4-4.4-7.2a4.4 4.4 0 0 1 8.8 0c0 3.2-4.4 7.2-4.4 7.2z"/><circle cx="8" cy="7" r="1.4"/>'),
   inspect: svg('<circle cx="8" cy="8" r="4.6"/><path d="M8 1.2v2.4M8 12.4v2.4M1.2 8h2.4M12.4 8h2.4"/>'),
   shot: svg('<path d="M2 5V3.2C2 2.5 2.5 2 3.2 2H5M11 2h1.8c.7 0 1.2.5 1.2 1.2V5M14 11v1.8c0 .7-.5 1.2-1.2 1.2H11M5 14H3.2C2.5 14 2 13.5 2 12.8V11"/><circle cx="8" cy="8" r="2"/>'),
-  home: svg('<path d="M2.2 7 8 2.2 13.8 7"/><path d="M3.8 5.9v6.9c0 .7.5 1.2 1.2 1.2h1.9v-3.6h2.2V14H11c.7 0 1.2-.5 1.2-1.2V5.9"/>'),
+  // Home fits the whole canvas: four tiles, the overview.
+  home: svg('<rect x="2.2" y="2.2" width="4.8" height="4.8" rx="1.4"/><rect x="9" y="2.2" width="4.8" height="4.8" rx="1.4"/><rect x="2.2" y="9" width="4.8" height="4.8" rx="1.4"/><rect x="9" y="9" width="4.8" height="4.8" rx="1.4"/>'),
   frozen: svg('<path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5M6.3 2.6 8 4.2l1.7-1.6M6.3 13.4 8 11.8l1.7 1.6"/>'),
   xray: svg('<rect x="2" y="2" width="12" height="12" rx="1.6"/><path d="M2 8.5 8.5 2M2 13.5 13.5 2M7.5 14 14 7.5"/>'),
   files: svg('<path d="M1.8 4.2c0-.7.5-1.2 1.2-1.2h3.2l1.5 1.6H13c.7 0 1.2.5 1.2 1.2v6.3c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2z"/>'),
@@ -31,5 +32,10 @@ export const ICON = {
   chevron: svg('<path d="M4.5 6.2 8 9.8l3.5-3.6"/>'),
   share: svg('<path d="M8 10V2.2M5 5 8 2l3 3M3 8.5v4.3c0 .7.5 1.2 1.2 1.2h7.6c.7 0 1.2-.5 1.2-1.2V8.5"/>'),
   fit: svg('<path d="M2 5.5V2h3.5M10.5 2H14v3.5M14 10.5V14h-3.5M5.5 14H2v-3.5"/>'),
+  // The chat's starting prompts (composer.js).
+  variants: svg('<rect x="2.2" y="2.2" width="4.6" height="4.6" rx="1.2"/><rect x="9.2" y="2.2" width="4.6" height="4.6" rx="1.2"/><rect x="2.2" y="9.2" width="4.6" height="4.6" rx="1.2"/><rect x="9.2" y="9.2" width="4.6" height="4.6" rx="1.2"/>'),
+  flow: svg('<path d="M3 12.5h2.5c.8 0 1.5-.7 1.5-1.5V5c0-.8.7-1.5 1.5-1.5H13"/>'),
+  states: svg('<path d="M4.5 2.5h7M3.5 4.8h9"/><rect x="2.5" y="7" width="11" height="6.5" rx="1.6"/>'),
+  review: svg('<circle cx="8" cy="8" r="6.2"/><path d="m5.4 8.2 1.8 1.8 3.5-3.7"/>'),
   external: svg('<path d="M9 2.5h4.5V7M13.3 2.7 7.5 8.5M11.5 9.5v3c0 .6-.4 1-1 1h-7c-.6 0-1-.4-1-1v-7c0-.6.4-1 1-1h3"/>'),
 };

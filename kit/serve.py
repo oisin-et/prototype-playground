@@ -112,7 +112,7 @@ from pathlib import Path
 
 import frozen
 import system
-from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, add_to_canvas, known_versions, playground_lock, rel, write_json, write_registry
+from pglib import ADAPTER, CONFIG, DATA, HERE, INDEX, PICKS, REGISTRY, ROOT, VERSION_FILE, add_boards, add_to_canvas, board_explorations, known_versions, playground_lock, rel, write_json, write_registry
 
 ATTACHMENTS = HERE / "attachments"
 NOTES = HERE / "notes"
@@ -298,6 +298,95 @@ canvas these rules come first, and replace the rules above where they differ:
 - Finish by naming the version you made, by its number: "4.4, an iteration of
   exploration 4" or "exploration 6, new, from main".
 """
+
+
+# The canvas chat's starting prompts (composer.js's STARTERS): what each makes,
+# and the board Claude writes so the canvas lays the answer out as a group.
+# serve.py names the board's file; add_boards puts it on the canvas.
+BOARD_FORMAT = """
+The board is JSON, in the file named below (write it with the Write tool, once the
+versions it names reload with no errors):
+  {{"kind": "{kind}", "title": "<what the board shows, a few words>",
+   "items": [{{"version": "main" or "<screen>/v<N>.<M>", "screen": "<screen id>",
+              "params": {{...}} (only if the screen needs them to show this),
+              "title": "<this item, a few words>", "note": "<one sentence>"}}, ...]{extra}}}
+- "version" is what the item runs: "main", or one version this run made or the frame
+  shows. "screen" is the id in screens.json the item opens on.
+- Every version an item names must reload with no errors.
+"""
+
+STARTER_RULES = {
+    "variants": """
+The person pressed "Create 3 variants". Make three new explorations of the page the frame
+shows, each a different layout and hierarchy (what comes first, what is big, how the page
+is divided), not three colour or spacing tweaks of one layout. Each is a whole working
+page: same content and functions, every control still works.
+- python3 playground/new.py <screen> "<short name>" for each, with --from <version on
+  show> when the frame shows an exploration (from main when it's Main).
+- Name each by its idea ("Quiet: form in the hero"), and say in its note what it puts first.
+- The board has the three, in the order you made them: one item each, on its v<N>.0.
+""",
+    "flow": """
+The person pressed "Map out the entire flow". Map the journey that starts on the page the
+frame shows: every step a person takes, in order, to the end of the task (and back, where
+the task ends where it began). Under each step, its edge cases: what goes wrong or
+differs there (a validation error, nothing to show, slow or no network, cancel or back,
+already done, no permission), only the ones that step really has.
+- Read the app's code first, to find the steps and the states each step has.
+- A step or an edge case the app can show already (a screen, with its params) is an item
+  on the version the frame shows ("main" on Main): make nothing for it.
+- For the ones it can't show (a state that needs data, a click, an error), make ONE new
+  exploration for the board: python3 playground/new.py <screen> "Flow: <short name>"
+  --from <version on show> (no --from on Main), and leave its v<N>.0 as it is. Then one
+  iteration of v<N>.0 for each state: python3 playground/iterate.py <screen> v<N>.0
+  "<state>". Each forces its one state on the screen (wrap `below`, change only that),
+  so v<N>.1, v<N>.2 … each show one state. A step the app doesn't have at all is drawn
+  the same way, as the step it would be.
+- The board's "items" are the steps, in order. Each step has "cases": a list of items
+  in the same form, its edge cases, top to bottom. Add "arrows": one short label per
+  arrow, for what moves the person from step i to step i+1 ("Submit", "Tap Verify").
+""",
+    "states": """
+The person pressed "Show me all the states". Show every state the page the frame shows
+can be in, side by side: the ones its code has (with data, empty, loading, error, signed
+out, each plan or role, long and short content) and the ones a click opens (a menu, a
+dialog, an open section, a selected row, a hover card). Only states this page really has.
+- Read the page's code first, and list the states from it.
+- The first item is the page as it is: the version the frame shows ("main" on Main).
+- A state the app can show already (a screen and its params) is an item on that version.
+- For the others, make ONE new exploration for the board: python3 playground/new.py
+  <screen> "States: <page>" --from <version on show> (no --from on Main), and leave its
+  v<N>.0 as it is. Then one iteration of v<N>.0 for each state: python3
+  playground/iterate.py <screen> v<N>.0 "<state>". Each forces its one state on the
+  page (wrap `below`, change only that). Never change the version on show to do it.
+- The board's items are the states, in the order a person meets them.
+""",
+    "review": """
+The person pressed "Review and fix". Review the page the frame shows for UX and
+accessibility: hierarchy and what reads first, labels and copy, contrast (WCAG 2.2 AA:
+4.5:1 for text, 3:1 for large text and controls), target sizes (24 px at least, 44 px
+for touch), focus order and visible focus, names for controls and pictures, error and
+empty states, and anything that blocks a keyboard or a screen reader.
+- Read the page's code and its version first.
+- Pick the top 3 to 5 issues, by how much each hurts a person. Fix those, and only those,
+  in one new iteration of the version on show (python3 playground/iterate.py ...), or a
+  new exploration on Main (python3 playground/new.py <screen> "Review fixes").
+- The board has two items: the version on show, titled "Before", and the one you made,
+  titled "After". Add "findings": one line per issue, "<the issue> → <the fix>", the
+  fixed ones first, then at most 3 you saw and didn't fix, each starting "Not fixed:".
+- In your answer, list the same findings.
+""",
+}
+BOARD_EXTRA = {
+    "flow": ',\n   (each step) "cases": [<items>], and "arrows": ["<step 1 → 2>", ...]',
+    "review": ',\n   "findings": ["<the issue> → <the fix>", ...]',
+}
+
+
+def starter_rules(kind, board_rel):
+    """What the prompt adds for a starting prompt: its rules and the board's format."""
+    return STARTER_RULES[kind] + BOARD_FORMAT.format(kind=kind, extra=BOARD_EXTRA.get(kind, "")) + \
+        f"Write the board to {board_rel}. Finish by saying what the board shows.\n"
 
 
 def chat_rules(canvas=False):
@@ -1052,6 +1141,11 @@ class Chat:
                     f"The version on show is {body['playground']} {v} ({what}, {body.get('versionState') or 'shown'})."
                 )
         prompt = message + ("\n\n(" + " ".join(context) + ")" if context else "")
+        # A starting prompt (composer.js's STARTERS), on the canvas: its rules, and the board's file.
+        starter = body.get("starter") if canvas and body.get("starter") in STARTER_RULES else None
+        board = f"{starter}-{unique_stamp()}" if starter else None
+        if starter:
+            prompt += "\n" + starter_rules(starter, f"{DATA_REL}/boards/{board}.json")
         shots = save_attachments(body.get("attachments"))
         if shots:
             emit({"type": "attached", "files": ["/" + p for p, _ in shots]})
@@ -1132,9 +1226,11 @@ class Chat:
                         emit({"type": "changed", "playground": pg, "version": version, "new": new_ones(known_versions()), "reloaded": reloaded})
             elif kind == "result":
                 new = new_ones(known_versions())
+                boards = add_boards([board]) if board else []
                 if canvas:  # a new exploration made from the canvas goes on it, before the page lays out again
-                    add_to_canvas([(x["playground"], x["version"]) for x in new])
+                    add_to_canvas([(x["playground"], x["version"]) for x in new], skip=board_explorations(boards))
                 emit({
+                    "boards": boards,
                     "type": "done", "ok": not event.get("is_error"), "session": event.get("session_id"),
                     "summary": event.get("result") or "", "new": new, "updated": [] if new else updated(),
                     "cost": event.get("total_cost_usd"),
@@ -1143,7 +1239,8 @@ class Chat:
                 done = True
         proc.wait()
         if canvas and not done:  # stopped before the end: what it made is still the canvas's
-            add_to_canvas([(x["playground"], x["version"]) for x in new_ones(known_versions())])
+            boards = add_boards([board]) if board else []
+            add_to_canvas([(x["playground"], x["version"]) for x in new_ones(known_versions())], skip=board_explorations(boards))
         if notes:
             emit({"type": "notes", "notes": note_outcomes(notes_file)})
         errors.seek(0)
@@ -1753,6 +1850,59 @@ def read_file(relpath):
     return {**base, "kind": "text", "text": data.decode("utf-8", "replace"), "truncated": st.st_size > FILES_READ_MAX}
 
 
+class MainWatch:
+    """Tells the canvas when main changes (/playground/events), so it doesn't
+    have to ask every few seconds. One thread looks at frozen.main_stamp(),
+    whatever the number of pages open, and only while at least one is; each
+    page's stream waits on it."""
+
+    EVERY = 1.0  # seconds between looks
+
+    def __init__(self):
+        self.cond = threading.Condition()
+        self.stamp = None
+        self.seq = 0  # goes up by one each time the stamp changes
+        self.pages = 0
+        self.thread = None
+
+    def join(self):
+        with self.cond:
+            self.pages += 1
+            if self.thread is None or not self.thread.is_alive():
+                self.thread = threading.Thread(target=self.run, name="main-watch", daemon=True)
+                self.thread.start()
+
+    def leave(self):
+        with self.cond:
+            self.pages -= 1
+
+    def run(self):
+        while True:
+            with self.cond:
+                if self.pages <= 0:
+                    self.thread = None
+                    return
+            try:
+                stamp = frozen.main_stamp()
+            except Exception:  # git missing or busy: look again next time
+                stamp = None
+            if stamp and stamp != self.stamp:
+                with self.cond:
+                    self.stamp = stamp
+                    self.seq += 1
+                    self.cond.notify_all()
+            time.sleep(self.EVERY)
+
+    def wait(self, seq, timeout):
+        """The stamp once it's newer than `seq` (or after `timeout`): (seq, stamp)."""
+        with self.cond:
+            self.cond.wait_for(lambda: self.seq != seq, timeout)
+            return self.seq, self.stamp
+
+
+MAIN_WATCH = MainWatch()
+
+
 class Handler(SimpleHTTPRequestHandler):
     chat = None  # a Chat, or None with --no-chat
     commit = None  # the Commit button's Commit
@@ -1779,6 +1929,29 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def events(self):
+        """Server-sent events for the canvas: `main` with main's stamp, at once
+        and then whenever it changes (MainWatch); a comment every 15 s keeps
+        the stream open, and finds out when the page has gone."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        MAIN_WATCH.join()
+        try:
+            seq = 0
+            while True:
+                now, stamp = MAIN_WATCH.wait(seq, 15)
+                if now != seq and stamp:
+                    seq = now
+                    self.wfile.write(f"event: main\ndata: {json.dumps({'stamp': stamp})}\n\n".encode())
+                else:
+                    self.wfile.write(b": still here\n\n")
+                self.wfile.flush()
+        except OSError:  # the page went away (BrokenPipeError, ConnectionResetError)
+            pass
+        finally:
+            MAIN_WATCH.leave()
+
     def do_GET(self):
         path, _, query = self.path.partition("?")
         if path == "/":
@@ -1803,6 +1976,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/playground/main":
             # What main is now (frozen.main_stamp): the canvas runs Main again when it changes.
             self.json(200, {"stamp": frozen.main_stamp()})
+            return
+        if path == "/playground/events":
+            self.events()
             return
         if path == "/playground/design":
             # A version's dial changes (system.py's design.json).
@@ -2033,11 +2209,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def save_canvas_thumb(self, body):
-        """A frame's picture, from the canvas: {"canvas": "main" | "<screen>/<version>",
+        """A frame's picture, from the canvas: {"canvas": "main" | "<screen>/<version>" | "board/<item>",
         "png"}, kept in playground/thumbs/_canvas/. An exploration's is its frozen
         copy's, so it never goes out of date; main's is retaken as main runs."""
         key = str(body["canvas"])
-        if not re.fullmatch(r"main|[\w-]+/v\d+\.\d+", key):
+        if not re.fullmatch(r"main|[\w-]+/v\d+\.\d+|board/[\w-]+", key):  # board/<item>: a board's own (canvas.js)
             raise ValueError("bad key")
         data = base64.b64decode(str(body["png"]), validate=True)
         if not data.startswith(b"\x89PNG"):

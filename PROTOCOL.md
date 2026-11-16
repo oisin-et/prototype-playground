@@ -8,7 +8,7 @@ The playground page (`kit/src/host.js`) runs the app in an iframe at `<app origi
 |---|---|
 | `{type: 'capture', id, selector?, width}` | A version's picture, for the preview in Explorations: the element `selector` names (`"preview"` in `playground.json`), or the whole app, `width` pixels wide. Answered with `captured`, like a capture. |
 | `{type: 'layers', layers: ['<screen>/<version>', …]}` (a version is `v4.2`: exploration 4, iteration 2) | The versions to run, in `index.json` order. The app redraws, laying each one's builder for a screen over the one before it, then reports `where` again. |
-| `{type: 'show', screen}` | Open that screen (its id in `screens.json`). |
+| `{type: 'show', screen, params?}` | Open that screen (its id in `screens.json`). `params`, from a canvas board, names one state of it, as `where` reports them; an app that can't open a state by its params shows the screen. |
 | `{type: 'capture', id, rect: {x, y, w, h}, scale}` | Draw that part of the app (in its CSS or logical pixels) at `scale` and answer `captured`. |
 | `{type: 'inspect', id, x, y}` | Name the part of the app at that point, for a note, and answer `inspected`. |
 

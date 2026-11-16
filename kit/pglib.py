@@ -100,12 +100,62 @@ def on_canvas():
     return [f["id"] for f in read_json(CANVAS, {}).get("frames", []) if isinstance(f, dict) and f.get("id")]
 
 
-def add_to_canvas(made):
+BOARDS = DATA / "boards"
+BOARD_KINDS = ("variants", "flow", "states", "review")
+
+
+def read_board(board_id):
+    """A starting prompt's board (<data>/boards/<id>.json), or None if it isn't
+    there or isn't one: a kind the canvas knows and at least one item."""
+    try:
+        doc = read_json(BOARDS / f"{board_id}.json")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or doc.get("kind") not in BOARD_KINDS:
+        return None
+    items = doc.get("items")
+    return doc if isinstance(items, list) and items and all(isinstance(x, dict) for x in items) else None
+
+
+def add_boards(ids):
+    """Puts the boards a run wrote on the canvas, after the ones there. Returns
+    the ids that joined: a board that's missing or malformed doesn't."""
+    doc = read_json(CANVAS, {})
+    boards = doc.get("boards", [])
+    have = {b.get("id") for b in boards if isinstance(b, dict)}
+    joined = [i for i in ids if i and i not in have and read_board(i)]
+    if joined:
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+        write_json(CANVAS, {**doc, "boards": boards + [{"id": i, "added": stamp} for i in joined]})
+    return joined
+
+
+def board_explorations(ids):
+    """The explorations (<screen>/v<N>) that the boards show as their own: a
+    board's variants, and the exploration a flow or states board made for its
+    states. They stay off the row of frames, on their board. A review's After
+    isn't one of them: it's the next step of the exploration it fixes."""
+    out = set()
+    for i in ids:
+        doc = read_board(i)
+        if not doc or doc["kind"] == "review":
+            continue
+        for item in doc["items"] + [c for x in doc["items"] for c in (x.get("cases") or []) if isinstance(c, dict)]:
+            ref = str(item.get("version") or "")
+            pg, _, vid = ref.rpartition("/")
+            n = number(vid)
+            if pg and n:
+                out.add(f"{pg}/v{n[0]}")
+    return out
+
+
+def add_to_canvas(made, skip=()):
     """Puts the explorations of versions made from the canvas on it: made is
-    [(screen, version id)]. Returns the explorations that joined."""
+    [(screen, version id)]; skip, explorations a board shows instead. Returns
+    the explorations that joined."""
     doc = read_json(CANVAS, {})
     frames = doc.get("frames", [])
-    have = {f.get("id") for f in frames if isinstance(f, dict)}
+    have = {f.get("id") for f in frames if isinstance(f, dict)} | set(skip)
     joined = []
     for pg, vid in made:
         n = number(vid)
