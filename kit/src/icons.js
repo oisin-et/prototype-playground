@@ -18,6 +18,7 @@ export const ICON = {
   files: svg('<path d="M1.8 4.2c0-.7.5-1.2 1.2-1.2h3.2l1.5 1.6H13c.7 0 1.2.5 1.2 1.2v6.3c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2z"/>'),
   pick: svg('<path d="M8 1.8 14.2 8 8 14.2 1.8 8z"/>'),
   reload: svg('<path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.2"/><path d="M13.4 1.8v3.4H10"/>'),
+  hardware: svg('<rect x="1.5" y="3" width="13" height="10" rx="1.8"/><rect x="4.2" y="5.2" width="5.6" height="3.6" rx="0.6"/><circle cx="11.6" cy="7" r="0.9"/><path d="M4.2 11h7.6"/>'),
   fill: svg('<path d="M9.5 2h4.5v4.5M6.5 14H2V9.5M14 2 9.2 6.8M2 14l4.8-4.8"/>'),
   undo: svg('<path d="M3.5 6.5h6.2a3.3 3.3 0 0 1 0 6.6H6.5"/><path d="M6 3.8 3.3 6.5 6 9.2"/>'),
   sides: svg('<rect x="2.5" y="2.5" width="11" height="11" rx="2.4"/><rect x="6" y="6" width="4" height="4" rx="0.8"/>'),

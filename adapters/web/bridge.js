@@ -26,6 +26,7 @@
 //               a picture of the first of each in view, for the Library
 //               {type: 'draw', id, specimens: [{key, node, size}], scale}
 //               each drawn on its own by the app's draw(), for the Library
+//               {type: 'measure', id, selector}   where the element is (the canvas crops to it)
 //   app → host  {type: 'hello', versions: {id: [screens]}, components: {id: [names]}, errors: [text]}
 //               the versions in the registry, sent when the app starts, and
 //               any that didn't load
@@ -35,6 +36,7 @@
 //               {type: 'inspected', id, box, widget, location, text, chain?}
 //               {type: 'xrayed', id, elements: [{box, parent, s, pad, name}]}  (X-ray)
 //               {type: 'restyled', id, count}   how many elements a preview is on
+//               {type: 'measured', id, rect: {x, y, w, h}}   in the page's pixels
 //               {type: 'located', id, boxes: [[x, y, w, h]]}
 //               {type: 'pictured', id, shots: {key: png}}   (base64)
 //               {type: 'drawn', id, shots: {key: png}, failed: {key: text}}
@@ -200,6 +202,10 @@ addEventListener('message', (e) => {
     drawSpecimens(m);
   } else if (m.type === 'xray') {
     xray(m);
+  } else if (m.type === 'measure') {
+    // Where an element (the screen) is in this page, for the canvas's crop.
+    const el = m.selector && document.querySelector(m.selector), r = el?.getBoundingClientRect();
+    post(r ? { type: 'measured', id: m.id, rect: { x: r.left, y: r.top, w: r.width, h: r.height } } : { type: 'measured', id: m.id, error: `No ${m.selector} here` });
   }
 });
 
@@ -581,6 +587,7 @@ if (embedded) {
     else if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'n', down: true });
     else if ((e.key === 'i' || e.key === 'I') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'i', down: true });
     else if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'v', down: true }); // the canvas's pointer
+    else if ((e.key === 'h' || e.key === 'H') && !e.metaKey && !e.ctrlKey && !e.altKey && !editable(e.target)) send({ type: 'key', key: 'h', down: true }); // the canvas's hardware
     else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'v' && !editable(e.target)) catchPaste();
   }, true);
   addEventListener('keyup', (e) => {

@@ -29,7 +29,9 @@
 //   it opened on.
 //
 // Clicking a frame wakes it and selects it; the selected frame is the one
-// Claude works on. ⤢ or F opens a frame to fill the window. While a frame
+// Claude works on. A frame shows the screen alone; its hardware button (or H)
+// shows what's around it. ⤢ or F opens a frame immersive: over the panels and
+// everything, full screen, the screen 1:1 on a display its size. While a frame
 // fills it, the canvas is locked: it doesn't pan, zoom or fit, no other frame
 // can be selected, and only the same button (its icon turned inward), Esc or
 // F closes the fill. Inside the
@@ -64,6 +66,8 @@ let lastInput = 0, filling = null; // posters filled in while idle
 let focused = null, beforeFocus = null; // the frame that fills the window, and the view to go back to (focusFrame)
 let space = false, pan = null; // Space held; a pan under way (setSpace)
 let lens = { z: 1, x: 0, y: 0 }; // the zoom inside the frame that fills the window, in its pixels (lensZoom)
+let screenBox = null; // the screen ("preview" in playground.json) in the app's page, in its pixels (see "The screen alone")
+let hardware = {}, immerseEl = null, wentFull = false; // frame id → hardware on; ⤢'s bar; the browser went full screen for ⤢
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
 const DATA = new URL(`/${CFG.data}/`, location.href);
@@ -268,6 +272,7 @@ for (const f of frames) {
   el.dataset.id = f.id;
   el.innerHTML = `
     <header class="cv-head">
+      ${CFG.preview ? '<button type="button" class="cv-hw cv-icon"></button>' : ''}
       <span class="cv-title">${f.kind === 'main' ? ICON.main : ICON.branch}<b>${esc(f.caption || (f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`))}</b></span>
       ${f.kind === 'exp' && !f.fixed ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select></label>` : `<span class="cv-iter-now main"></span>`}
@@ -295,6 +300,8 @@ for (const f of frames) {
   el.querySelector('.cv-head').addEventListener('click', (e) => { if (menuClick(e)) frameMenu(f, e); });
   el.querySelector('.cv-head').addEventListener('contextmenu', (e) => { e.preventDefault(); frameMenu(f, e); });
   el.querySelector('.cv-fill').addEventListener('pointerdown', (e) => e.stopPropagation());
+  el.querySelector('.cv-hw')?.addEventListener('pointerdown', (e) => e.stopPropagation());
+  el.querySelector('.cv-hw')?.addEventListener('click', (e) => { e.stopPropagation(); setHardware(f, !hardware[f.id]); });
   el.querySelector('.cv-fill').addEventListener('click', (e) => { e.stopPropagation(); if (focused === f) unfocus(); else { selectFrame(f); focusFrame(f); } });
   world.append(el);
   drawPoster(f);
@@ -721,6 +728,7 @@ addEventListener('message', (e) => {
     f.ready = true;
     f.el.classList.remove('loading');
     send(f, { type: 'layers', layers: layersOf(f) });
+    measureScreen(f);
     showScreen(f);
     drawFoot(f);
     const key = pictureKey(f);
@@ -731,7 +739,7 @@ addEventListener('message', (e) => {
     if (f.kind === 'main') drawFoot(f);
     notes?.drawPins(f);
     panels?.changed(f);
-  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed', 'restyled', 'designed'].includes(m.type)) {
+  } else if (['captured', 'inspected', 'located', 'pictured', 'drawn', 'xrayed', 'restyled', 'designed', 'measured'].includes(m.type)) {
     const p = pending.get(m.id);
     if (p) { pending.delete(m.id); m.error ? p.fail(new Error(m.error)) : p.ok(m); }
   } else if (m.type === 'errors') {
@@ -748,6 +756,7 @@ addEventListener('message', (e) => {
     else if (m.key === 'i') panels.inspector.set(!panels.inspector.on);
     else if (m.key === 'p') togglePanels();
     else if (m.key === 'v') toPointer();
+    else if (m.key === 'h') setHardware(f, !hardware[f.id]);
     else if (m.key === 'Mod') holdInspect(m.down);
     else if (m.key === 'ModChord') holdInspect(false);
     else if (m.key === 'Escape' && m.down !== false) {
@@ -967,6 +976,7 @@ function paint() {
   if (zoomed) {
     paintedZ = view.z;
     world.style.setProperty('--inv', String(1 / view.z));
+    for (const f of frames) if (f.crop || f === focused) shapeBody(f); // their own --inv
     zoomLabel.textContent = `${Math.round(view.z * (focused ? lens.z : 1) * 100)}%`;
   }
   stir(zoomed, glide ? 480 : REST_MS);
@@ -1025,7 +1035,7 @@ const inView = (f, margin = 0) => {
 function choosePictures() {
   const dpr = devicePixelRatio || 1;
   for (const f of frames) {
-    const lod = inView(f, 200) && W * view.z * dpr > SMALL * 1.5 ? 'large' : 'small';
+    const lod = inView(f, 200) && W * view.z * (f.crop?.k || 1) * dpr > SMALL * 1.5 ? 'large' : 'small';
     if (lod === f.lod) continue;
     f.lod = lod;
     if (!f.iframe || f.el.classList.contains('loading')) drawPoster(f);
@@ -1105,9 +1115,14 @@ function lockTo(f, glide = true) {
   stage.classList.add('focusing');
   fitTitle('Fit the frame (⇧1)');
   setSpace(false);
-  const s = room();
-  const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - 32) / W, (s.height - 32 - 80) / H)));
-  Object.assign(view, { z, x: s.x + (s.width - W * z) / 2 - f.x * z, y: s.y + (s.height - H * z) / 2 - f.y * z });
+  document.body.classList.add('cv-immersive');
+  // The whole window, over the panels: what the frame shows (the screen alone,
+  // or the whole app) fills it, so a window the screen's size shows it 1:1.
+  const s = stage.getBoundingClientRect(), c = f.crop;
+  const bw = c ? screenBox.w * c.k : W, bh = c ? screenBox.h * c.k : H, bx = (W - bw) / 2, by = (H - bh) / 2;
+  const z = Math.min(s.width / bw, s.height / bh);
+  Object.assign(view, { z, x: (s.width - bw * z) / 2 - (f.x + bx) * z, y: (s.height - bh * z) / 2 - (f.y + by) * z });
+  showImmerse();
   draw(glide);
   clampLens();
   drawLens();
@@ -1121,10 +1136,8 @@ const LENS_MAX = 4; // up to 400% of the app's own pixels
 function drawLens() {
   const f = focused;
   if (!f) return;
-  const { x, y, z } = lens;
-  f.body.style.transform = z === 1 ? '' : `translate(${x}px, ${y}px) scale(${z})`;
-  f.body.style.setProperty('--inv', String(1 / (view.z * z))); // what keeps its size on screen
-  zoomLabel.textContent = `${Math.round(view.z * z * 100)}%`;
+  shapeBody(f);
+  zoomLabel.textContent = `${Math.round(view.z * lens.z * 100)}%`;
   notes?.moved();
   store.set(FILL_KEY, { id: f.id, before: beforeFocus, lens });
 }
@@ -1156,17 +1169,22 @@ function focusFrame(f) {
   if (focused && f !== focused) return; // one fill at a time: close it first
   if (!focused) beforeFocus = { ...view };
   lockTo(f);
+  // Full screen too, for a display the screen is tried on (a click or key asks it).
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().then(() => { wentFull = true; }).catch(() => {});
   drawTools();
   wake(f);
 }
 function unfocus() {
   if (!focused) return false;
+  const was = focused;
   focused.el.classList.remove('focused');
   stage.classList.remove('focusing');
-  focused.body.style.transform = '';
-  focused.body.style.removeProperty('--inv');
+  document.body.classList.remove('cv-immersive');
   lens = { z: 1, x: 0, y: 0 };
   focused = null;
+  shapeBody(was);
+  if (immerseEl) immerseEl.hidden = true;
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   fitTitle('Show every frame (⇧1)');
   store.set(FILL_KEY, null);
   drawTools();
@@ -1274,6 +1292,7 @@ addEventListener('keydown', (e) => {
   else if (selected && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selected.iters.length > 1) { e.preventDefault(); step(selected, e.key === 'ArrowLeft' ? -1 : 1); }
   else if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey) toPointer();
   else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? unfocus() : focusFrame(selected); }
+  else if ((focused || selected) && (e.key === 'h' || e.key === 'H') && !e.metaKey && !e.ctrlKey && !e.altKey) { const f = focused || selected; setHardware(f, !hardware[f.id]); }
 });
 addEventListener('keyup', (e) => { if (e.code === 'Space') setSpace(false); });
 // A click inside a live frame moves the focus into its iframe: that frame
@@ -1286,6 +1305,104 @@ addEventListener('blur', () => {
   });
 });
 addEventListener('resize', () => { if (focused) lockTo(focused, false); });
+
+// ---- The screen alone, and the hardware ----------------------------------------
+// A frame shows only the screen (the element "preview" in playground.json
+// names), cropped from the app's page and filling the frame: what's around
+// it, the hardware, is off until the frame's own button (or H) turns it on.
+// The bridge says where the screen is (measure); it's kept, so a sleeping
+// frame's picture is cropped the same way. Notes, X-ray and Inspect sit in
+// the app's pixels inside the lens, so they crop with it.
+const HW_KEY = `${KEY}.hardware`, BOX_KEY = `${KEY}.screenBox`;
+hardware = store.get(HW_KEY, {});
+screenBox = CFG.preview ? store.get(BOX_KEY, null) : null;
+function cropOf(f) {
+  const r = screenBox;
+  if (!r || hardware[f.id]) return null;
+  const k = Math.min(W / r.w, H / r.h);
+  return { k, x: (W - r.w * k) / 2 - r.x * k, y: (H - r.h * k) / 2 - r.y * k };
+}
+// The lens's transform: the zoom inside a frame that fills the window, over the crop.
+function shapeBody(f) {
+  const c = f.crop = cropOf(f), L = focused === f && lens.z !== 1 ? lens : null;
+  f.body.style.transform = [L && `translate(${L.x}px, ${L.y}px) scale(${L.z})`, c && `translate(${c.x}px, ${c.y}px) scale(${c.k})`].filter(Boolean).join(' ');
+  const z = (L ? L.z : 1) * (c ? c.k : 1);
+  if (z === 1) f.body.style.removeProperty('--inv');
+  else f.body.style.setProperty('--inv', String(1 / (view.z * z))); // what keeps its size on screen
+  f.el.classList.toggle('cropped', !!c);
+  const b = f.el.querySelector('.cv-hw');
+  if (b) {
+    const t = hardware[f.id] ? 'Hide the hardware: the screen alone (H)' : 'Show the hardware around the screen (H)';
+    if (!b.innerHTML) b.innerHTML = ICON.hardware;
+    b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(!!hardware[f.id]));
+  }
+  if (f === focused) drawImmerse();
+}
+function setHardware(f, on) {
+  if (!CFG.preview) return;
+  if (on) hardware[f.id] = true; else delete hardware[f.id];
+  store.set(HW_KEY, hardware);
+  shapeBody(f);
+  if (f === focused) lockTo(f);
+  choosePictures();
+  notes?.moved();
+}
+async function measureScreen(f) {
+  if (!CFG.preview) return;
+  try {
+    const { rect: r } = await ask(f, { type: 'measure', selector: CFG.preview });
+    if (!r || r.w < 8 || r.h < 8) return;
+    const q = (v) => Math.round(v * 100) / 100; // fractions kept: ⤢ shows the screen 1:1 on a display its size
+    const box = { x: q(r.x), y: q(r.y), w: q(r.w), h: q(r.h) };
+    if (screenBox && ['x', 'y', 'w', 'h'].every((k) => screenBox[k] === box[k])) return;
+    screenBox = box;
+    store.set(BOX_KEY, box);
+    for (const x of frames) shapeBody(x);
+    if (focused) lockTo(focused, false);
+    notes?.moved();
+  } catch {}
+}
+
+// ⤢ is immersive: the frame over the panels and everything, full screen. Its
+// own small bar (top left) turns the hardware on or off and closes it; it
+// fades while it's not used, and comes back when the pointer goes to the
+// window's top edge or over it.
+immerseEl = document.createElement('div');
+immerseEl.className = 'cv-immerse';
+immerseEl.hidden = true;
+immerseEl.innerHTML = `<div class="cv-immerse-edge"></div><div class="cv-immerse-bar">
+  <button type="button" class="cv-float cv-icon" data-hw></button>
+  <button type="button" class="cv-float cv-icon" data-exit title="Close (Esc)" aria-label="Close (Esc)">${ICON.unfill}</button></div>`;
+document.body.append(immerseEl);
+immerseEl.querySelector('[data-hw]').addEventListener('click', () => { if (focused) setHardware(focused, !hardware[focused.id]); });
+immerseEl.querySelector('[data-exit]').addEventListener('click', () => unfocus());
+let immerseTimer = 0;
+function showImmerse() {
+  if (!immerseEl) return;
+  immerseEl.hidden = !focused;
+  immerseEl.classList.remove('idle');
+  clearTimeout(immerseTimer);
+  immerseTimer = setTimeout(() => { if (!immerseEl.matches(':hover')) immerseEl.classList.add('idle'); }, 2500);
+  drawImmerse();
+}
+function drawImmerse() {
+  if (!immerseEl) return;
+  const b = immerseEl.querySelector('[data-hw]'), on = !!(focused && hardware[focused.id]);
+  if (!CFG.preview) { b.hidden = true; return; }
+  const t = on ? 'Hide the hardware: the screen alone (H)' : 'Show the hardware (H)';
+  if (!b.innerHTML) b.innerHTML = ICON.hardware; // once: a redraw under the pointer would lose the click
+  b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(on));
+}
+immerseEl.addEventListener('pointerenter', () => showImmerse());
+immerseEl.addEventListener('pointerleave', () => showImmerse());
+addEventListener('pointermove', () => { if (focused && immerseEl.classList.contains('idle')) showImmerse(); }, { passive: true });
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) return;
+  if (wentFull && focused) { wentFull = false; unfocus(); } // Esc left full screen: leave ⤢ too
+  wentFull = false;
+});
+for (const f of frames) shapeBody(f);
+if (focused) lockTo(focused, false);
 
 // ---- Claude: the composer, and what a run made --------------------------------
 composer = mountComposer(document.getElementById('composer'), {

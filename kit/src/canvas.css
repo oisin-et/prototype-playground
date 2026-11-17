@@ -42,7 +42,7 @@
 /* The panels and the round pieces over the canvas are grey, as Figma's
    are around its light canvas: the same variables, set again on them, so
    everything inside follows. The canvas, its frames and their names stay light. */
-.cv-side, .cv-top, .cv-menu, #toast, .cv-workspace > .pg-reader, .pg-icard {
+.cv-side, .cv-top, .cv-immerse, .cv-menu, #toast, .cv-workspace > .pg-reader, .pg-icard {
   color-scheme: dark;
   --chrome: #2c2c2c;
   --raised: #383838;
@@ -643,3 +643,36 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-fillfloat:hover { filter: none; background: var(--solid-1, #17191d); } /* as the frame's own ⤢ */
 /* A board's name, being renamed (double-click it). */
 .cv-board-label b.editing { outline: calc(1.5px * var(--inv)) solid var(--accent); outline-offset: calc(3px * var(--inv)); border-radius: calc(4px * var(--inv)); cursor: text; user-select: text; }
+
+/* ---- The hardware: off by default, each frame the screen alone (canvas.js's
+   "The screen alone"). Its button sits at the frame's top left. ---- */
+.cv-head .cv-hw {
+  flex: none; width: calc(36px * var(--inv)); min-height: calc(36px * var(--inv)); height: calc(36px * var(--inv));
+  padding: 0; border-radius: 50%; opacity: 0; transition: opacity 0.15s ease;
+  background: var(--chrome); box-shadow: inset 0 0 0 calc(1px * var(--inv)) var(--frame-edge), inset 0 calc(1px * var(--inv)) 0 var(--frame-highlight);
+}
+.cv-head .cv-hw:hover { background: var(--solid-1, #17191d); }
+.cv-head .cv-hw[aria-pressed=true] { color: var(--accent); opacity: 1; }
+.cv-head .cv-hw svg { width: calc(16px * var(--inv)); height: calc(16px * var(--inv)); }
+.cv-frame:hover .cv-hw, .cv-frame.selected .cv-hw, .cv-hw:focus-visible { opacity: 1; }
+.cv-frame.cropped .cv-body { background: #000; }
+
+/* ---- ⤢, immersive: the frame alone over the panels and everything, on black. ---- */
+body.cv-immersive .cv-side, body.cv-immersive .cv-top { display: none; }
+body.cv-immersive .cv-stage { background: #000; }
+body.cv-immersive .cv-frame:not(.focused), body.cv-immersive .cv-board-label, body.cv-immersive .cv-arrows,
+body.cv-immersive .cv-frame.focused .cv-head, body.cv-immersive .cv-frame.focused .cv-foot { visibility: hidden; }
+body.cv-immersive .cv-frame.focused .cv-body { box-shadow: none; border-radius: 0; background: #000; }
+.cv-immerse { position: fixed; inset: 0 auto auto 0; z-index: 12; pointer-events: none; }
+.cv-immerse[hidden] { display: none; }
+.cv-immerse-edge { position: fixed; left: 0; right: 0; top: 0; height: 6px; pointer-events: auto; }
+.cv-immerse-bar {
+  position: fixed; left: 8px; top: 8px; display: flex; gap: 8px; pointer-events: auto;
+  transition: opacity 0.4s ease, transform 0.4s var(--settle);
+}
+.cv-immerse-bar button { position: relative; top: 0; color: var(--page-text); background: var(--chrome); width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.cv-immerse-bar button svg { width: 18px; height: 18px; }
+.cv-immerse-bar button:hover { background: var(--raised); }
+.cv-immerse-bar button[aria-pressed=true] { color: var(--accent); background: var(--chrome); }
+.cv-immerse.idle .cv-immerse-bar { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+.cv-immerse.idle .cv-immerse-bar:focus-within { opacity: 1; transform: none; pointer-events: auto; }
