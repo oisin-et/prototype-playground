@@ -370,11 +370,14 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 /* The toolbar: its own floating piece at the top middle, in the panels'
    look and colour. It springs to its new width when its frame's name changes. */
 .cv-tools { overflow: hidden; transition: width 560ms var(--spring); }
-.cv-tools-in { display: inline-flex; align-items: center; gap: 2px; height: 100%; padding: 0 5px; width: max-content; white-space: nowrap; }
-.cv-tools .cv-icon { width: 36px; height: 36px; border-radius: 18px; }
+.cv-tools-in { display: inline-flex; align-items: center; gap: 4px; height: 100%; padding: 0 5px; width: max-content; white-space: nowrap; }
+/* Larger than the other round pieces (52 against 44), centred on the same line. */
+.cv-top .cv-tools { top: 4px; height: 52px; border-radius: 26px; }
+.cv-tools .cv-icon { width: 42px; height: 42px; border-radius: 21px; }
+.cv-tools .cv-icon svg { width: 22px; height: 22px; }
 .cv-tools .cv-icon:disabled { opacity: 0.35; cursor: default; }
 @keyframes cv-tswap { from { opacity: 0; transform: translateY(-6px) scale(0.94); } }
-.cv-tsep { width: 1px; height: 20px; margin: 0 6px; background: var(--page-line); }
+.cv-tsep { width: 1px; height: 22px; margin: 0 4px; background: var(--page-line); }
 @media (prefers-reduced-motion: reduce) { .cv-tools { transition: none; } }
 
 /* ---- The chat (src/composer.js), in the Claude panel at the right ----

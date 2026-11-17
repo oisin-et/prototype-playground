@@ -43,7 +43,7 @@ import { mountComposer } from './composer.js';
 import { mountNotes } from './notes.js';
 import { mountPanels } from './panels.js';
 import { mountCommit } from './commit.js';
-import { ICON } from './icons.js';
+import { ICON, TOOL } from './icons.js';
 import { mountXray } from './xray.js';
 
 const load = (path, base) => fetch(new URL(path, base), { cache: 'no-store' }).then((r) => {
@@ -854,12 +854,12 @@ function selectFrame(f) {
 // the tools wait, dimmed. It springs to its new width as its name changes.
 const tools = document.getElementById('tools');
 const TOOLS = [
-  ['pointer', 'Pointer: use the app (V)', ICON.pointer],
+  ['pointer', 'Pointer: use the app (V)', TOOL.pointer],
   '|',
-  ['inspect', 'Inspect: which component each part is (I, or hold ⌘)', ICON.inspect],
-  ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', ICON.xray],
-  ['note', 'Notes: click a part to pin a note (N)', ICON.note],
-  ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', ICON.shot],
+  ['inspect', 'Inspect: which component each part is (I, or hold ⌘)', TOOL.inspect],
+  ['xray', 'X-ray: drag to see sizes, padding and gaps (or hold ⇧ and drag)', TOOL.xray],
+  ['note', 'Notes: click a part to pin a note (N)', TOOL.note],
+  ['shot', 'Screenshot: drag over the frame (or hold ⌥ and drag)', TOOL.shot],
 ];
 tools.innerHTML = `<div class="cv-tools-in">${TOOLS.map((t) => (t === '|' ? '<span class="cv-tsep"></span>'
   : `<button type="button" class="cv-icon" data-tool="${t[0]}" title="${esc(t[1])}" aria-label="${esc(t[1])}">${t[2]}</button>`)).join('')}</div>`;
