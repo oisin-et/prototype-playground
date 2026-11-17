@@ -548,6 +548,21 @@ function xray(m) {
 if (embedded) {
   const send = (m) => post({ ...m, from: 'page' });
   const editable = (el) => el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
+  // The middle button drags the canvas, as in Figma: this page sends the press
+  // (and its moves, while they come here) in its own points.
+  let midDown = false;
+  addEventListener('pointerdown', (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault(); e.stopPropagation(); // no autoscroll
+    midDown = true;
+    try { e.target.setPointerCapture?.(e.pointerId); } catch {}
+    send({ type: 'midpan', phase: 'start', x: e.clientX, y: e.clientY });
+  }, true);
+  addEventListener('pointermove', (e) => { if (midDown) send({ type: 'midpan', phase: 'move', x: e.clientX, y: e.clientY }); }, true);
+  const midUp = (e) => { if (!midDown || (e.type === 'pointerup' && e.button !== 1)) return; midDown = false; send({ type: 'midpan', phase: 'end' }); };
+  addEventListener('pointerup', midUp, true);
+  addEventListener('pointercancel', midUp, true);
+  addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); e.stopPropagation(); } }, true);
   addEventListener('keydown', (e) => {
     const mod = (e.metaKey || e.ctrlKey) && !e.altKey;
     const zoom = mod && (e.key === '=' || e.key === '+') ? 'in' : mod && (e.key === '-' || e.key === '_') ? 'out'

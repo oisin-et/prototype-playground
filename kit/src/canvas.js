@@ -753,6 +753,8 @@ addEventListener('message', (e) => {
     else if (m.key === 'Escape' && m.down !== false) {
       if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) unfocus();
     }
+  } else if (m.type === 'midpan') {
+    midPan(f, m);
   } else if (m.type === 'leaving') {
     // The frame's page is going away (a reload): until the next one has a
     // bridge, a frame with the focus would swallow every key, a dictation's ⌘V too.
@@ -1198,7 +1200,36 @@ function setSpace(down) {
   stage.classList.toggle('grab', space);
   shield.hidden = !space && !pan;
 }
+// The middle button drags the canvas from anywhere on it, as in Figma: over a
+// live frame the frame's bridge sends the drag (midPan).
+function startPan(x, y, mid) {
+  pan = { x, y, vx: view.x, vy: view.y, lx: lens.x, ly: lens.y, moved: false, cover: null, mid };
+  shield.hidden = false;
+  stage.classList.add('grabbing');
+}
+function movePan(x, y) {
+  if (!pan) return;
+  const dx = x - pan.x, dy = y - pan.y;
+  if (Math.abs(dx) + Math.abs(dy) > 4) pan.moved = true;
+  if (!pan.moved) return;
+  if (focused) { const s0 = clipScale(); lens.x = pan.lx + dx / s0; lens.y = pan.ly + dy / s0; clampLens(); drawLens(); } // the canvas is locked
+  else { view.x = pan.vx + dx; view.y = pan.vy + dy; draw(); }
+}
+function midPan(f, m) {
+  if (m.phase === 'end') { if (pan?.mid === 'page') endPan(); return; }
+  const r = f.iframe.getBoundingClientRect(), k = r.width / (f.iframe.offsetWidth || r.width);
+  const x = r.left + m.x * k, y = r.top + m.y * k; // the frame's point, on the canvas
+  if (m.phase === 'start') { if (!pan) startPan(x, y, 'page'); }
+  else if (pan?.mid === 'page' && !pan.moved) movePan(x, y); // once it moves, the frame moves with it: the shield's points count
+}
 stage.addEventListener('pointerdown', (e) => {
+  if (e.button === 1) {
+    if (overCanvas(e)) return;
+    e.preventDefault(); // no autoscroll
+    startPan(e.clientX, e.clientY, 'stage');
+    try { stage.setPointerCapture(e.pointerId); } catch {}
+    return;
+  }
   if (e.button !== 0 || overCanvas(e)) return;
   const onCover = e.target.closest('.cv-cover');
   const onBg = e.target === stage || e.target === world || e.target === shield;
@@ -1207,20 +1238,21 @@ stage.addEventListener('pointerdown', (e) => {
   shield.hidden = false;
   try { stage.setPointerCapture(e.pointerId); } catch {}
 });
+// A drag that started in a frame goes on over the shield.
 stage.addEventListener('pointermove', (e) => {
   if (!pan) return;
-  const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
-  if (Math.abs(dx) + Math.abs(dy) > 4) pan.moved = true;
-  if (!pan.moved) return;
-  if (focused) { const s0 = clipScale(); lens.x = pan.lx + dx / s0; lens.y = pan.ly + dy / s0; clampLens(); drawLens(); } // the canvas is locked
-  else { view.x = pan.vx + dx; view.y = pan.vy + dy; draw(); }
+  if (pan.mid === 'page' && !(e.buttons & 4)) return endPan(); // the button came up out of sight
+  movePan(e.clientX, e.clientY);
 });
+stage.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 const endPan = () => {
   if (!pan) return;
-  if (!pan.moved && pan.cover) selectFrame(frames.find((f) => f.el.contains(pan.cover)));
+  if (pan.mid) {} // the middle button only moves the canvas
+  else if (!pan.moved && pan.cover) selectFrame(frames.find((f) => f.el.contains(pan.cover)));
   else if (!pan.moved && !space && !focused) selectFrame(null);
   pan = null;
   shield.hidden = !space;
+  stage.classList.remove('grabbing');
 };
 stage.addEventListener('pointerup', endPan);
 stage.addEventListener('pointercancel', endPan);

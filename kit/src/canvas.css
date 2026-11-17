@@ -109,6 +109,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
   touch-action: none;
 }
 .cv-stage.grab, .cv-stage.grab * { cursor: grab !important; }
+.cv-stage.grabbing, .cv-stage.grabbing * { cursor: grabbing !important; }
 .cv-shield { position: absolute; inset: 0; z-index: 5; }
 .cv-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; --inv: 8; }
 .cv-world.glide { transition: transform 0.45s var(--settle); }
