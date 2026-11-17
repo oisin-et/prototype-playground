@@ -80,8 +80,8 @@ const GAP = Math.round(W * 0.08);
 const ROW_GAP = Math.round(H * 0.45);
 
 document.title = `${NAME} · Canvas`;
-document.querySelector('.cv-home-icon').innerHTML = ICON.home;
-document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
+document.querySelector('.cv-home-icon').innerHTML = TOOL.home;
+document.getElementById('btn-share').insertAdjacentHTML('afterbegin', TOOL.share);
 // Share: a link for the team (not yet), and Full view for the selected frame (or Main).
 document.getElementById('btn-share').addEventListener('click', (e) => {
   const b = e.currentTarget.getBoundingClientRect();
@@ -922,7 +922,7 @@ function drawTools() {
   set('shot', snapping);
   // ⤢ is on each frame, at its top right corner.
   for (const x of frames) {
-    const b = x.el.querySelector('.cv-fill'), on = focused === x, icon = on ? ICON.unfill : ICON.fill;
+    const b = x.el.querySelector('.cv-fill'), on = focused === x, icon = on ? TOOL.unfill : TOOL.fill;
     if (b.innerHTML !== icon) b.innerHTML = icon;
     const t = on ? 'Back to the canvas (Esc)' : 'Fill the window (F)';
     b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(on));
@@ -1009,7 +1009,7 @@ function placeFill() {
     show = seen && !reach;
   }
   if (show) {
-    const on = focused === f, icon = on ? ICON.unfill : ICON.fill, t = on ? 'Back to the canvas (Esc)' : `Fill the window with ${frameTitle(f)} (F)`;
+    const on = focused === f, icon = on ? TOOL.unfill : TOOL.fill, t = on ? 'Back to the canvas (Esc)' : `Fill the window with ${frameTitle(f)} (F)`;
     if (fillFloat.innerHTML !== icon) fillFloat.innerHTML = icon;
     fillFloat.title = t; fillFloat.setAttribute('aria-label', t);
   }
@@ -1409,7 +1409,7 @@ immerseEl.className = 'cv-immerse';
 immerseEl.hidden = true;
 immerseEl.innerHTML = `<div class="cv-immerse-edge"></div><div class="cv-immerse-bar">
   <button type="button" class="cv-float cv-icon" data-hw></button>
-  <button type="button" class="cv-float cv-icon" data-exit title="Close (Esc)" aria-label="Close (Esc)">${ICON.unfill}</button></div>`;
+  <button type="button" class="cv-float cv-icon" data-exit title="Close (Esc)" aria-label="Close (Esc)">${TOOL.unfill}</button></div>`;
 document.body.append(immerseEl);
 immerseEl.querySelector('[data-hw]').addEventListener('click', () => { if (focused) setHardware(focused, !hardware[focused.id]); });
 immerseEl.querySelector('[data-exit]').addEventListener('click', () => leaveFullView());

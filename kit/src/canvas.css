@@ -602,7 +602,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 }
 .cv-head .cv-fill:hover { background: var(--solid-1, #17191d); }
 .cv-head .cv-fill[aria-pressed=true] { background: var(--chrome); color: var(--accent); }
-.cv-head .cv-fill svg { width: calc(16px * var(--inv)); height: calc(16px * var(--inv)); }
+.cv-head .cv-fill svg { width: calc(20px * var(--inv)); height: calc(20px * var(--inv)); }
 .cv-frame:hover .cv-fill, .cv-frame.selected .cv-fill, .cv-frame.focused .cv-fill, .cv-fill:focus-visible { opacity: 1; }
 
 /* ---- Boards (canvas.js's "Boards"): what a starting prompt made ----
@@ -677,9 +677,12 @@ body.cv-immersive .cv-frame.focused .cv-body { box-shadow: none; border-radius: 
   transition: opacity 0.4s ease, transform 0.4s var(--settle);
 }
 .cv-immerse-bar button { position: relative; top: 0; color: var(--page-text); background: var(--chrome); width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
-.cv-immerse-bar button svg { width: 18px; height: 18px; }
+.cv-immerse-bar button svg { width: 20px; height: 20px; }
 .cv-immerse-bar button:hover { background: var(--raised); }
 .cv-immerse-bar button[aria-pressed=true] { color: var(--accent); background: var(--chrome); }
 .cv-immerse.idle .cv-immerse-bar { opacity: 0; transform: translateY(-8px); pointer-events: none; }
 .cv-immerse.idle .cv-immerse-bar:focus-within { opacity: 1; transform: none; pointer-events: auto; }
 .cv-pval:has(.cv-switch) { display: flex; align-items: center; }
+
+/* Home, Share and the top row's ⤢: the toolbar's icon set, a size down (20 px). */
+.cv-home-icon svg, .cv-share svg, .cv-fillfloat svg { width: 20px; height: 20px; }
