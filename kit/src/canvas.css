@@ -39,6 +39,43 @@
   --hover-fill: rgba(0, 0, 0, 0.04);
   --settle: cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* The panels and the round pieces over the canvas are grey, as Figma's
+   are around its light canvas: the same variables, set again on them, so
+   everything inside follows. The canvas, its frames and their names stay light. */
+.cv-side, .cv-top, .cv-menu, #toast, .cv-workspace > .pg-reader, .pg-icard {
+  color-scheme: dark;
+  --chrome: #2c2c2c;
+  --raised: #383838;
+  --page: #1e1e1e;
+  --page-text: #e8e8e8;
+  --page-muted: #a3a3a3;
+  --page-line: #444444;
+  --ink: #ffffff;
+  --accent: #0d99ff;
+  --accent-rgb: 13, 153, 255;
+  --amber: #f0b44c;
+  --amber-rgb: 240, 180, 76;
+  --ok: #5fd08a;
+  --bad: #ff6b7d;
+  --fg-rgb: 255, 255, 255;
+  --solid-0: #1e1e1e;
+  --solid-1: #383838;
+  --sent-bg: #4a4a4a;
+  --frame: #2c2c2c;
+  --frame-edge: rgba(255, 255, 255, 0.07);
+  --frame-highlight: rgba(255, 255, 255, 0.04);
+  --tile: linear-gradient(180deg, #3a3a3a 0%, #333333 100%);
+  --tile-edge: rgba(255, 255, 255, 0.08);
+  --tile-highlight: rgba(255, 255, 255, 0.06);
+  --tile-shadow: 0 2px 6px -3px rgba(0, 0, 0, 0.5);
+  --well: rgba(255, 255, 255, 0.05);
+  --hover-fill: rgba(255, 255, 255, 0.06);
+  color: var(--page-text);
+}
+/* File-type tints in the grey panels: the classic playground's own. */
+.cv-side .t-blue { color: #519aba; } .cv-side .t-yellow { color: #cbcb41; } .cv-side .t-teal { color: #4fc1c9; }
+.cv-side .t-orange { color: #e37933; } .cv-side .t-purple { color: #a074c4; } .cv-side .t-red { color: #ff6b7d; } .cv-side .t-green { color: #5fd08a; }
+.cv-side .ficon.folder { color: #a3a3a3; }
 /* Wells that show the app's own pictures stay dark: a component cut from a
    dark app is light on transparent, and would vanish on white. */
 .l-thumb, .l-hero-img, .l-spec-img, .pg-peek-shot, .pg-shots img { background: #17181b; }
