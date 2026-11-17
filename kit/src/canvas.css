@@ -645,19 +645,22 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .cv-board-label b.editing { outline: calc(1.5px * var(--inv)) solid var(--accent); outline-offset: calc(3px * var(--inv)); border-radius: calc(4px * var(--inv)); cursor: text; user-select: text; }
 
 /* ---- The hardware: off by default, each frame the screen alone (canvas.js's
-   "The screen alone"). Its button sits at the frame's top left. ---- */
-.cv-head .cv-hw {
-  flex: none; width: calc(36px * var(--inv)); min-height: calc(36px * var(--inv)); height: calc(36px * var(--inv));
-  padding: 0; border-radius: 50%; opacity: 0; transition: opacity 0.15s ease;
-  background: var(--chrome); box-shadow: inset 0 0 0 calc(1px * var(--inv)) var(--frame-edge), inset 0 calc(1px * var(--inv)) 0 var(--frame-highlight);
-}
-.cv-head .cv-hw:hover { background: var(--solid-1, #17191d); }
-.cv-head .cv-hw[aria-pressed=true] { color: var(--accent); opacity: 1; }
-.cv-head .cv-hw svg { width: calc(16px * var(--inv)); height: calc(16px * var(--inv)); }
-.cv-frame:hover .cv-hw, .cv-frame.selected .cv-hw, .cv-hw:focus-visible { opacity: 1; }
+   "The screen alone"); Properties has its switch. ---- */
 .cv-frame.cropped .cv-body { background: #000; }
+.cv-props .cv-switch {
+  position: relative; flex: none; width: 32px; min-width: 0; min-height: 0; height: 18px; padding: 0; border: 0; border-radius: 9px;
+  background: var(--page-line); box-shadow: none; vertical-align: middle; margin-right: 8px; cursor: pointer;
+}
+.cv-props .cv-switch i { position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.2s var(--settle); }
+.cv-props .cv-switch[aria-checked=true] { background: var(--accent); }
+.cv-props .cv-switch[aria-checked=true] i { transform: translateX(14px); }
+.cv-props .cv-switch:hover { filter: brightness(1.1); }
+.cv-pmuted { color: var(--page-muted); }
+.cv-menu button[disabled] { opacity: 0.4; cursor: default; }
+.cv-menu button[disabled]:hover { background: none; }
+.cv-menu button kbd { margin-left: auto; padding-left: 16px; font: inherit; font-size: 11.5px; color: var(--page-muted); }
 
-/* ---- ⤢, immersive: the frame alone over the panels and everything, on black. ---- */
+/* ---- Share's Full view, immersive: the frame alone over the panels and everything, on black. ---- */
 body.cv-immersive .cv-side, body.cv-immersive .cv-top { display: none; }
 body.cv-immersive .cv-stage { background: #000; }
 body.cv-immersive .cv-frame:not(.focused), body.cv-immersive .cv-board-label, body.cv-immersive .cv-arrows,
@@ -676,3 +679,4 @@ body.cv-immersive .cv-frame.focused .cv-body { box-shadow: none; border-radius: 
 .cv-immerse-bar button[aria-pressed=true] { color: var(--accent); background: var(--chrome); }
 .cv-immerse.idle .cv-immerse-bar { opacity: 0; transform: translateY(-8px); pointer-events: none; }
 .cv-immerse.idle .cv-immerse-bar:focus-within { opacity: 1; transform: none; pointer-events: auto; }
+.cv-pval:has(.cv-switch) { display: flex; align-items: center; }

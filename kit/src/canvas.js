@@ -29,10 +29,10 @@
 //   it opened on.
 //
 // Clicking a frame wakes it and selects it; the selected frame is the one
-// Claude works on. A frame shows the screen alone; its hardware button (or H)
-// shows what's around it. ⤢ or F opens a frame immersive: over the panels and
-// everything, full screen, the screen 1:1 on a display its size. While a frame
-// fills it, the canvas is locked: it doesn't pan, zoom or fit, no other frame
+// Claude works on. A frame shows the screen alone; Properties' Hardware (or H)
+// shows what's around it. ⤢ or F opens a frame to fill the window between the
+// panels; Share's Full view (⇧F) opens it over the panels and everything, full
+// screen, the screen 1:1 on a display its size. While a frame fills it, the canvas is locked: it doesn't pan, zoom or fit, no other frame
 // can be selected, and only the same button (its icon turned inward), Esc or
 // F closes the fill. Inside the
 // frame, the app works as ever, and the frame has a zoom of its own: a pinch
@@ -67,7 +67,8 @@ let focused = null, beforeFocus = null; // the frame that fills the window, and 
 let space = false, pan = null; // Space held; a pan under way (setSpace)
 let lens = { z: 1, x: 0, y: 0 }; // the zoom inside the frame that fills the window, in its pixels (lensZoom)
 let screenBox = null; // the screen ("preview" in playground.json) in the app's page, in its pixels (see "The screen alone")
-let hardware = {}, immerseEl = null, wentFull = false; // frame id → hardware on; ⤢'s bar; the browser went full screen for ⤢
+let hardware = {}, immerseEl = null, wentFull = false; // frame id → hardware on; Full view's bar; the browser went full screen for it
+let immersive = false, filledBefore = false; // Full view (Share) is on; ⤢ was on before it
 const NAME = CFG.name || 'Prototype';
 const KEY = `${CFG.key || NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.canvas`;
 const DATA = new URL(`/${CFG.data}/`, location.href);
@@ -81,6 +82,16 @@ const ROW_GAP = Math.round(H * 0.45);
 document.title = `${NAME} · Canvas`;
 document.querySelector('.cv-home-icon').innerHTML = ICON.home;
 document.getElementById('btn-share').insertAdjacentHTML('afterbegin', ICON.share);
+// Share: a link for the team (not yet), and Full view for the selected frame (or Main).
+document.getElementById('btn-share').addEventListener('click', (e) => {
+  const b = e.currentTarget.getBoundingClientRect();
+  const at = { clientX: b.right - 220, clientY: b.bottom + 4, preventDefault() {}, stopPropagation() { e.stopPropagation(); } };
+  const f = selected || main;
+  openMenu(at, 'Share', [
+    { label: 'Copy link', icon: ICON.external, disabled: true, hint: 'Comes with the team version', run: () => {} },
+    { label: `Full view: ${f.kind === 'main' ? 'Main' : frameName(f)}`, icon: ICON.fill, key: '⇧F', run: () => fullView(f) },
+  ]);
+});
 
 // The panels, the classic playground's: Properties, Files and Library at the
 // left (panels.js), Claude at the right, floating over the canvas. Each
@@ -272,7 +283,6 @@ for (const f of frames) {
   el.dataset.id = f.id;
   el.innerHTML = `
     <header class="cv-head">
-      ${CFG.preview ? '<button type="button" class="cv-hw cv-icon"></button>' : ''}
       <span class="cv-title">${f.kind === 'main' ? ICON.main : ICON.branch}<b>${esc(f.caption || (f.kind === 'main' ? 'Main' : `${f.group} ${f.major}`))}</b></span>
       ${f.kind === 'exp' && !f.fixed ? `<label class="cv-iter-pick"><span class="cv-iter-now"></span>${ICON.chevron}
         <select aria-label="Iteration">${f.iters.map((x) => `<option value="${esc(x.id)}">${esc(x.id.slice(1))}${x.merged ? ' ✓' : ''} · ${esc(x.name)}</option>`).join('')}</select></label>` : `<span class="cv-iter-now main"></span>`}
@@ -300,8 +310,6 @@ for (const f of frames) {
   el.querySelector('.cv-head').addEventListener('click', (e) => { if (menuClick(e)) frameMenu(f, e); });
   el.querySelector('.cv-head').addEventListener('contextmenu', (e) => { e.preventDefault(); frameMenu(f, e); });
   el.querySelector('.cv-fill').addEventListener('pointerdown', (e) => e.stopPropagation());
-  el.querySelector('.cv-hw')?.addEventListener('pointerdown', (e) => e.stopPropagation());
-  el.querySelector('.cv-hw')?.addEventListener('click', (e) => { e.stopPropagation(); setHardware(f, !hardware[f.id]); });
   el.querySelector('.cv-fill').addEventListener('click', (e) => { e.stopPropagation(); if (focused === f) unfocus(); else { selectFrame(f); focusFrame(f); } });
   world.append(el);
   drawPoster(f);
@@ -760,7 +768,7 @@ addEventListener('message', (e) => {
     else if (m.key === 'Mod') holdInspect(m.down);
     else if (m.key === 'ModChord') holdInspect(false);
     else if (m.key === 'Escape' && m.down !== false) {
-      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) unfocus();
+      if (notes.on) notes.key('Escape'); else if (panels.inspector.on) panels.inspector.set(false); else if (!xray?.escape() && !readerOpen()) closeFill();
     }
   } else if (m.type === 'midpan') {
     midPan(f, m);
@@ -1115,13 +1123,20 @@ function lockTo(f, glide = true) {
   stage.classList.add('focusing');
   fitTitle('Fit the frame (⇧1)');
   setSpace(false);
-  document.body.classList.add('cv-immersive');
-  // The whole window, over the panels: what the frame shows (the screen alone,
-  // or the whole app) fills it, so a window the screen's size shows it 1:1.
-  const s = stage.getBoundingClientRect(), c = f.crop;
-  const bw = c ? screenBox.w * c.k : W, bh = c ? screenBox.h * c.k : H, bx = (W - bw) / 2, by = (H - bh) / 2;
-  const z = Math.min(s.width / bw, s.height / bh);
-  Object.assign(view, { z, x: (s.width - bw * z) / 2 - (f.x + bx) * z, y: (s.height - bh * z) / 2 - (f.y + by) * z });
+  document.body.classList.toggle('cv-immersive', immersive);
+  if (immersive) {
+    // Full view: the whole window, over the panels. What the frame shows (the
+    // screen alone, or the whole app) fills it, so a window the screen's size shows it 1:1.
+    const s = stage.getBoundingClientRect(), c = f.crop;
+    const bw = c ? screenBox.w * c.k : W, bh = c ? screenBox.h * c.k : H, bx = (W - bw) / 2, by = (H - bh) / 2;
+    const z = Math.min(s.width / bw, s.height / bh);
+    Object.assign(view, { z, x: (s.width - bw * z) / 2 - (f.x + bx) * z, y: (s.height - bh * z) / 2 - (f.y + by) * z });
+  } else {
+    // ⤢: the room the panels leave.
+    const s = room();
+    const z = Math.min(ZMAX, Math.max(ZMIN, Math.min((s.width - 32) / W, (s.height - 32 - 80) / H)));
+    Object.assign(view, { z, x: s.x + (s.width - W * z) / 2 - f.x * z, y: s.y + (s.height - H * z) / 2 - f.y * z });
+  }
   showImmerse();
   draw(glide);
   clampLens();
@@ -1169,14 +1184,35 @@ function focusFrame(f) {
   if (focused && f !== focused) return; // one fill at a time: close it first
   if (!focused) beforeFocus = { ...view };
   lockTo(f);
-  // Full screen too, for a display the screen is tried on (a click or key asks it).
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().then(() => { wentFull = true; }).catch(() => {});
   drawTools();
   wake(f);
 }
+// Share's Full view: the frame over the panels and everything, and the
+// browser full screen, for a display the screen is tried on. Closing it goes
+// back to ⤢ if that was on, else to the canvas.
+function fullView(f) {
+  if (!f || (focused && f !== focused)) return;
+  filledBefore = focused === f;
+  selectFrame(f);
+  immersive = true;
+  focusFrame(f);
+  drawTools();
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().then(() => { wentFull = true; }).catch(() => {});
+}
+function leaveFullView() {
+  if (!immersive) return false;
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  wentFull = false;
+  if (filledBefore && focused) { immersive = false; lockTo(focused); drawTools(); }
+  else unfocus();
+  return true;
+}
+// Esc, and the bridge's: Full view first, then ⤢.
+const closeFill = () => leaveFullView() || unfocus();
 function unfocus() {
   if (!focused) return false;
   const was = focused;
+  immersive = false;
   focused.el.classList.remove('focused');
   stage.classList.remove('focusing');
   document.body.classList.remove('cv-immersive');
@@ -1288,10 +1324,11 @@ addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); zoomKey(e.key); return; }
   if (typing(e.target)) return;
   if (e.shiftKey && (e.key === '!' || e.code === 'Digit1')) { e.preventDefault(); fitAll(); }
-  else if (e.key === 'Escape') { if (readerOpen()) return; if (!unfocus()) selectFrame(null); }
+  else if (e.key === 'Escape') { if (readerOpen()) return; if (!closeFill()) selectFrame(null); }
   else if (selected && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && selected.iters.length > 1) { e.preventDefault(); step(selected, e.key === 'ArrowLeft' ? -1 : 1); }
   else if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey) toPointer();
-  else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? unfocus() : focusFrame(selected); }
+  else if (selected && e.key === 'F' && e.shiftKey) { immersive ? leaveFullView() : fullView(selected); }
+  else if (selected && (e.key === 'f' || e.key === 'F')) { focused === selected ? closeFill() : focusFrame(selected); }
   else if ((focused || selected) && (e.key === 'h' || e.key === 'H') && !e.metaKey && !e.ctrlKey && !e.altKey) { const f = focused || selected; setHardware(f, !hardware[f.id]); }
 });
 addEventListener('keyup', (e) => { if (e.code === 'Space') setSpace(false); });
@@ -1330,12 +1367,6 @@ function shapeBody(f) {
   if (z === 1) f.body.style.removeProperty('--inv');
   else f.body.style.setProperty('--inv', String(1 / (view.z * z))); // what keeps its size on screen
   f.el.classList.toggle('cropped', !!c);
-  const b = f.el.querySelector('.cv-hw');
-  if (b) {
-    const t = hardware[f.id] ? 'Hide the hardware: the screen alone (H)' : 'Show the hardware around the screen (H)';
-    if (!b.innerHTML) b.innerHTML = ICON.hardware;
-    b.title = t; b.setAttribute('aria-label', t); b.setAttribute('aria-pressed', String(!!hardware[f.id]));
-  }
   if (f === focused) drawImmerse();
 }
 function setHardware(f, on) {
@@ -1346,7 +1377,13 @@ function setHardware(f, on) {
   if (f === focused) lockTo(f);
   choosePictures();
   notes?.moved();
+  panels?.changed(f); // Properties' switch
 }
+// Properties' Hardware switch.
+document.addEventListener('click', (e) => {
+  const b = e.target instanceof Element && e.target.closest('[data-hardware]');
+  if (b && selected) setHardware(selected, !hardware[selected.id]);
+});
 async function measureScreen(f) {
   if (!CFG.preview) return;
   try {
@@ -1375,11 +1412,11 @@ immerseEl.innerHTML = `<div class="cv-immerse-edge"></div><div class="cv-immerse
   <button type="button" class="cv-float cv-icon" data-exit title="Close (Esc)" aria-label="Close (Esc)">${ICON.unfill}</button></div>`;
 document.body.append(immerseEl);
 immerseEl.querySelector('[data-hw]').addEventListener('click', () => { if (focused) setHardware(focused, !hardware[focused.id]); });
-immerseEl.querySelector('[data-exit]').addEventListener('click', () => unfocus());
+immerseEl.querySelector('[data-exit]').addEventListener('click', () => leaveFullView());
 let immerseTimer = 0;
 function showImmerse() {
   if (!immerseEl) return;
-  immerseEl.hidden = !focused;
+  immerseEl.hidden = !immersive;
   immerseEl.classList.remove('idle');
   clearTimeout(immerseTimer);
   immerseTimer = setTimeout(() => { if (!immerseEl.matches(':hover')) immerseEl.classList.add('idle'); }, 2500);
@@ -1395,10 +1432,10 @@ function drawImmerse() {
 }
 immerseEl.addEventListener('pointerenter', () => showImmerse());
 immerseEl.addEventListener('pointerleave', () => showImmerse());
-addEventListener('pointermove', () => { if (focused && immerseEl.classList.contains('idle')) showImmerse(); }, { passive: true });
+addEventListener('pointermove', () => { if (immersive && immerseEl.classList.contains('idle')) showImmerse(); }, { passive: true });
 document.addEventListener('fullscreenchange', () => {
   if (document.fullscreenElement) return;
-  if (wentFull && focused) { wentFull = false; unfocus(); } // Esc left full screen: leave ⤢ too
+  if (wentFull && immersive) { wentFull = false; leaveFullView(); } // Esc left full screen: leave Full view too
   wentFull = false;
 });
 for (const f of frames) shapeBody(f);
@@ -1480,7 +1517,7 @@ function openMenu(e, title, items) {
   menuEl.setAttribute('role', 'menu');
   menuEl.innerHTML = `<div class="cv-menu-title">${esc(title)}</div>` + items.map((x, i) => (x.note
     ? `<div class="cv-menu-note">${esc(x.note)}</div>`
-    : `<button type="button" role="menuitem" class="${x.danger ? 'danger' : ''}" data-i="${i}">${x.icon || ''}<span>${esc(x.label)}</span></button>`)).join('');
+    : `<button type="button" role="menuitem" class="${x.danger ? 'danger' : ''}" data-i="${i}"${x.disabled ? ' disabled' : ''}${x.hint ? ` title="${esc(x.hint)}"` : ''}>${x.icon || ''}<span>${esc(x.label)}</span>${x.key ? `<kbd>${esc(x.key)}</kbd>` : ''}</button>`)).join('');
   document.body.append(menuEl);
   const w = menuEl.offsetWidth, h = menuEl.offsetHeight;
   menuEl.style.left = `${Math.min(e.clientX, innerWidth - w - 8)}px`;
@@ -1765,10 +1802,15 @@ function properties(f) {
   const row = (icon, label, value, extra = '') => `<div class="cv-prow">${icon}<span class="cv-plabel">${esc(label)}</span><span class="cv-pval${extra}">${value}</span></div>`;
   const when = (d) => (d ? new Date(`${d}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
   const screen = f.route?.screen ?? f.screen;
+  // The hardware around the screen: off, the frame is the screen alone (H).
+  const on = !!hardware[f.id];
+  const hwRow = CFG.preview ? `<section><div class="cv-prow">${ICON.hardware}<span class="cv-plabel">Hardware</span><span class="cv-pval">
+    <button type="button" class="cv-switch" role="switch" data-hardware aria-checked="${on}" title="${on ? 'Hide the hardware: the screen alone' : 'Show the hardware around the screen'} (H)"><i></i></button>
+    <span class="cv-pmuted">${on ? 'Shown' : 'Screen only'}</span></span></div></section>` : '';
   if (f.kind === 'main') {
     return `<h3>${ICON.main} Main</h3><section>
       ${row(ICON.folder, 'Screen', esc(f.where || SCREENS[screen]?.title || screen))}
-      ${row(ICON.clock, 'Runs', "the app as it is")}</section>`;
+      ${row(ICON.clock, 'Runs', "the app as it is")}</section>${hwRow}`;
   }
   const it = iterOf(f), fz = frozen[`${f.pg.id}/${f.v}`];
   const runs = f.onMain || !fz ? "On today's main" : fz.label === 'today' ? "On today's main (git has no older one)" : `On main of ${when((fz.base || fz.date)?.slice(0, 10))}`;
@@ -1783,7 +1825,7 @@ function properties(f) {
       ${row(ICON.frozen, 'Runs', esc(runs))}
       ${row(ICON.clock, 'Made', esc(when(it.date)))}
     </section>
-    <section>${row(ICON.pick, 'Main', status)}</section>
+    <section>${row(ICON.pick, 'Main', status)}</section>${hwRow}
     ${it.note ? `<p class="cv-pnote" title="Click to read it all" onclick="this.classList.toggle('open')">${esc(it.note)}</p>` : ''}`;
 }
 
